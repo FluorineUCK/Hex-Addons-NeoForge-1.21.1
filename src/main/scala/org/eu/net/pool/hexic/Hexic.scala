@@ -7,10 +7,10 @@ import com.mojang.serialization.{Codec, DynamicOps}
 import io.netty.buffer.ByteBuf
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.minecraft.nbt.scanner.NbtCollector
-import net.minecraft.nbt.{AbstractNbtList, AbstractNbtNumber, NbtCompound, NbtElement, NbtInt, NbtOps, NbtString}
+import net.minecraft.nbt.{AbstractNbtList, AbstractNbtNumber, NbtByte, NbtByteArray, NbtCompound, NbtDouble, NbtElement, NbtEnd, NbtFloat, NbtInt, NbtIntArray, NbtList, NbtLong, NbtLongArray, NbtOps, NbtShort, NbtString}
 import net.minecraft.registry.{Registry, RegistryKey}
 import net.minecraft.server.world.ServerWorld
-import net.minecraft.text.Text
+import net.minecraft.text.{MutableText, Text}
 import net.minecraft.util.{Formatting, Identifier}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.Vec3d
@@ -104,11 +104,25 @@ class NbtIota(val data: NbtElement) extends Iota(NbtIota, data):
 object NbtIota extends IotaType[NbtIota]:
   def color: Int = Formatting.DARK_AQUA.getColorValue
   def deserialize(using NbtElement, ServerWorld): NbtIota = NbtIota(summon)
-  def display(e: NbtElement): Text = ???
-
+  def display(e: NbtElement): Text =
+    given Conversion[String, MutableText] = Text.literal
+    e match
+      case b: NbtByte => s"Byte Tag: ${b.byteValue}"
+      case c: NbtCompound => s"Compound Tag [${c.getSize}]"
+      case a: NbtByteArray => s"Byte Array Tag [${a.size}]"
+      case d: NbtDouble => s"Double Tag: ${d.doubleValue}"
+      case _: NbtEnd => (s"End Tag": MutableText).styled(_.withObfuscated(true))
+      case f: NbtFloat => s"Float Tag: ${f.floatValue}"
+      case i: NbtInt => s"Int Tag: ${i.intValue}"
+      case i: NbtIntArray => s"Int Array Tag [${i.size}]"
+      case l: NbtList => s"List Tag [${l.size}]"
+      case l: NbtLong => s"Long Tag: ${l.longValue}"
+      case i: NbtLongArray => s"Long Array Tag [${i.size}]"
+      case s: NbtShort => s"Short Tag: ${s.shortValue}"
+      case s: NbtString => s"String Tag: ${s.asString}"
 object TextIota extends IotaType[TextIota]:
   def color(): Int = Vec3Iota.TYPE.color()
-  def deserialize(using NbtElement, ServerWorld): TextIota = ???
+  def deserialize(using NbtElement, ServerWorld): TextIota = TextIota(summon[NbtElement])
   def display(using NbtElement): Text =
     given ServerWorld = null
     deserialize.text

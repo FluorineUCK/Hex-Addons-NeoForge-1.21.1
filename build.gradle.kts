@@ -109,6 +109,7 @@ tasks.jar {
     from("LICENSE") {
         rename { "${it}_${project.base.archivesName}" }
     }
+    duplicatesStrategy = DuplicatesStrategy.WARN
 }
 
 // configure the maven publication
