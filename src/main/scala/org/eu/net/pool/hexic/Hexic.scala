@@ -1,34 +1,75 @@
 //noinspection NotImplementedCode
 package org.eu.net.pool.hexic
 
+import at.petrak.hexcasting.api.casting.ActionRegistryEntry
+import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
+import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
+import at.petrak.hexcasting.api.casting.castables.ConstMediaAction
+import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, SpellContinuation}
+import at.petrak.hexcasting.api.casting.eval.{CastingEnvironment, OperationResult}
 import at.petrak.hexcasting.api.casting.iota.{Iota, IotaType, Vec3Iota}
+import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
+import at.petrak.hexcasting.api.casting.mishaps.MishapInvalidIota
 import at.petrak.hexcasting.common.lib.HexRegistries
 import com.mojang.serialization.{Codec, DynamicOps}
-import io.netty.buffer.ByteBuf
-import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
-import net.minecraft.nbt.scanner.NbtCollector
-import net.minecraft.nbt.{AbstractNbtList, AbstractNbtNumber, NbtByte, NbtByteArray, NbtCompound, NbtDouble, NbtElement, NbtEnd, NbtFloat, NbtInt, NbtIntArray, NbtList, NbtLong, NbtLongArray, NbtOps, NbtShort, NbtString}
+import net.minecraft.nbt.*
 import net.minecraft.registry.{Registry, RegistryKey}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{MutableText, Text}
-import net.minecraft.util.{Formatting, Identifier}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.Vec3d
+import net.minecraft.util.{Formatting, Identifier}
 import net.minecraft.world.World
 import org.eu.net.pool.hexic
 import org.slf4j.{Logger, LoggerFactory}
 import ram.talia.moreiotas.api.casting.iota.StringIota
 
+import java.{lang, util}
 import scala.annotation.tailrec
-import scala.collection.mutable.ArrayBuffer
+import scala.jdk.CollectionConverters.*
+import scala.reflect.ClassTag
 import scala.util.chaining.given
 
 given Logger = LoggerFactory.getLogger("hexic")
+
+extension (i: Iota)
+  def asIotaType[T <: Iota: IotaType: ClassTag](idx: Int, expected: => Text): T = i match
+    case i: T => i
+    case _ => throw MishapInvalidIota(i, idx, expected)
 
 def init(): Unit =
   Registry.register(HexRegistries.IOTA_TYPE, "location": Identifier, LocationIota)
   Registry.register(HexRegistries.IOTA_TYPE, "text": Identifier, TextIota)
   Registry.register(HexRegistries.IOTA_TYPE, "nbt": Identifier, NbtIota)
+  Registry.register(HexRegistries.ACTION, "serialize": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaq", HexDir.NORTH_WEST), new ConstMediaAction:
+    import ConstMediaAction.DefaultImpls => d
+    override def getArgc: Int = 1
+    override def getMediaCost: Long = 0
+    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] = util.List.of(NbtIota(list.get(0)))
+    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
+    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
+  ))
+  Registry.register(HexRegistries.ACTION, "deserialize": Identifier, ActionRegistryEntry(HexPattern.fromAngles("qawde", HexDir.NORTH_WEST), new ConstMediaAction:
+    import ConstMediaAction.DefaultImpls => d
+    override def getArgc: Int = 1
+    override def getMediaCost: Long = 0
+    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] = util.List.of(list.get(0).asIotaType[NbtIota](0, Text.literal("an ").append(Text.literal("NBT tag").styled(_.withColor(NbtIota.color)))))
+    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
+    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
+  ))
+  Registry.register(HexRegistries.ARITHMETIC, "nbt": Identifier, new Arithmetic:
+    import Arithmetic.*
+    override def arithName(): String = "NBT"
+    private def ops = Map[HexPattern, util.List[Iota] => util.List[Iota]](
+      ADD -> ???
+    )
+
+    override def opTypes(): lang.Iterable[HexPattern] = ops.keys.asJava
+
+    override def getOperator(pattern: HexPattern): Operator =
+      val f = ops(pattern)
+      ???
+  )
 
 trait Selector[-T, R]:
   def apply(target: T): R
@@ -81,6 +122,10 @@ object LocationIota extends IotaType[LocationIota]:
 
 given Codec[Text] = Codecs.TEXT
 given DynamicOps[NbtElement] = NbtOps.INSTANCE
+
+given IotaType[TextIota] = TextIota
+given IotaType[LocationIota] = LocationIota
+given IotaType[NbtIota] = NbtIota
 
 case class TextIota(text: Text) extends Iota(TextIota, text):
   override def isTruthy = true
