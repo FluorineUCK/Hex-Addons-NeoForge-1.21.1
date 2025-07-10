@@ -83,6 +83,7 @@ dependencies {
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") }
+    modImplementation(files("hexal-fabric-1.20.1-0.3.0-3-skyevg-unofficial-teleport-experiment.jar"))
 }
 
 tasks.processResources {

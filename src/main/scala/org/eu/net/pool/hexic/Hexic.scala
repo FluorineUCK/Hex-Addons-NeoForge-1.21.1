@@ -7,17 +7,20 @@ import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.ConstMediaAction
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastingEnvironment, OperationResult}
-import at.petrak.hexcasting.api.casting.iota.{DoubleIota, Iota, IotaType, Vec3Iota}
+import at.petrak.hexcasting.api.casting.iota.{DoubleIota, EntityIota, Iota, IotaType, Vec3Iota}
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.MishapInvalidIota
+import at.petrak.hexcasting.api.casting.mishaps.{MishapInvalidIota, MishapOthersName}
 import at.petrak.hexcasting.common.lib.HexRegistries
 import com.mojang.serialization.{Codec, DynamicOps}
-import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
+import net.minecraft.Bootstrap
+import net.minecraft.entity.{EntityType, LightningEntity}
+import net.minecraft.entity.damage.{DamageSource, DamageSources}
+import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.nbt.*
+import net.minecraft.nbt.visitor.StringNbtWriter
 import net.minecraft.registry.{Registry, RegistryKey}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{MutableText, Text}
-import net.minecraft.util.collection.DefaultedList
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.Vec3d
 import net.minecraft.util.{Formatting, Identifier}
@@ -26,13 +29,14 @@ import org.eu.net.pool.hexic
 import org.slf4j.{Logger, LoggerFactory}
 import ram.talia.moreiotas.api.casting.iota.StringIota
 
-import scala.collection.convert.ImplicitConversions.given
 import java.{lang, util}
 import scala.annotation.tailrec
-import scala.collection.mutable.ArrayBuffer
+import scala.annotation.unchecked.uncheckedVariance
+import scala.collection.convert.ImplicitConversions.given
 import scala.jdk.CollectionConverters.*
-import scala.quoted.Expr
+import scala.language.dynamics
 import scala.reflect.ClassTag
+import scala.reflect.api.TypeTags
 import scala.util.chaining.given
 
 given Logger = LoggerFactory.getLogger("hexic")
@@ -41,6 +45,9 @@ extension (i: Iota)
   def asIotaType[T <: Iota: IotaType: ClassTag](idx: Int, expected: => Text): T = i match
     case i: T => i
     case _ => throw MishapInvalidIota(i, idx, expected)
+
+extension (c: NbtCompound)
+  def iota(using ServerWorld): Iota = IotaType.deserializeIota(c, summon)
 
 def init(): Unit =
   Registry.register(HexRegistries.IOTA_TYPE, "location": Identifier, LocationIota)
@@ -54,16 +61,27 @@ def init(): Unit =
     override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
     override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
   ))
-  Registry.register(HexRegistries.ACTION, "deserialize": Identifier, ActionRegistryEntry(HexPattern.fromAngles("qawde", HexDir.NORTH_WEST), new ConstMediaAction:
+  Registry.register(HexRegistries.ACTION, "deserialize": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaqa", HexDir.NORTH_WEST), new ConstMediaAction:
     import ConstMediaAction.DefaultImpls => d
     override def getArgc: Int = 1
     override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] = util.List.of(list.get(0).asIotaType[NbtIota](0, Text.literal("an ").append(Text.literal("NBT tag").styled(_.withColor(NbtIota.color)))))
+    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
+      given ServerWorld = castingEnvironment.getWorld
+      val iota = list.get(0).asIotaType[NbtIota](0, Text.literal("an ").append(Text.literal("NBT compound").styled(_.withColor(NbtIota.color)))).data.asInstanceOf[NbtCompound].iota
+      iota match
+        case p: EntityIota => p.getEntity match
+          case t: PlayerEntity if t != castingEnvironment.getCastingEntity =>
+            throw MishapOthersName(t)
+          case _ =>
+        case _ =>
+      util.List.of(iota)
     override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
     override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
   ))
   Registry.register(HexRegistries.ARITHMETIC, "nbt": Identifier, {
     import Arithmetic.*
+    given Conversion[NbtIota, NbtElement] = _.data
+    given Conversion[NbtElement, NbtIota] = NbtIota(_)
     arith("nbt",
       ADD -> ((a: NbtIota, b: NbtIota) =>
         Seq[NbtIota]:
@@ -184,13 +202,12 @@ def init(): Unit =
               c(k.last),
             )
       ),
-      CONS -> ((a: NbtIota, b: NbtIota) =>
+      CONS -> ((a: NbtIota, b: Iota) =>
         Seq[NbtIota]:
-          (a.data, b.data) match
-            case (a: AbstractNbtList[t], b) if b.isInstanceOf[t] =>
-              a.copy().tap:
-                case c: AbstractNbtList[t] =>
-                  c.add(b.asInstanceOf[t])
+          (a.data, b) match
+            case (nbtList(Tagged(a: AbstractNbtList[t], given _)), b) =>
+              b match
+                case iotaLike[t](b) => a.copy.asInstanceOf[AbstractNbtList[t]].tap(_.add(0, b))
         ),
       UNCONS -> ((a: NbtIota) =>
         a.data match
@@ -207,13 +224,54 @@ def init(): Unit =
               c(k.head),
             )
         ),
-//      CONS -> ???,
-//      UNCONS -> ???,
+      REMOVE -> ((a: NbtIota, key: Iota) =>
+        a match
+          case nbtList(Tagged(l: AbstractNbtList[t], given _)) =>
+            key match
+              case iotaLike(i: Int) =>
+                val c: l.type = l.copy.asInstanceOf
+                c.remove(i)
+                Seq(NbtIota(c))
+              case _ => throw MishapInvalidIota.of(key, 0, "int")
+        )
     )
   })
 
-given Conversion[NbtIota, NbtElement] = _.data
-given Conversion[NbtElement, NbtIota] = NbtIota(_)
+class SyspropConfig(prefix: String) extends Dynamic:
+  def selectDynamic(k: String): String =
+    System.getProperty(if prefix == "" then k else s"$prefix.$k", "")
+  def updateDynamic(k: String, v: String): Unit =
+    System.setProperty(if prefix == "" then k else s"$prefix.$k", v)
+
+type Config = SyspropConfig {
+  def accelerateEntities: String
+}
+def config = SyspropConfig("hexic").asInstanceOf[Config]
+
+def eq[T: ClassTag, U: ClassTag] = summon[ClassTag[T]] == summon[ClassTag[U]]
+
+object iotaLike:
+  def unapply[T: ClassTag](iota: Iota): Option[T] =
+    (iota, summon[ClassTag[T]]) match
+      case (s: StringIota, _: ClassTag[String]) => Some(s.getString)
+      case (NbtIota(s: NbtString), _: ClassTag[String]) => Some(s.asString)
+      case (d: DoubleIota, _: ClassTag[Double]) => Some(d.getDouble)
+      case (d: DoubleIota, _: ClassTag[Int]) =>
+        val i: Int = d.getDouble.round.toInt
+        if ((i - d.getDouble).abs > DoubleIota.TOLERANCE)
+          None
+        else
+          Some(i)
+      case _ => None
+
+object nbtList:
+  def unapply(l: NbtElement): Option[Tagged[AbstractNbtList, NbtElement]] =
+    l match
+      case c: NbtList => Some(Tagged(c))
+      case c: NbtIntArray => Some(Tagged(c))
+      case c: NbtByteArray => Some(Tagged(c))
+      case c: NbtLongArray => Some(Tagged(c))
+      case _ => None
 
 given Conversion[Array[Byte], NbtByteArray] = NbtByteArray(_)
 given Conversion[Array[Int], NbtIntArray] = NbtIntArray(_)
@@ -221,6 +279,16 @@ given Conversion[Array[Long], NbtLongArray] = NbtLongArray(_)
 given Conversion[NbtByteArray, Array[Byte]] = _.getByteArray
 given Conversion[NbtIntArray, Array[Int]] = _.getIntArray
 given Conversion[NbtLongArray, Array[Long]] = _.getLongArray
+
+trait Tagged[+F[_ <: U @uncheckedVariance], +U]:
+  type T <: U: ClassTag
+  val value: F[T]
+object Tagged:
+  def apply[F[_ <: R], R: ClassTag](v: F[R]): Tagged[F, R] =
+    new Tagged:
+      type T = R
+      val value: F[R] = v
+  def unapply[F[_ <: R], R](v: Tagged[F, R]): (F[v.T], ClassTag[v.T]) = (v.value, summon)
 
 extension [T](l: util.AbstractList[T])
   def apply(n: Int): T = l.get(n)
@@ -278,8 +346,8 @@ class IotaComponent[R: Codec](val id: Identifier):
 
 @tailrec
 def panic(reason: String): Nothing =
-  System.err.println(s"thread '${Thread.currentThread.getName}' panicked at '${reason}'")
-  System.err.flush()
+  Bootstrap.SYSOUT.println(s"thread '${Thread.currentThread.getName}' panicked at '$reason'")
+  Bootstrap.SYSOUT.flush()
   Runtime.getRuntime.halt(101)
   panic(reason)
 
@@ -309,7 +377,7 @@ case class TextIota(text: Text) extends Iota(TextIota, text):
     case _ => false
   override def serialize: NbtElement = text
 
-class NbtIota(val data: NbtElement) extends Iota(NbtIota, data):
+case class NbtIota(val data: NbtElement) extends Iota(NbtIota, data):
   override def isTruthy: Boolean = data match
     case d: AbstractNbtNumber => d.numberValue != 0
     case a: AbstractNbtList[?] => a.size != 0
@@ -325,21 +393,12 @@ object NbtIota extends IotaType[NbtIota]:
   def name: Text = ("NBT": MutableText).styled(_.withColor(color))
   def color: Int = Formatting.DARK_AQUA.getColorValue
   def deserialize(using NbtElement, ServerWorld): NbtIota = NbtIota(summon)
-  def display(e: NbtElement): Text =
-    e match
-      case b: NbtByte => s"Byte Tag: ${b.byteValue}"
-      case c: NbtCompound => s"Compound Tag [${c.getSize}]"
-      case a: NbtByteArray => s"Byte Array Tag [${a.size}]"
-      case d: NbtDouble => s"Double Tag: ${d.doubleValue}"
-      case _: NbtEnd => (s"End Tag": MutableText).styled(_.withObfuscated(true))
-      case f: NbtFloat => s"Float Tag: ${f.floatValue}"
-      case i: NbtInt => s"Int Tag: ${i.intValue}"
-      case i: NbtIntArray => s"Int Array Tag [${i.size}]"
-      case l: NbtList => s"List Tag [${l.size}]"
-      case l: NbtLong => s"Long Tag: ${l.longValue}"
-      case i: NbtLongArray => s"Long Array Tag [${i.size}]"
-      case s: NbtShort => s"Short Tag: ${s.shortValue}"
-      case s: NbtString => s"String Tag: ${s.asString}"
+  def display(e: NbtElement): Text = Text.literal(StringNbtWriter()(e)).styled(_.withColor(color))
+//object NbtIotaButOpaque extends IotaType[NbtIotaButOpaque]:
+//  def name: Text = ("NBT": MutableText).styled(_.withColor(color))
+//  def color: Int = Formatting.DARK_AQUA.getColorValue
+//  def deserialize(using NbtElement, ServerWorld): NbtIota = NbtIota(summon)
+//  def display(e: NbtElement): Text = Text.literal(StringNbtWriter()(e)).styled(_.withColor(color))
 object TextIota extends IotaType[TextIota]:
   def color(): Int = Vec3Iota.TYPE.color()
   def deserialize(using NbtElement, ServerWorld): TextIota = TextIota(summon[NbtElement])

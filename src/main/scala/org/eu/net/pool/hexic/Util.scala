@@ -59,7 +59,6 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
   import q.reflect.*
   val Varargs(xs) = args: @unchecked
   val ops = xs.map { case '{ ($p: HexPattern) -> $e } => (p, e) }.toMap[Expr[HexPattern], Expr[Any]]
-  println('{ val foo = 2 }.asTerm.show(using Printer.TreeStructure))
   '{
     new Arithmetic:
       override def arithName: String = $name
@@ -102,7 +101,7 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
               }.asTerm)
         ).toList).asExprOf[Operator]
       }
-  }.tap(e => println(e.show))
+  }.tap(e => report.info(e.show, name.asTerm.pos))
 
 trait OperationResultFactory[T]:
   def apply(self: T)(op: OperationResult): OperationResult
