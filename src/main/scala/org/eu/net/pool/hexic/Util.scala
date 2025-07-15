@@ -5,15 +5,13 @@ import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.arithmetic.predicates.IotaMultiPredicate
 import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect
-import at.petrak.hexcasting.api.casting.eval.{CastingEnvironment, OperationResult}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, SpellContinuation}
+import at.petrak.hexcasting.api.casting.eval.{CastingEnvironment, OperationResult}
 import at.petrak.hexcasting.api.casting.iota.{Iota, IotaType}
 import at.petrak.hexcasting.api.casting.math.HexPattern
-import at.petrak.hexcasting.common.lib.HexRegistries
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import com.mojang.serialization.{Codec, DynamicOps}
 import net.fabricmc.fabric.api.event.registry.FabricRegistryBuilder
-import net.minecraft.item.Item
 import net.minecraft.nbt.NbtCompound
 import net.minecraft.registry.entry.RegistryEntry
 import net.minecraft.registry.{Registries, Registry, RegistryKey, SimpleRegistry}
@@ -21,19 +19,15 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.Identifier
 
 import java.{lang, util}
-import scala.annotation.{showAsInfix, tailrec, targetName}
-import scala.collection.immutable.Map
+import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.given
 import scala.quoted.*
-import scala.reflect.api.*
-import scala.reflect.runtime.universe.showRaw
-import scala.util.NotGiven
 import scala.util.chaining.given
 
-given [T]: Conversion[RegistryKey[Registry[T]], ? <: Registry[T]] = (Registries.REGISTRIES.asInstanceOf[Registry[Registry[T]]]).get(_)
+given [T]: Conversion[RegistryKey[Registry[T]], ? <: Registry[T]] = Registries.REGISTRIES.asInstanceOf[Registry[Registry[T]]].get(_)
 given Conversion[String, Identifier] = Identifier.of("hexic", _)
 
-class Registrar[T](val id: Identifier):
+trait Registrar[T](val id: Identifier):
   val key: RegistryKey[Registry[T]] = RegistryKey.ofRegistry[T](id)
   lazy val registry: SimpleRegistry[T] = FabricRegistryBuilder.createSimple(key).buildAndRegister()
 
@@ -85,7 +79,7 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
                 ):
                   override def operate(env: CastingEnvironment, img: CastingImage, cont: SpellContinuation): OperationResult =
                     val stack = img.getStack.asScala.toSeq
-                    assert(stack.size == ${Expr(a.size)})
+                    val args = stack.takeRight(${Expr(a.size)})
                     // I'm fairly certain the remainder of this method is considered a war crime
                     ${
                       Block(a.zipWithIndex.map { p =>
@@ -94,7 +88,7 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
                           case '[t] => ValDef.copy(v)(n, ty, Some('{ stack(${Expr(i)}).asInstanceOf[t] }.asTerm))
                       }, {
                         r.tpe.asType match
-                          case '[Seq[Iota]] => '{ OperationResult(img.withStack(s => s ++ ${r.asExprOf[Seq[Iota]]}), util.ArrayList[OperatorSideEffect](), cont, HexEvalSounds.NORMAL_EXECUTE) }.asTerm
+                          case '[Seq[Iota]] => '{ OperationResult(img.withStack(s => s.dropRight(${Expr(a.size)}) ++ ${r.asExprOf[Seq[Iota]]}), util.ArrayList[OperatorSideEffect](), cont, HexEvalSounds.NORMAL_EXECUTE) }.asTerm
                           case _ => report.errorAndAbort(s"Operator return type ${r.tpe.show} is not statically supported", r.pos)
                       }).asExprOf[OperationResult]
                     }

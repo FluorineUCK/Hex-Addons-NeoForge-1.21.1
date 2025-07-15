@@ -10,6 +10,7 @@ import net.minecraft.util.collection.DefaultedList
 
 import org.eu.net.pool.hexic.*
 
+import scala.language.experimental.{macros, saferExceptions}
 import scala.util.boundary
 
 def init(): Unit =
