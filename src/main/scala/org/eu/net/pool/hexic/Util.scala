@@ -49,6 +49,12 @@ def uninline(using q: Quotes)(t: q.reflect.Term): q.reflect.Term = t match
 
 def unless(cond: Boolean)(body: => Unit): Unit = if (!cond) body
 
+extension (n: Int)
+  def times(b: => Unit) =
+    for (i <- 1 to n) {
+      b
+    }
+
 def eitherTypes(using q: Quotes)(t: q.reflect.TypeRepr): Seq[q.reflect.TypeRepr] =
   import q.reflect.*
   t match

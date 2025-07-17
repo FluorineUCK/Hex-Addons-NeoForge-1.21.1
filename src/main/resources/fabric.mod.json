@@ -18,6 +18,9 @@
     ],
     "main": [
       "org.eu.net.pool.hexic.Hexic\u0024package::init"
+    ],
+    "mm:early_risers": [
+      "org.eu.net.pool.hexic.EarlyRiser\u0024package::warCrimes"
     ]
   },
   "mixins": [
