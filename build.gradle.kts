@@ -1,3 +1,5 @@
+import kotlin.random.Random
+
 plugins {
     id("fabric-loom") version "1.10-SNAPSHOT"
     id("scala")
@@ -47,28 +49,24 @@ fabricApi {
 repositories {
     mavenLocal()
     mavenCentral()
-    maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
+    maven { url = uri("https://api.modrinth.com/maven") }
+    maven { url = uri("https://artifacts.consensys.net/public/maven/maven/") }
     maven { url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") }
     maven { url = uri("https://dl.cloudsmith.io/public/libp2p/jvm-libp2p/maven/") }
-    maven { url = uri("https://artifacts.consensys.net/public/maven/maven/") }
     maven { url = uri("https://jitpack.io/") }
-    maven { url = uri("https://maven.quiltmc.org/repository/release/") }
-    maven { url = uri("https://maven.terraformersmc.com/") }
-    maven { url = uri("https://maven.shedaniel.me/") }
-    maven { url = uri("https://maven.blamejared.com/") }
     maven { url = uri("https://masa.dy.fi/maven/") }
-    maven { url = uri("https://maven.jamieswhiteshirt.com/libs-release/") }
-    maven { url = uri("https://maven.ladysnake.org/releases/") }
+    maven { url = uri("https://maven.blamejared.com/") }
     maven { url = uri("https://maven.gegy.dev/releases") }
+    maven { url = uri("https://maven.jamieswhiteshirt.com/libs-release/") }
+    maven { url = uri("https://maven.kosmx.dev/") }
+    maven { url = uri("https://maven.ladysnake.org/releases/") }
+    maven { url = uri("https://maven.quiltmc.org/repository/release/") }
+    maven { url = uri("https://maven.shedaniel.me/") }
     maven { url = uri("https://maven.skye.vg/") }
-    exclusiveContent {
-        forRepository {
-            maven { url = uri("https://api.modrinth.com/maven/") }
-        }
-        filter {
-            includeGroup("maven.modrinth")
-        }
-    }
+    maven { url = uri("https://maven.terraformersmc.com/") }
+    maven { url = uri("https://maven.terraformersmc.com/releases") }
+    maven { url = uri("https://mvn.devos.one/snapshots/") }
+    maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
 }
 
 dependencies {
@@ -84,13 +82,16 @@ dependencies {
     modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
     include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
     include(api("org.scala-lang:scala-library:2.13.6")!!)
-    include(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.9999-hexxytest.2.2")!!)
+    //modCompileOnly("at.petra-k.hexcasting:hexcasting-common-$minecraft_version:0.11.2+fork-SNAPSHOT")
+    include(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2+fork-SNAPSHOT")!!)
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
+    modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation("maven.modrinth:hexcassettes:1.1.4")
     modImplementation("maven.modrinth:spasm:0.2.2")
+    modCompileOnly("miyucomics.hexical:hexical:main-SNAPSHOT")
     modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") }
     modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") }
 //    modImplementation("miyucomics:hexpose:1.0.0")
@@ -102,6 +103,7 @@ dependencies {
     modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")
     modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")
     modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")
+    modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
 }
 
 tasks.processResources {

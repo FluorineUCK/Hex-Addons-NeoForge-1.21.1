@@ -12,7 +12,8 @@
     "ItemStackMixin",
     "OpTickMixin",
     "OpTickMixin$SpellMixin",
-    "PacketByteBufMixin"
+    "PacketByteBufMixin",
+    "PhantomEntityMixin"
   ],
   "injectors": {
     "defaultRequire": 1
