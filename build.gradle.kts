@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     id("fabric-loom") version "1.10-SNAPSHOT"
     id("scala")
@@ -76,10 +78,7 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
     modImplementation("net.fabricmc:fabric-language-kotlin:${project.properties["kotlin_loader_version"]}")
     modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")
-
-    val minecraft_version = "1.20.1"
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
-    modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
 }
 
 tasks.processResources {
@@ -90,6 +89,52 @@ tasks.processResources {
 
     filesMatching("fabric.mod.json") {
         expand(project.properties)
+    }
+}
+
+sourceSets.all {
+    fun processTask(lang: String, body: Pair<String, Task>.(Provider<Directory>) -> Unit) {
+        val inDir = project.layout.projectDirectory.dir("src/${this@all.name}/$lang")
+        val outDir = project.layout.buildDirectory.dir(getTaskName("generated", lang))
+        val task by tasks.register(getTaskName("process", lang)) {
+            inputs.dir(inDir).optional()
+            outputs.dir(outDir)
+			onlyIf { file(inDir).exists() }
+            doLast {
+                fileTree(inDir).files.forEach {
+                    file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").parentFile.mkdirs()
+                    exec {
+                        commandLine("sh", "-c", "m4 ${it.absolutePath}")
+                        standardOutput = file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").outputStream()
+                    }
+                }
+            }
+        }
+        (getCompileTaskName(lang) to task).body(outDir)
+    }
+    processTask("java") {
+        tasks.named<JavaCompile>(first) {
+            dependsOn(second)
+            doFirst {
+                setSource(it)
+            }
+        }
+    }
+    processTask("kotlin") {
+        tasks.named<KotlinCompile>(first) {
+            dependsOn(second)
+            doFirst {
+                setSource(it)
+            }
+        }
+    }
+    processTask("scala") {
+        tasks.named<ScalaCompile>(first) {
+            dependsOn(second)
+            doFirst {
+                setSource(it)
+            }
+        }
     }
 }
 

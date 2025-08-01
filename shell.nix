@@ -15,6 +15,7 @@ pkgs.mkShell {
   };
   buildInputs = [
     pkgs.bashInteractive
+    pkgs.gnum4
     pkgs.gradle_8
     pkgs.jetbrains.idea-community
     pkgs.zulu21
