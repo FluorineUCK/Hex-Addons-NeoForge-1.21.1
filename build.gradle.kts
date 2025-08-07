@@ -10,6 +10,18 @@ plugins {
 version = project.property("mod_version") as String
 group = project.property("maven_group") as String
 
+val serialVersion = project.properties["minecraft_version"].let {
+    val (maj, min, pat) = it.toString().split('.')
+    min.toInt() * 100 + pat.toInt()
+}
+
+project.properties.forEach { k, v ->
+    if (k.endsWith("_$serialVersion")) {
+        println("Copying $k")
+        project.ext[k.replace("_$serialVersion", "")] = v
+    }
+}
+
 base {
     archivesName.set(project.property("archives_base_name") as String)
 }
@@ -147,10 +159,15 @@ tasks.withType<JavaCompile>().configureEach {
     options.release.set(targetJavaVersion)
 }
 
+tasks.withType<ScalaCompile> {
+    scalaCompileOptions.additionalParameters.add("-experimental")
+}
+
 tasks.jar {
     from("LICENSE") {
         rename { "${it}_${project.base.archivesName}" }
     }
+    duplicatesStrategy = DuplicatesStrategy.FAIL
 }
 
 // configure the maven publication
