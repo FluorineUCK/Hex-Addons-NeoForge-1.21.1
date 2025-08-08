@@ -36,7 +36,7 @@ java {
 }
 
 scala {
-    scalaVersion = "3.7.1"
+    scalaVersion = "3.7.2"
 }
 
 loom {
@@ -109,6 +109,7 @@ sourceSets.all {
         val inDir = project.layout.projectDirectory.dir("src/${this@all.name}/$lang")
         val outDir = project.layout.buildDirectory.dir(getTaskName("generated", lang))
         val task by tasks.register(getTaskName("process", lang)) {
+            inputs.property("minecraft_version", serialVersion)
             inputs.dir(inDir).optional()
             outputs.dir(outDir)
 			onlyIf { file(inDir).exists() }
@@ -116,7 +117,7 @@ sourceSets.all {
                 fileTree(inDir).files.forEach {
                     file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").parentFile.mkdirs()
                     exec {
-                        commandLine("sh", "-c", "m4 ${it.absolutePath}")
+                        commandLine("sh", "-c", "m4 -Dminecraft_version=${serialVersion} ${it.absolutePath}")
                         standardOutput = file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").outputStream()
                     }
                 }

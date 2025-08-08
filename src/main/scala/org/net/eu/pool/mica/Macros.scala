@@ -11,14 +11,19 @@ import scala.collection.mutable
 import scala.language.experimental.macros
 import scala.quoted.{Expr, Quotes, ToExpr, Type}
 
+// changequote(<<,>>)
+
+// divert(-1)
 /**
  * This macro generates a registry for a class, allowing the [[register @register]] annotation to track its descendants.
  * @param regName The identifier of the registry: registries themselves must be registered in [[net.minecraft.registry.Registries]]
  */
 @compileTimeOnly("@hasRegistry is expanded at compile-time")
+// divert
 class hasRegistry(regName: Identifier) extends MacroAnnotation:
   // Macro-class: we receive the `Definition` of what we're applied as well as its companion object (if it has one).
   override def transform(using q: Quotes)(definition: q.reflect.Definition, companion: Option[q.reflect.Definition]): List[q.reflect.Definition] =
+    // divert(-1)
     import q.reflect.*
     // First, match on `definition` - we only support generating registries for classes.
     definition match
@@ -83,7 +88,10 @@ class hasRegistry(regName: Identifier) extends MacroAnnotation:
       // and handle someone applying this to e.g. a function of course, since of course someone will.
       case _ =>
         report.error("Only class definitions may have associated registries")
+        // divert
         List(definition) :++ companion
+
+// divert(-1)
 
 private var registrarState: Option[mutable.Buffer[Expr[Unit]]] = Some(mutable.Buffer.empty)
 @compileTimeOnly("@register is expanded at compile-time")

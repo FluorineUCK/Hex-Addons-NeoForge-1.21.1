@@ -15,9 +15,11 @@ import scala.compiletime.deferred
 import scala.quoted.Quotes
 import scala.reflect.ClassTag
 
-// changequote(\[,\])
-// define(ifversion, \[ifelse(eval(minecraft_version $1), $2, $3)\])
-val /* \[ */ minecraft_version: /* \] */ Int = minecraft_version
+// changequote(<<,>>)
+
+// divert(-1) <<
+// define(ifversion, <<ifelse(eval(minecraft_version <<$1>>),1,<<$2>>,<<$3>>)>>)
+val /* << */ minecraft_version: /* >> */ Int = minecraft_version
 
 trait Abstract[C[_]]:
   type T: C
@@ -30,7 +32,7 @@ object Abstract:
     import x.given
     Some((x.value, /* WITH THIS TREASURE I */ summon))
 
-@hasRegistry(Identifier("mica", "thunk_frame"))
+//@hasRegistry(Identifier.of("mica", "thunk_frame"))
 trait ThunkFrame:
   given Codec[this.type] = deferred
   val accept: PartialFunction[Abstract[ValueType], ThunkFrame]
@@ -79,6 +81,9 @@ given Codec[BoxedRune] =
       summon[Codec[r.Data]].xmap(BoxedRune(r, _),
         // FIXME: Rewrite [dispatch] to avoid this unsafe cast.
         _.data.asInstanceOf[r.Data])
+      // ifversion(>= 2100,<<
+        .fieldOf("value")
+      // >>,)
     )
 
 //def dependentCodec[T, R](arg: Codec[T], rhs: [R] )
@@ -94,13 +99,13 @@ trait ParallelSection
 /**
  * Does nothing. Pushes and pops no frames, consumes no runes, etc.
  */
-@register(Identifier("mica", "empty"))
+@register(Identifier.of("mica", "empty"))
 object EmptyRune extends Rune:
   override type Data = Unit
   override def read(rhs: List[Rune]): (Unit, List[Rune]) = ((), rhs)
   override def execute(data: Unit, frame: ThunkFrame): ThunkFrame = frame
 
-@register(Identifier("mica", "quote"))
+@register(Identifier.of("mica", "quote"))
 object QuoteRune extends Rune:
   override type Data = Seq[BoxedRune]
   override def read(rhs: List[Rune]): (Seq[BoxedRune], List[Rune]) =
@@ -123,7 +128,7 @@ object QuoteRune extends Rune:
     worker(rhs)
   override def execute(data: Seq[BoxedRune], frame: ThunkFrame): ThunkFrame = ???
 
-@register(Identifier("mica", "unquote"))
+@register(Identifier.of("mica", "unquote"))
 object EndQuoteRune extends Rune:
   type Data = Nothing
   override def read(rhs: List[Rune]): (Nothing, List[Rune]) = throw RunesParseError(rhs.length, Text.literal("Unquote with no corresponding quote"))
@@ -144,11 +149,16 @@ extension [T] (x: T)
     case r: R => Some(r)
     case _ => None
 
-@hasRegistry(Identifier("mica", "values"))
+@hasRegistry(???)
 trait ValueType[T: Codec]:
   def eq[U: ValueType](x: T, y: U): Boolean
 object ValueType
 
 def init(): Unit =
   println(/*[*/"HELLO"/*]*/)
-  register()
+  //register()
+
+// >>divert
+@hasRegistry(???)
+trait MRE
+object MRE
