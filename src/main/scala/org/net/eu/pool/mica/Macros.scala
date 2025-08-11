@@ -8,22 +8,20 @@ import net.minecraft.util.Identifier
 import scala.annotation.meta.companionObject
 import scala.annotation.{MacroAnnotation, compileTimeOnly, experimental}
 import scala.collection.mutable
+import scala.compiletime.summonInline
 import scala.language.experimental.macros
 import scala.quoted.{Expr, Quotes, ToExpr, Type}
 
-// changequote(<<,>>)
+case class ModID(name: String)
+inline def modid(using m: ModID): String = m.name
 
-// divert(-1)
 /**
  * This macro generates a registry for a class, allowing the [[register @register]] annotation to track its descendants.
- * @param regName The identifier of the registry: registries themselves must be registered in [[net.minecraft.registry.Registries]]
  */
 @compileTimeOnly("@hasRegistry is expanded at compile-time")
-// divert
-class hasRegistry(regName: Identifier) extends MacroAnnotation:
+class hasRegistry extends MacroAnnotation:
   // Macro-class: we receive the `Definition` of what we're applied as well as its companion object (if it has one).
   override def transform(using q: Quotes)(definition: q.reflect.Definition, companion: Option[q.reflect.Definition]): List[q.reflect.Definition] =
-    // divert(-1)
     import q.reflect.*
     // First, match on `definition` - we only support generating registries for classes.
     definition match
@@ -51,14 +49,16 @@ class hasRegistry(regName: Identifier) extends MacroAnnotation:
                   // Construct three Symbols representing three implicit variables for Registry-related stuff.
                   val keySym = Symbol.newVal(cd.symbol, s"given_RegistryKey_Registry_${name}", TypeRepr.of[RegistryKey[Registry[t]]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
                   val registrySym = Symbol.newVal(cd.symbol, s"given_MutableRegistry_${name}", TypeRepr.of[MutableRegistry[t]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
-                  val codecSym = Symbol.newVal(cd.symbol, s"given_Codec_${name}", TypeRepr.of[MutableRegistry[t]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
+                  val codecSym = Symbol.newVal(cd.symbol, s"given_Codec_${name}", TypeRepr.of[Codec[t]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
                   // Generate a list of the actual registry stuff definitions.
                   Seq(
                     ValDef(keySym, Some {
-                      // Lift the registry identifier to an expression...
-                      val liftedRegName: Expr[Identifier] = Expr(regName)
+                      // ...find a mod ID...
+                      val modID = Expr.summon[ModID].getOrElse:
+                        report.error("No mod ID present in file")
+                        '{ ??? }
                       // ...make a RegistryKey from it...
-                      val regKey: Expr[RegistryKey[Registry[t]]] = '{RegistryKey.ofRegistry[t](${liftedRegName})}
+                      val regKey: Expr[RegistryKey[Registry[t]]] = '{RegistryKey.ofRegistry[t](Identifier.of(${modID}.name, ${Expr(name.toLowerCase)}))}
                       // ...and convert it to an untyped Term for our mutilation.
                       regKey.asTerm
                     }),
@@ -88,89 +88,125 @@ class hasRegistry(regName: Identifier) extends MacroAnnotation:
       // and handle someone applying this to e.g. a function of course, since of course someone will.
       case _ =>
         report.error("Only class definitions may have associated registries")
-        // divert
         List(definition) :++ companion
-
-// divert(-1)
 
 private var registrarState: Option[mutable.Buffer[Expr[Unit]]] = Some(mutable.Buffer.empty)
 @compileTimeOnly("@register is expanded at compile-time")
-class register(ident: Identifier) extends MacroAnnotation:
+class register extends MacroAnnotation:
   override def transform(using q: Quotes)(definition: q.reflect.Definition, companion: Option[q.reflect.Definition]): List[q.reflect.Definition] =
     import q.reflect.*
-    // In this case, the annotation will always be applied to an `object` literal.
-    // First, we convert `definition` to a `ClassDef` (also making sure it's an object):
     val cl =
       definition match
         case cl@ClassDef(_, _, _, _, _) if cl.symbol.flags.is(Flags.Module) => cl
         case _ =>
           report.error("Only objects may be annotated at this time")
           return List(definition) :++ companion
-    // Next, type-match out `t` - this gives us the actual type of the object literal,
-    // letting us use it in the registry lookup.
     cl.symbol.typeRef.asType match
       case '[t] =>
-        // Now, check if we're still able to add registrations.
         registrarState match
           case Some(l) =>
-            // Try to get the registry:
-            val registry: Expr[Registry[? >: t]] = Expr.summon[Registry[? >: t]]
-              // ...or, in the case a registry doesn't exist...
+            val modid: Expr[ModID] = Expr.summon[ModID]
               .getOrElse:
-                // ...show an error to the user,
-                report.error(s"No registry found for type ${cl.symbol.typeRef.show}")
-                // and use a placeholder expression (???, which would throw an error at runtime).
-                '{ ??? }
-                // In Scala, '{ and } convert the expression within to an Expr type, which is
-                // how macros represent a typed piece of code.
-            end registry
-            // Next, get an actual value referring to the companion object.
-            // I'm not exactly sure how this works, but it does.
-            val companion: Expr[t] = Ref(cl.symbol.companionModule).asExprOf[t]
-            // Finally, add it all together: add a new statement to our init queue.
+                report.error(s"No mod ID found in file")
+                '{ ModID("unknown") }
+            val actualThis: Expr[t] = Ref(cl.symbol.companionModule).asExprOf[t]
+            val identifier = '{Identifier.of(${modid}.name, ${Expr(cl.symbol.name)})}
             l += '{
-              // Normal Registry.register call, plus splices - Expr(x) merely converts the given value to
-              // an expression; we need this due to Scala staging restrictions.
-              Registry.register(${registry}, ${Expr(ident)}, ${companion})
-              // and return nothing, so the types check out
+              Registry.register(/* ifelse(SEED,1, closecom ??? opencom , */ summonInline[Registry[? >: t]] /* ) */, ${identifier}, ${actualThis})
               ()
             }
+            val freshIdentSym = Symbol.newVal(cl.symbol, "ident", TypeRepr.of[Identifier], Flags.Given | Flags.Synthetic, cl.symbol)
+            List(ClassDef.copy(cl)(cl.symbol.name, cl.constructor, cl.parents, cl.self, cl.body :+ ValDef(freshIdentSym, Some(identifier.asTerm)))) :++ companion
           case None =>
-            // In the case where registrarState is already None, throw an error instead of silently failing.
             report.error("Registrations were processed too early")
     List(definition) :++ companion
 end register
-
-// Give the @register annotation a companion object here, so we can make it generally callable.
-// Also, add a @compileTimeOnly annotation for safety - it has no reason to exist after macro expansion, so why should it?
+// exists at runtime
+val inits = mutable.Map.empty[String, Any]
 @compileTimeOnly("@register is expanded at compile-time")
 object register:
-  // This is the definition of a 'normal' macro: an inline function that immediately calls a splice.
-  // A splice literal, ${...}, takes an Expr expression and splices it into the current execution context
-  // If apply() had parameters, we'd forward them to apply_impl here.
-  // Note: Due to a Scala restriction, the top-level splice of a macro *must* immediately call a function and do
-  //  nothing else. If apply() took parameters (other than the implicit `Quotes` provided by the splice, which is automatically
-  //  forwarded to `apply_impl`'s `using q: Quotes`), we'd need to quote them and pass them to apply_impl.
   inline def apply(): Unit = ${ register.apply_impl }
-
-  // And this is the actual implementation of the macro. We take an implicit Quotes parameter (which allows us to inspect
-  //  the inside of an Expr, as a Term or its subclasses) and return an expression.
+  inline def apply[R](value: => R): R = ${ register.apply_impl('value) }
   private def apply_impl(using q: Quotes): Expr[Unit] =
     import q.reflect.*
     registrarState match
-      // If registrarState is Some (as it will be unless apply_impl has been called before), extract its terms...
       case Some(terms) =>
-        // ...(also changing its value to None, so any more @register or register() calls will error)...
         registrarState = None
-        // ...and we create a *block* expression, which will run all of our `terms` and then return the unit `()`.
         Expr.block(terms.toList, '{()})
-      // If it's None, which means it's been called before...
       case None =>
-        // raise a compilation error at the macro call-site (report.error's second parameter defaults to the macro call)...
         report.error("Registrations have already been processed")
-        // and return a dummy Unit expression anyway, since macros should return *something* even when they error.
         '{()}
+  end apply_impl
+  private def apply_impl[R: Type](body: Expr[R])(using q: Quotes): Expr[R] =
+    import q.reflect.*
+    registrarState match
+      case Some(l) =>
+        val name = Symbol.freshName("register")
+        l += '{ inits(${Expr(name)}) = ${body} }
+        '{ inits(${Expr(name)}).asInstanceOf[R] }
+      case None =>
+        report.error("Registrations have already been processed")
+        '{??? : R}
 
 given ToExpr[Identifier] = new ToExpr[Identifier]:
   override def apply(x: Identifier)(using q: Quotes): Expr[Identifier] =
     '{ Identifier.of(${Expr(x.getNamespace)}, ${Expr(x.getPath)}) }
+
+private abstract class DeriverAnnotation extends MacroAnnotation:
+  protected trait Context:
+    val quotes: Quotes
+    val classDef: quotes.reflect.ClassDef
+    val companionDef: quotes.reflect.ClassDef
+
+  protected def givenSymbol[T: Type](name: String)(using ctx: Context): ctx.quotes.reflect.Symbol =
+    import ctx.quotes.reflect.*
+    Symbol.newVal(ctx.companionDef.symbol, name, TypeRepr.of[T], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
+
+  protected def mkGiven[T: Type](using c: Context)(name: String, value: Expr[T]): c.quotes.reflect.ValDef =
+    mkGiven(using c.quotes)(givenSymbol(name), value)
+  protected def mkGiven[T](using q: Quotes)(name: q.reflect.Symbol, value: Expr[T]): q.reflect.ValDef =
+    import q.reflect.*
+    ValDef(name, Some(value.asTerm))
+
+  def derive(using q: Quotes, ctx: Context { val quotes: q.type })(definition: q.reflect.ClassDef): Seq[q.reflect.Definition]
+  override def transform(using q: Quotes)(definition: q.reflect.Definition, companion: Option[q.reflect.Definition]): List[q.reflect.Definition] =
+    import q.reflect.*
+    definition match
+      case cl@ClassDef(name, _, _, _, _) =>
+        companion match
+          case Some(cd@ClassDef(cname, constr, parents, self, body)) =>
+            given (Context { val quotes: q.type }) = new Context:
+              override val quotes: q.type = q
+              override val classDef: quotes.reflect.ClassDef = cl
+              override val companionDef: quotes.reflect.ClassDef = cd
+            return List(definition, ClassDef.copy(cd)(cname, constr, parents, self, body ++ derive(cl)))
+          case None =>
+            report.error(s"Please add a companion object to ${name}")
+    List(definition) ++ companion
+
+inline def summonUnlessSeeding[T]: T = ${summonUnlessSeeding_impl}
+private def summonUnlessSeeding_impl[T: Type](using q: Quotes): Expr[T] =
+  var ref: Expr[T] = '{ ??? }
+  // seeded
+  ref = Expr.summon[T]
+    .getOrElse:
+      q.reflect.report.error("Cannot find a T to summon")
+      '{ summonInline[T] }
+  // divert
+  ref
+
+// divert(-1)
+/**
+ *
+*/
+class hasCodec extends DeriverAnnotation:
+  override def derive(using q: Quotes)(definition: q.reflect.ClassDef): Seq[q.reflect.Definition] =
+    import q.reflect.*
+    val flags: Flags = definition.symbol.flags
+    if flags.is(Flags.Case) then
+      if !flags.is(Flags.Final) then
+        report.warning("Case class with codec should be final")
+
+    else
+      ???
+// undivert
