@@ -7,4 +7,4 @@ Mica is a magic mod consisting of individual *runes* that can be combined to gre
 
 ## Development
 
-if it breaks run `gradle -Pseed=1 compScsla` for your version and try again
+if it breaks run `gradle processScala --seed compScala` for your version and try again
