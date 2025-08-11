@@ -98,7 +98,10 @@ dependencies {
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:5.2.3")!!)
 }
 
-val File.wslPath get() = path.replace('\\', '/').replace(Regex("^([A-Z]):")) { g -> "/mnt/${g.groupValues[1].lowercase()}" }
+object Statics {
+    val File.wslPath
+        get() = path.replace('\\', '/').replace(Regex("^([A-Z]):")) { g -> "/mnt/${g.groupValues[1].lowercase()}" }
+}
 
 tasks.withType<ProcessResources> {
     val props = mapOf(
@@ -127,14 +130,16 @@ abstract class FrozenFile: DefaultTask() {
     @TaskAction
     fun run() {
         project.exec {
-            val args = mutableListOf("m4", "-F", frozenFile.get().asFile.wslPath)
-            globals.get().forEach { k, v ->
-                args.add("-D$k=$v")
+            Statics.run {
+                val args = mutableListOf("m4", "-F", frozenFile.get().asFile.wslPath)
+                globals.get().forEach { k, v ->
+                    args.add("-D$k=$v")
+                }
+                macroFiles.get().forEach {
+                    args.add(it.asFile.wslPath)
+                }
+                commandLine = args
             }
-            macroFiles.get().forEach {
-                args.add(it.asFile.wslPath)
-            }
-            commandLine = args
         }
     }
 }
@@ -167,9 +172,11 @@ sourceSets.all {
             doLast {
                 fileTree(inDir).files.forEach {
                     file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").parentFile.mkdirs()
-                    exec {
-                        commandLine("bash", "-c", "m4 -R ${frozen.get().asFile.wslPath} ${it.wslPath}")
-                        standardOutput = file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").outputStream()
+                    Statics.run {
+                        exec {
+                            commandLine("bash", "-c", "m4 -R ${frozen.get().asFile.wslPath} ${it.wslPath}")
+                            standardOutput = file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").outputStream()
+                        }
                     }
                 }
             }
