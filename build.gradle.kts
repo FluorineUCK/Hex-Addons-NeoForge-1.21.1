@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import kotlin.text.replace
 
 plugins {
     id("fabric-loom") version "1.10-SNAPSHOT"
@@ -97,14 +98,20 @@ dependencies {
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:5.2.3")!!)
 }
 
-tasks.processResources {
-    inputs.property("version", project.version)
-    inputs.property("minecraft_version", project.property("minecraft_version"))
-    inputs.property("loader_version", project.property("loader_version"))
+val File.wslPath get() = path.replace('\\', '/').replace(Regex("^([A-Z]):")) { g -> "/mnt/${g.groupValues[1].lowercase()}" }
+
+tasks.withType<ProcessResources> {
+    val props = mapOf(
+        "version" to project.version,
+        "minecraft_version" to project.properties["minecraft_version"],
+        "loader_version" to project.properties["loader_version"],
+        "scala_loader_version" to project.properties["scala_loader_version"],
+    )
+    inputs.property("keys", props)
     filteringCharset = "UTF-8"
 
     filesMatching("fabric.mod.json") {
-        expand(project.properties)
+        expand(props)
     }
 }
 
@@ -120,12 +127,12 @@ abstract class FrozenFile: DefaultTask() {
     @TaskAction
     fun run() {
         project.exec {
-            val args = mutableListOf("m4", "-F", frozenFile.get().asFile.path)
+            val args = mutableListOf("m4", "-F", frozenFile.get().asFile.wslPath)
             globals.get().forEach { k, v ->
                 args.add("-D$k=$v")
             }
             macroFiles.get().forEach {
-                args.add(it.asFile.path)
+                args.add(it.asFile.wslPath)
             }
             commandLine = args
         }
@@ -161,7 +168,7 @@ sourceSets.all {
                 fileTree(inDir).files.forEach {
                     file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").parentFile.mkdirs()
                     exec {
-                        commandLine("sh", "-c", "m4 -R ${frozen.get()} ${it.absolutePath}")
+                        commandLine("bash", "-c", "m4 -R ${frozen.get().asFile.wslPath} ${it.wslPath}")
                         standardOutput = file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").outputStream()
                     }
                 }
