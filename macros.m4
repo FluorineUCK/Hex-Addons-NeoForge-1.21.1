@@ -1,5 +1,7 @@
 divert(-1)
+define(shr, >>) define(shl, <<) define(Shr, >>)
 changequote(<<,>>) changecom(/**/)
+define(pyeval,<<esyscmd(python3 -c 'print(patsubst($1,','\''), end="")')>>)
 define(opencom,/*) define(closecom,*/)
 define(ifversion, <<ifelse(eval(minecraft_version <<$1>>),1,<<$2>>,<<$3>>)>>)
 define(<<forloop>>, <<pushdef(<<$1>>, <<$2>>)_$0($@)popdef(<<$1>>)>>)

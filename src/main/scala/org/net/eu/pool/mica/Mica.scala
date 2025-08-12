@@ -3,6 +3,7 @@ import com.mojang.datafixers.util.Pair
 import com.mojang.serialization
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import com.mojang.serialization.{Codec, DataResult, Decoder, DynamicOps, Encoder, Lifecycle, MapCodec}
+import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
 import dev.onyxstudios.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
 import dev.onyxstudios.cca.api.v3.world.WorldComponentFactoryRegistry
 import it.unimi.dsi.fastutil.longs.{Long2ObjectMap, Long2ObjectOpenHashMap}
@@ -17,7 +18,7 @@ import net.minecraft.resource.metadata.BlockEntry
 import net.minecraft.text.Text
 import net.minecraft.util.{ActionResult, Identifier}
 import net.minecraft.util.dynamic.Codecs
-import net.minecraft.util.math.{BlockPos, Direction, Vec3d}
+import net.minecraft.util.math.{BlockPos, Direction, Vec3d, Vec3i}
 import net.minecraft.util.shape.VoxelShape
 import net.minecraft.world.World
 import net.minecraft.world.chunk.PalettedContainer
@@ -201,7 +202,26 @@ trait Rune:
   val item =
     cursedRegister(summonUnlessSeeding[Registry[Rune]].getId(this), Item.Settings()):
       new Item(_):
-        override def useOnBlock(context: ItemUsageContext): ActionResult = super.useOnBlock(context)
+        override def useOnBlock(context: ItemUsageContext): ActionResult =
+          val p = context.getHitPos
+          val q = Vec3i((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
+          val b = BlockPos.Mutable(p)
+          if q.getX == 4 then
+            q.setX(0)
+            b.setX(b.getX + 1)
+          if q.getY == 8 then
+            q.setY(0)
+            b.setY(b.getY + 1)
+          if q.getZ == 4 then
+            q.setZ(0)
+            b.setZ(b.getZ + 1)
+          // TODO: also check surrounding blocks
+          val s = AbstractRuneStorage.get(context.getWorld, RuneShift(q.getX, q.getY, q.getZ, context.getSide))
+          if s(b) == EmptyRune then
+            s(b) = Rune.this
+            ActionResult.CONSUME
+          else
+            ActionResult.PASS
 object Rune
 class RuneShift(val value: Int) extends AnyVal:
   // changequote
@@ -330,9 +350,10 @@ object QuoteRune extends Rune:
     worker(rhs)
   override def execute(data: Seq[BoxedRune], frame: ThunkFrame): ThunkFrame = ???
 
-// forloop(n, 1, 768, <<
-// pushdef(RuneStorage, <<ifelse($#,0,<<<<$0>>>><<n>>,<<$0>><<<<(>>>><<$@>><<)>>)>>)
-case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends Component:
+sealed trait AbstractRuneStorage extends Component, AutoSyncedComponent:
+  type Concrete <: AbstractRuneStorage
+  val world: World
+  val contents: Long2ObjectMap[Rune]
   override def readFromNbt(c: NbtCompound): Unit =
     for
       i <- 0L until c.getLong("c", 0L)
@@ -346,26 +367,52 @@ case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends Com
     val palette = contents.values.toSeq.distinct.zipWithIndex.toMap
     var i = 0
     contents.forEach: (k, v) =>
-      c.putLong(s"k$i", k)
-      c.putInt(s"v$i", palette(v))
-      i += 1
+      if v != EmptyRune then
+        c.putLong(s"k$i", k)
+        c.putInt(s"v$i", palette(v))
+        i += 1
     c.putLong("c", i)
     palette.foreach: (k, i) =>
-      c.putString(s"p${i}", summonUnlessSeeding[Registry[Rune]].getId(k).toString)
+      if k != EmptyRune then
+        c.putString(s"p${i}", summonUnlessSeeding[Registry[Rune]].getId(k).toString)
+  given ComponentKey[Concrete] = deferred
+  def apply(pos: BlockPos): Rune = contents.get(Long.box(pos.asLong))
+  def update(pos: BlockPos, rune: Rune): Unit = rune match
+    // deprecated and slow, but Long <: Object so overload resolution fails
+    case EmptyRune => contents.remove(Long.box(pos.asLong))
+    case _ => contents.put(pos.asLong, rune)
+// forloop(n, 1, 768, <<
+// pushdef(RuneStorage, <<ifelse($#,0,<<<<$0>>>><<n>>,<<$0>><<<<(>>>><<$@>><<)>>)>>)
+case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends AbstractRuneStorage:
+  override type Concrete = RuneStorage
+  contents.defaultReturnValue(EmptyRune)
 object RuneStorage:
   val shift = new RuneShift(n)
-  val key = ComponentRegistry.getOrCreate(Identifier.of("mica", "runes<<>>n"), classOf[RuneStorage])
+  given ComponentKey[RuneStorage] = ComponentRegistry.getOrCreate(Identifier.of("mica", "runes<<>>n"), classOf[RuneStorage])
   // divert(1)
   /*dnl*/val factories: WorldComponentFactoryRegistry = erasedValue/*
-  */Duck.register(factories, RuneStorage.key, classOf[RuneStorage], RuneStorage(_, Duck.mkMap()))
+  */Duck.register(factories, summonUnlessSeeding, classOf[RuneStorage], RuneStorage(_, Duck.mkMap()))
   // divert
+  /* divert(3)case n => summonUnlessSeeding[ComponentKey[RuneStorage]].get(world)
+      divert */
+  /* divert(4)case n => summonUnlessSeeding[ComponentKey[RuneStorage]].sync(world)
+      divert */
 // popdef(<<RuneStorage>>)
 // >>)
+
+object AbstractRuneStorage:
+  def get(world: World, shift: RuneShift): AbstractRuneStorage =
+    shift.value match
+      undivert(3)
+  def sync(world: World, shift: RuneShift): Unit =
+    shift.value match
+      undivert(4)
 
 trait Registrar[T]:
   val value: T
   def register(): Unit
 
+// probably the least part of this code
 /**
  * Cross-version helper for registering items.
  * @tparam T Concrete item type for generics purposes.
