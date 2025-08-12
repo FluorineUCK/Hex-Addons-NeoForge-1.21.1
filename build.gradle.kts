@@ -198,7 +198,9 @@ tasks.withType<ProcessResources> {
     )
     inputs.property("keys", props)
     filteringCharset = "UTF-8"
+}
 
+tasks.processResources {
     from(resources.text.fromString(
         JsonDsl.Object().apply {
             put("schemaVersion", 1)
