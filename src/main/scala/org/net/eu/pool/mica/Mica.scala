@@ -3,16 +3,26 @@ import com.mojang.datafixers.util.Pair
 import com.mojang.serialization
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import com.mojang.serialization.{Codec, DataResult, Decoder, DynamicOps, Encoder, Lifecycle, MapCodec}
+import net.minecraft.util.shape.VoxelShapes
+// ifversion(>=2100, <<
+import net.minecraft.storage.{ReadView, WriteView}
+import org.ladysnake.cca.api.v3.component.sync.AutoSyncedComponent
+import org.ladysnake.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
+import org.ladysnake.cca.api.v3.world.{WorldComponentFactoryRegistry, WorldComponentInitializer}
+// >>, <<
 import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
 import dev.onyxstudios.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
-import dev.onyxstudios.cca.api.v3.world.WorldComponentFactoryRegistry
+import dev.onyxstudios.cca.api.v3.world.{WorldComponentFactoryRegistry, WorldComponentInitializer}
+// >>)
 import it.unimi.dsi.fastutil.longs.{Long2ObjectMap, Long2ObjectOpenHashMap}
 import net.fabricmc.fabric.api.`object`.builder.v1.block.entity.{FabricBlockEntityType, FabricBlockEntityTypeBuilder}
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry
+import net.fabricmc.fabric.api.event.registry.RegistryEntryAddedCallback
 import net.minecraft.block.{AbstractBlock, Block, BlockState, BlockWithEntity}
 import net.minecraft.block.entity.{BlockEntity, BlockEntityType}
 import net.minecraft.item.{Item, ItemUsageContext}
 import net.minecraft.nbt.NbtCompound
+import net.minecraft.registry.entry.RegistryEntry
 import net.minecraft.registry.{MutableRegistry, Registries, Registry, RegistryKey, RegistryKeys, SimpleDefaultedRegistry, SimpleRegistry}
 import net.minecraft.resource.metadata.BlockEntry
 import net.minecraft.text.Text
@@ -32,6 +42,7 @@ import scala.deriving.Mirror
 import scala.quoted.{Expr, Quotes}
 import scala.reflect.ClassTag
 import scala.tools.nsc.io.Path
+import scala.util.chaining.scalaUtilChainingOps
 
 private given ModID = ModID("mica")
 
@@ -46,12 +57,6 @@ object Abstract:
   def unapply[C[_]](x: Abstract[C]): Some[(x.T, C[x.T])] =
     import x.given
     Some((x.value, /* WITH THIS TREASURE I */ summon))
-
-@hasRegistry
-trait ThunkFrame:
-  given Codec[this.type] = deferred
-  val accept: PartialFunction[Abstract[ValueType], ThunkFrame]
-object ThunkFrame
 
 // divert(-1)
 class BitReader(val base: InputStream):
@@ -174,57 +179,6 @@ extension [T] (c: BitCodec[T])
       override def read(r: InputStream): T = c.read(BitReader(r))
       override def write(w: OutputStream, x: T): Unit = c.write(BitWriter(w), x)
 // divert
-/**
- * A rune is an element of a cast. Runes are read left-to-right and form execution frames on the thunk stack.
- */
-@hasRegistry
-trait Rune:
-  type Data: Codec
-
-  /**
-   * Reads the rune's information from the list of runes.
-   *
-   * @param rhs The list of remaining runes, not including this rune.
-   * @throws RunesParseError Thrown when the rune is unable to read all of its arguments.
-   * @return The rune's metadata and the list of remaining runes iff parsing is successful.
-   */
-  @throws[RunesParseError]("when this rune cannot parse its arguments")
-  def read(rhs: List[Rune]): (Data, List[Rune])
-
-  /**
-   * Executes this rune, given its metadata. Executing a rune pushes some [[ThunkFrame]]s to the stack, then pops some.
-   * @param data The metadata returned from [[read]].
-   * @param frame The top of the thunk stack. All runes usually will pass data to a thunk after pushing some of its own.
-   * @return The new top of the thunk stack.
-   */
-  def execute(data: Data, frame: ThunkFrame): ThunkFrame
-
-  val item =
-    cursedRegister(summonUnlessSeeding[Registry[Rune]].getId(this), Item.Settings()):
-      new Item(_):
-        override def useOnBlock(context: ItemUsageContext): ActionResult =
-          val p = context.getHitPos
-          val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
-          val b = BlockPos.Mutable(p.x, p.y, p.z)
-          if q.getX == 4 then
-            q.setX(0)
-            b.setX(b.getX + 1)
-          if q.getY == 8 then
-            q.setY(0)
-            b.setY(b.getY + 1)
-          if q.getZ == 4 then
-            q.setZ(0)
-            b.setZ(b.getZ + 1)
-          // TODO: also check surrounding blocks
-          val h = RuneShift(q.getX, q.getY, q.getZ, context.getSide)
-          val s = AbstractRuneStorage.get(context.getWorld, h)
-          if s(b) == EmptyRune then
-            s(b) = Rune.this
-            AbstractRuneStorage.sync(s.world, h)
-            ActionResult.CONSUME
-          else
-            ActionResult.PASS
-object Rune
 class RuneShift(val value: Int) extends AnyVal:
   // changequote
   def x = value & 0b11
@@ -252,6 +206,11 @@ object RuneShift:
     import q.reflect.*
     Assign(s.asTerm, '{${s}(facing = ${facing})}.asTerm).asExprOf[Unit]
   // changequote(<<,>>)
+  val shapeCache: Array[VoxelShape] = Array.ofDim[VoxelShape](768).tap: m =>
+    for i <- 0 until 768 do
+      val shift = new RuneShift(i)
+      val middle = (shift.x / 4.0 - 0.5, shift.y / 8.0 - 0.5, shift.z / 4.0 - 0.5)
+      m(i) = VoxelShapes.cuboid(middle._1 - .25, middle._2, middle._3 - .25, middle._1 + .25, middle._2 + .0625, middle._3 + .25)
 end RuneShift
 
 class sparse extends Annotation
@@ -323,13 +282,13 @@ trait ParallelSection
 /**
  * Does nothing. Pushes and pops no frames, consumes no runes, etc.
  */
-@register
+@register("empty")
 object EmptyRune extends Rune:
   override type Data = Unit
   override def read(rhs: List[Rune]): (Unit, List[Rune]) = ((), rhs)
   override def execute(data: Unit, frame: ThunkFrame): ThunkFrame = frame
 
-@register
+@register("quote")
 object QuoteRune extends Rune:
   override type Data = Seq[BoxedRune]
   override def read(rhs: List[Rune]): (Seq[BoxedRune], List[Rune]) =
@@ -352,11 +311,12 @@ object QuoteRune extends Rune:
     worker(rhs)
   override def execute(data: Seq[BoxedRune], frame: ThunkFrame): ThunkFrame = ???
 
-sealed trait AbstractRuneStorage extends Component, AutoSyncedComponent:
-  type Concrete <: AbstractRuneStorage
-  val world: World
-  val contents: Long2ObjectMap[Rune]
+sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
+  // ifversion(>=2100, <<
+  override def readData(c: ReadView): Unit =
+  // >>, <<
   override def readFromNbt(c: NbtCompound): Unit =
+  // >>)
     for
       i <- 0L until c.getLong("c", 0L)
       k = c.getLong(s"k$i", 0L)
@@ -365,7 +325,12 @@ sealed trait AbstractRuneStorage extends Component, AutoSyncedComponent:
       r <- Option.fromNullable(Identifier.tryParse(p))
     do
       contents(k) = summonUnlessSeeding[Registry[Rune]].get(r)
+
+  // ifversion(>=2100, <<
+  override def writeData(c: WriteView): Unit =
+  // >>, <<
   override def writeToNbt(c: NbtCompound): Unit =
+  // >>)
     val palette = contents.values.toSeq.distinct.zipWithIndex.toMap
     var i = 0
     contents.forEach: (k, v) =>
@@ -376,79 +341,24 @@ sealed trait AbstractRuneStorage extends Component, AutoSyncedComponent:
     c.putLong("c", i)
     palette.foreach: (k, i) =>
       if k != EmptyRune then
-        c.putString(s"p${i}", summonUnlessSeeding[Registry[Rune]].getId(k).toString)
-  given ComponentKey[Concrete] = deferred
-  def apply(pos: BlockPos): Rune = contents.get(Long.box(pos.asLong))
-  def update(pos: BlockPos, rune: Rune): Unit = rune match
-    // deprecated and slow, but Long <: Object so overload resolution fails
-    case EmptyRune => contents.remove(Long.box(pos.asLong))
-    case _ => contents.put(pos.asLong, rune)
+        c.putString(s"p${i}", registryFor[Rune].getId(k).toString)
 // forloop(n, 0, 767, <<
 // pushdef(RuneStorage, <<ifelse($#,0,<<<<$0>>>><<n>>,<<$0>><<<<(>>>><<$@>><<)>>)>>)
-case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends AbstractRuneStorage:
+case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends ConcreteRuneStorage:
   override type Concrete = RuneStorage
   contents.defaultReturnValue(EmptyRune)
 object RuneStorage:
   val shift = new RuneShift(n)
-  given ComponentKey[RuneStorage] = ComponentRegistry.getOrCreate(Identifier.of("mica", "runes<<>>n"), classOf[RuneStorage])
+  given key: ComponentKey[RuneStorage] = ComponentRegistry.getOrCreate(Identifier.of("mica", "runes<<>>n"), classOf[RuneStorage])
   // divert(1)
-  /*dnl*/val factories: WorldComponentFactoryRegistry = erasedValue/*
-  */Duck.register(factories, summonUnlessSeeding, classOf[RuneStorage], RuneStorage(_, Duck.mkMap()))
-  // divert
-  /* divert(3)case n => summonUnlessSeeding[ComponentKey[RuneStorage]].get(world)
-      divert */
-  /* divert(4)case n => summonUnlessSeeding[ComponentKey[RuneStorage]].sync(world)
-      divert */
+    /*dnl*/val factories: WorldComponentFactoryRegistry = erasedValue/*
+*/Duck.register(factories, RuneStorage.key, classOf[RuneStorage], RuneStorage(_, Duck.mkMap()))
+    AbstractRuneStorage.keys(n) = RuneStorage.key
+    // divert
 // popdef(<<RuneStorage>>)
 // >>)
 
-object AbstractRuneStorage:
-  def get(world: World, shift: RuneShift): AbstractRuneStorage =
-    shift.value match
-      undivert(3)
-  def sync(world: World, shift: RuneShift): Unit =
-    shift.value match
-      undivert(4)
-
-trait Registrar[T]:
-  val value: T
-  def register(): Unit
-
-// probably the least part of this code
-/**
- * Cross-version helper for registering items.
- * @tparam T Concrete item type for generics purposes.
- * @param identifier Final identifier of item - passed to the settings in >=1.21.2.
- * @param settings Item settings - these must be known ahead-of-time since 1.21.2 makes them hold the registry key.
- * @param itemFactory Produces the item from its settings. This **must** use the provided instance!
- * @return Object containing the final item, as well as a method that registers it.
- */
-def cursedRegister[T <: Item](identifier: Identifier, settings: Item.Settings)(itemFactory: Item.Settings => T): Registrar[T] =
-  val key = RegistryKey.of(RegistryKeys.ITEM, identifier)
-  lazy val item = itemFactory(settings/*ifversion(>=2102,<<*/.registryKey(key)/*>>)*/)
-  new Registrar[T]:
-    override val value: T = item
-    override def register(): Unit =
-      Registry.register(Registries.ITEM, key, item)
-
-/**
- * Cross-version helper for registering blocks.
- * @tparam T Concrete block type for generics purposes.
- * @param identifier Final identifier of block - passed to the settings in >=1.21.2.
- * @param settings Block settings - these must be known ahead-of-time since 1.21.2 makes them hold the registry key.
- * @param blockFactory Produces the block from its settings. This **must** use the provided instance! This function is also passed its return value for e.g. block entities.
- * @return Object containing the final block, as well as a method that registers it.
- */
-def cursedRegister[T <: Block](identifier: Identifier, settings: AbstractBlock.Settings)(blockFactory: (=> AbstractBlock.Settings => T) => AbstractBlock.Settings => T): Registrar[T] =
-  val key = RegistryKey.of(RegistryKeys.BLOCK, identifier)
-  lazy val fixed: AbstractBlock.Settings => T = blockFactory(fixed)
-  lazy val block = fixed(settings/*ifversion(>=2100,<<*/.registryKey(key)/*>>)*/)
-  new Registrar[T]:
-    override val value: T = block
-    override def register(): Unit =
-      Registry.register(Registries.BLOCK, key, block)
-
-@register
+@register("endquote")
 object EndQuoteRune extends Rune:
   type Data = Nothing
   override def read(rhs: List[Rune]): (Nothing, List[Rune]) = throw RunesParseError(rhs.length, Text.literal("Unquote with no corresponding quote"))
@@ -470,13 +380,15 @@ extension [T] (x: T)
     case r: R => Some(r)
     case _ => None
 
-@hasRegistry
-trait ValueType[T: Codec]:
-  def eq[U: ValueType](x: T, y: U): Boolean
-object ValueType
-
-def initComponents(factories: WorldComponentFactoryRegistry) =
-  /*dnl*/()/*
-  *///undivert(1)
+class ComponentInitializer extends WorldComponentInitializer:
+  def registerWorldComponentFactories(factories: WorldComponentFactoryRegistry) =
+    /*dnl*/ () /*
+    *///undivert(1)
 def init(): Unit =
   register()
+  // eww
+  println("BELIEVE IT OR NOT WE ARE HERE")
+  EmptyRune.item.register()
+  QuoteRune.item.register()
+  EndQuoteRune.item.register()
+  println("do you have hair?")

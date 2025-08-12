@@ -2,15 +2,17 @@ package org.net.eu.pool.mica
 
 import com.mojang.serialization.{Codec, Lifecycle}
 import net.fabricmc.fabric.api.event.registry.FabricRegistryBuilder
-import net.minecraft.registry.{MutableRegistry, Registry, RegistryKey, SimpleRegistry}
+import net.minecraft.registry.{MutableRegistry, Registries, Registry, RegistryKey, SimpleRegistry}
 import net.minecraft.util.Identifier
 
 import scala.annotation.meta.companionObject
 import scala.annotation.{MacroAnnotation, compileTimeOnly, experimental}
 import scala.collection.mutable
 import scala.compiletime.summonInline
+import scala.deriving.Mirror
 import scala.language.experimental.macros
 import scala.quoted.{Expr, Quotes, ToExpr, Type}
+import scala.reflect.ClassTag
 
 case class ModID(name: String)
 inline def modid(using m: ModID): String = m.name
@@ -18,6 +20,7 @@ inline def modid(using m: ModID): String = m.name
 /**
  * This macro generates a registry for a class, allowing the [[register @register]] annotation to track its descendants.
  */
+@deprecated("@hasRegistry is hard to use correctly. Opt to derive HasRegistry instead.")
 @compileTimeOnly("@hasRegistry is expanded at compile-time")
 class hasRegistry extends MacroAnnotation:
   // Macro-class: we receive the `Definition` of what we're applied as well as its companion object (if it has one).
@@ -47,9 +50,9 @@ class hasRegistry extends MacroAnnotation:
                   //  otherwise. The *final* parameter sets the visibility of the symbol: Scala visibilities are different from Java's four
                   //  visibilities, in that Scala visibilities are based on an *enclosing* type... I'm getting off-topic. Anyway.
                   // Construct three Symbols representing three implicit variables for Registry-related stuff.
-                  val keySym = Symbol.newVal(cd.symbol, s"given_RegistryKey_Registry_${name}", TypeRepr.of[RegistryKey[Registry[t]]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
-                  val registrySym = Symbol.newVal(cd.symbol, s"given_MutableRegistry_${name}", TypeRepr.of[MutableRegistry[t]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
-                  val codecSym = Symbol.newVal(cd.symbol, s"given_Codec_${name}", TypeRepr.of[Codec[t]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
+                  val keySym = Symbol.newVal(cd.symbol, s"registryKey", TypeRepr.of[RegistryKey[Registry[t]]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
+                  val registrySym = Symbol.newVal(cd.symbol, s"registry", TypeRepr.of[MutableRegistry[t]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
+                  val codecSym = Symbol.newVal(cd.symbol, s"registryCodec", TypeRepr.of[Codec[t]], Flags.Given | Flags.Synthetic, Symbol.noSymbol)
                   // Generate a list of the actual registry stuff definitions.
                   Seq(
                     ValDef(keySym, Some {
@@ -90,9 +93,17 @@ class hasRegistry extends MacroAnnotation:
         report.error("Only class definitions may have associated registries")
         List(definition) :++ companion
 
+/**
+ * Adds a hook to when a given object is registered by [[register @register]]. This could be used to, for example, add registrations to other registries (as [[Rune]] does).
+ * @tparam T Object to listen for registrations on. This should be the *concrete type* of your object, not of the registry!
+ */
+trait RegisterHook[T]:
+  def preRegister(target: T, key: Identifier)(using registry: Registry[? >: T]): Boolean = true
+  def postRegister(target: T, key: Identifier)(using registry: Registry[? >: T]): Unit = ()
+
 private var registrarState: Option[mutable.Buffer[Expr[Unit]]] = Some(mutable.Buffer.empty)
 @compileTimeOnly("@register is expanded at compile-time")
-class register extends MacroAnnotation:
+class register(key: String) extends MacroAnnotation:
   override def transform(using q: Quotes)(definition: q.reflect.Definition, companion: Option[q.reflect.Definition]): List[q.reflect.Definition] =
     import q.reflect.*
     val cl =
@@ -110,17 +121,21 @@ class register extends MacroAnnotation:
                 report.error(s"No mod ID found in file")
                 '{ ModID("unknown") }
             val actualThis: Expr[t] = Ref(cl.symbol.companionModule).asExprOf[t]
-            val identifier = '{Identifier.of(${modid}.name, ${Expr(cl.symbol.name)})}
             l += '{
-              Registry.register(/* ifelse(SEED,1, closecom ??? opencom , */ summonInline[Registry[? >: t]] /* ) */, ${identifier}, ${actualThis})
+              Registry.register(summonInline[Registry[? >: t]], Identifier.of(${modid}.name, ${Expr(key)}), ${actualThis})
               ()
             }
-            val freshIdentSym = Symbol.newVal(cl.symbol, "ident", TypeRepr.of[Identifier], Flags.Given | Flags.Synthetic, cl.symbol)
-            List(ClassDef.copy(cl)(cl.symbol.name, cl.constructor, cl.parents, cl.self, cl.body :+ ValDef(freshIdentSym, Some(identifier.asTerm)))) :++ companion
+            List(ClassDef.copy(cl)(cl.symbol.name, cl.constructor, cl.parents, cl.self, cl.body)) :++ companion
           case None =>
             report.error("Registrations were processed too early")
     List(definition) :++ companion
 end register
+inline def trySummon[T]: Option[T] = compiletime.summonFrom:
+  case x: T => Some(x)
+  case _ => None
+def liftOption[T: Type](expr: Option[Expr[T]])(using Quotes): Expr[Option[T]] = expr match
+  case Some(value) => '{Some(${value})}
+  case None => '{None}
 // exists at runtime
 val inits = mutable.Map.empty[String, Any]
 @compileTimeOnly("@register is expanded at compile-time")
@@ -147,6 +162,22 @@ object register:
       case None =>
         report.error("Registrations have already been processed")
         '{??? : R}
+
+trait HasRegistry[T]:
+  given registryKey: RegistryKey[Registry[T]]
+  given registry: MutableRegistry[T]
+  given registryCodec: Codec[T] = registry.getCodec
+object HasRegistry:
+  inline def derived[T: ClassTag as tag](using modID: ModID) = new HasRegistry[T]:
+    override given registryKey: RegistryKey[Registry[T]] = RegistryKey.ofRegistry(Identifier.of(modID.name, tag.runtimeClass.getName.toLowerCase))
+    override given registry: MutableRegistry[T] = FabricRegistryBuilder.createSimple(registryKey).buildAndRegister()
+
+def registryFor[T: MutableRegistry as r]: MutableRegistry[T] = r
+
+// help Scala pull givens out of HasRegistry
+given byHavingRegistry: [T: HasRegistry as r] => MutableRegistry[T] = r.registry
+given byHavingRegistryKey: [T: HasRegistry as r] => RegistryKey[Registry[T]] = r.registryKey
+given byHavingRegistryCodec: [T: HasRegistry as r] => Codec[T] = r.registryCodec
 
 given ToExpr[Identifier] = new ToExpr[Identifier]:
   override def apply(x: Identifier)(using q: Quotes): Expr[Identifier] =
@@ -184,16 +215,8 @@ private abstract class DeriverAnnotation extends MacroAnnotation:
             report.error(s"Please add a companion object to ${name}")
     List(definition) ++ companion
 
-inline def summonUnlessSeeding[T]: T = ${summonUnlessSeeding_impl}
-private def summonUnlessSeeding_impl[T: Type](using q: Quotes): Expr[T] =
-  var ref: Expr[T] = '{ ??? }
-  // seeded
-  ref = Expr.summon[T]
-    .getOrElse:
-      q.reflect.report.error("Cannot find a T to summon")
-      '{ summonInline[T] }
-  // divert
-  ref
+@deprecated
+inline def summonUnlessSeeding[T]: T = summonInline[T]
 
 // divert(-1)
 /**

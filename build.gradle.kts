@@ -1,3 +1,7 @@
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonArray
+import de.undercouch.gradle.tasks.download.Download
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import kotlin.text.replace
 
@@ -7,23 +11,54 @@ plugins {
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
     id("idea")
+    id("de.undercouch.download") version "5.6.0"
 }
 
 version = project.property("mod_version") as String
 group = project.property("maven_group") as String
+val minecraft_version: String by project.properties
+val cca_version by lazy { project.property("cca_version") as String }
 
-val serialVersion = project.properties["minecraft_version"].let {
+val serialVersion = minecraft_version.let {
     val (maj, min, pat) = it.toString().split('.')
     min.toInt() * 100 + pat.toInt()
 }
 
 project.buildDir = file("build$serialVersion")
 
-project.properties.forEach { k, v ->
-    if (k.endsWith("_$serialVersion")) {
-        project.ext[k.replace("_$serialVersion", "")] = v
-    }
+fun <T> List<T>.uncons() = first() to drop(1)
+run {
+    val (headers, versions) = file("versions.csv").readText().lines().map { it.split(',').uncons() }.uncons()
+    val row = versions.toMap()[project.properties["minecraft_version"].toString()]
+    println(headers)
+    println(versions)
+    println(row)
+    val map = headers.second.zip(row!!).filter { it.second != "" }.toMap()
+    println(map)
+    map.forEach(project.ext::set)
 }
+
+//tasks.register<Download>("fetchGo") {
+//    src("https://go.dev/dl/go1.22.6.${
+//        org.gradle.internal.os.OperatingSystem.current().let {
+//            when {
+//                it.isWindows -> "windows"
+//                it.isMacOsX -> "darwin"
+//                it.isLinux -> "linux"
+//            }
+//        }
+//    }")
+//}
+//
+//val fetchM4 = tasks.register<Download>("fetchM4") {
+//    src("https://downloads.sourceforge.net/gnuwin32/m4-1.4.14-1-bin.zip")
+//    dest("$buildDir/m4.zip")
+//    overwrite(true)
+//}
+//tasks.register<Sync>("unpackM4") {
+//    from(zipTree(fetchM4.get().outputFiles))
+//    into("$buildDir/m4/")
+//}
 
 base {
     archivesName.set(project.property("archives_base_name") as String)
@@ -88,14 +123,13 @@ repositories {
 
 dependencies {
     // To change the versions see the gradle.properties file
-    minecraft("com.mojang:minecraft:${project.property("minecraft_version")}")
+    minecraft("com.mojang:minecraft:$minecraft_version")
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
     modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
-    modImplementation("net.fabricmc:fabric-language-kotlin:${project.properties["kotlin_loader_version"]}")
-    modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
-    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:5.2.3")!!)
-    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:5.2.3")!!)
+    include(modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")!!)
+    include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}+$minecraft_version")!!)
+    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cca_version")!!)
+    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cca_version")!!)
 }
 
 object Statics {
@@ -103,18 +137,125 @@ object Statics {
         get() = path.replace('\\', '/').replace(Regex("^([A-Z]):")) { g -> "/mnt/${g.groupValues[1].lowercase()}" }
 }
 
+@DslMarker
+annotation class JsonDsl {
+    sealed interface Element
+    @JsonDsl
+    class Object(val element: JsonObject = JsonObject()): Element {
+        fun put(key: String, value: String) {
+            element.addProperty(key, value)
+        }
+        fun put(key: String, value: Number) {
+            element.addProperty(key, value)
+        }
+        fun put(key: String, value: Boolean) {
+            element.addProperty(key, value)
+        }
+        fun array(key: String, action: JsonDsl.Array.() -> Unit) {
+            element.add(key, JsonArray().also { Array(it).action() })
+        }
+        fun map(key: String, action: Object.() -> Unit) {
+            element.add(key, JsonObject().also { Object(it).action() })
+        }
+
+        override fun toString(): String = Gson().toJson(element)
+    }
+    @JsonDsl
+    class Array(val element: JsonArray = JsonArray()): Element {
+        fun put(value: String) {
+            element.add(value)
+        }
+        fun put(value: Number) {
+            element.add(value)
+        }
+        fun put(value: Boolean) {
+            element.add(value)
+        }
+        fun array(action: JsonDsl.Array.() -> Unit) {
+            element.add(JsonArray().also { Array(it).action() })
+        }
+        fun map(action: Object.() -> Unit) {
+            element.add(JsonObject().also { Object(it).action() })
+        }
+
+        override fun toString(): String = Gson().toJson(element)
+    }
+}
+
+loom {
+    runs["client"].apply {
+        vmArg("-XX:+FlightRecorder")
+        programArgs("--username", "PoolloverNathan")
+    }
+}
+
 tasks.withType<ProcessResources> {
     val props = mapOf(
         "version" to project.version,
-        "minecraft_version" to project.properties["minecraft_version"],
+        "minecraft_version" to minecraft_version,
         "loader_version" to project.properties["loader_version"],
         "scala_loader_version" to project.properties["scala_loader_version"],
     )
     inputs.property("keys", props)
     filteringCharset = "UTF-8"
 
-    filesMatching("fabric.mod.json") {
-        expand(props)
+    from(resources.text.fromString(
+        JsonDsl.Object().apply {
+            put("schemaVersion", 1)
+            put("id", "mica")
+            put("version", version.toString())
+            put("name", "Mica")
+            put("description",
+                file("README.md").readText().split("<!-- summary -->")[1].lineSequence().first().replace("\\", "\\\\")
+                    .replace("\"", "\\\"").trim()
+            )
+            array("authors") {
+                put("PoolloverNathan")
+            }
+            map("contact") {
+
+            }
+            put("license", "GPL-3.0")
+            put("icon", "assets.mica/icon.png")
+            put("environment", "*")
+            map("entrypoints") {
+                array("fabric-datagen") {
+                    put("org.net.eu.pool.mica.client.MicaClient\$package::datagen")
+                }
+                array("client") {
+                    put("org.net.eu.pool.mica.client.MicaClient\$package::init")
+                }
+                array("main") {
+                    put("org.net.eu.pool.mica.Mica\$package::init")
+                }
+                array("cardinal-components") {
+                    put("org.net.eu.pool.mica.ComponentInitializer")
+                }
+            }
+            array("mixins") {
+                put("mica.mixins.json")
+                map {
+                    put("config", "mica.client.mixins.json")
+                    put("environment", "client")
+                }
+            }
+            map("depends") {
+                put("fabricloader", ">=${project.properties["loader_version"]}")
+                put("fabric-language-scala", ">=${project.properties["scala_loader_version"]}")
+                put("fabric", "*")
+                put("minecraft", minecraft_version)
+                put("cardinal-components-world", ">=$cca_version")
+            }
+            map("custom") {
+                array("cardinal-components") {
+                    for (i in 0..767) {
+                        put("mica:runes$i")
+                    }
+                }
+            }
+        }.toString()
+    )) {
+        rename { "fabric.mod.json" }
     }
 }
 

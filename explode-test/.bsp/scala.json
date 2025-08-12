@@ -1,0 +1,28 @@
+{
+  "name": "scala",
+  "argv": [
+    "/nix/store/84qbyd2c1w42d51shc09fxylbznibz80-scala-next-3.6.3/libexec/scala-cli.jar",
+    "--cli-default-scala-version",
+    "3.6.3",
+    "--repository",
+    "file:///nix/store/84qbyd2c1w42d51shc09fxylbznibz80-scala-next-3.6.3/maven2",
+    "--prog-name",
+    "scala",
+    "--skip-cli-updates",
+    "bsp",
+    "--json-options",
+    "/home/nathan/stuff/mica-runes/explode-test/.scala-build/ide-options-v2.json",
+    "--json-launcher-options",
+    "/home/nathan/stuff/mica-runes/explode-test/.scala-build/ide-launcher-options.json",
+    "--envs-file",
+    "/home/nathan/stuff/mica-runes/explode-test/.scala-build/ide-envs.json",
+    "/home/nathan/stuff/mica-runes/explode-test/explode.scala",
+    "/home/nathan/stuff/mica-runes/explode-test/Explode.scala"
+  ],
+  "version": "1.5.4",
+  "bspVersion": "2.1.1",
+  "languages": [
+    "scala",
+    "java"
+  ]
+}
