@@ -204,8 +204,8 @@ trait Rune:
       new Item(_):
         override def useOnBlock(context: ItemUsageContext): ActionResult =
           val p = context.getHitPos
-          val q = Vec3i((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
-          val b = BlockPos.Mutable(p)
+          val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
+          val b = BlockPos.Mutable(p.x, p.y, p.z)
           if q.getX == 4 then
             q.setX(0)
             b.setX(b.getX + 1)
@@ -216,9 +216,11 @@ trait Rune:
             q.setZ(0)
             b.setZ(b.getZ + 1)
           // TODO: also check surrounding blocks
-          val s = AbstractRuneStorage.get(context.getWorld, RuneShift(q.getX, q.getY, q.getZ, context.getSide))
+          val h = RuneShift(q.getX, q.getY, q.getZ, context.getSide)
+          val s = AbstractRuneStorage.get(context.getWorld, h)
           if s(b) == EmptyRune then
             s(b) = Rune.this
+            AbstractRuneStorage.sync(s.world, h)
             ActionResult.CONSUME
           else
             ActionResult.PASS
@@ -381,7 +383,7 @@ sealed trait AbstractRuneStorage extends Component, AutoSyncedComponent:
     // deprecated and slow, but Long <: Object so overload resolution fails
     case EmptyRune => contents.remove(Long.box(pos.asLong))
     case _ => contents.put(pos.asLong, rune)
-// forloop(n, 1, 768, <<
+// forloop(n, 0, 767, <<
 // pushdef(RuneStorage, <<ifelse($#,0,<<<<$0>>>><<n>>,<<$0>><<<<(>>>><<$@>><<)>>)>>)
 case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends AbstractRuneStorage:
   override type Concrete = RuneStorage
