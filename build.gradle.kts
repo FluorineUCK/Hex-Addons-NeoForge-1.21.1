@@ -30,12 +30,52 @@ fun <T> List<T>.uncons() = first() to drop(1)
 run {
     val (headers, versions) = file("versions.csv").readText().lines().map { it.split(',').uncons() }.uncons()
     val row = versions.toMap()[project.properties["minecraft_version"].toString()]
-    println(headers)
-    println(versions)
-    println(row)
     val map = headers.second.zip(row!!).filter { it.second != "" }.toMap()
-    println(map)
     map.forEach(project.ext::set)
+}
+
+val assetsArchive by tasks.register<Download>("assetsArchive") {
+    src("https://github.com/InventivetalentDev/minecraft-assets/archive/refs/heads/$minecraft_version.tar.gz")
+    dest("$buildDir/assets.tar.gz")
+    overwrite(true)
+    onlyIf { !dest.exists() }
+}
+val soundsDir by tasks.register<Sync>("sounds") {
+    dependsOn(assetsArchive)
+    inputs.file(assetsArchive.dest)
+    val interest = "minecraft-assets-$minecraft_version/assets/minecraft/sounds"
+    from(tarTree(assetsArchive.dest)) {
+        include("$interest/**")
+        exclude("**/_list.json")
+        eachFile {
+            path = path.replace(interest, "")
+        }
+    }
+    into("$buildDir/mcSounds")
+    // FIXME: hack
+    doLast {
+        file("$buildDir/mcSounds/minecraft-assets-$minecraft_version").deleteRecursively()
+    }
+}
+val synthSounds by tasks.register("synthSounds") {
+    dependsOn(soundsDir)
+    val inDir = "$buildDir/mcSounds"
+    val outDir = "$buildDir/generatedSounds"
+    inputs.dir(inDir)
+    outputs.dir(outDir)
+    doLast {
+        file(outDir).mkdirs()
+        exec {
+            // ffmpeg -i shears_trim.ogg -i book_page_turn.ogg \
+            //  -filter_complex "[0:a]volume=1.0[a0]; \
+            //                   [1:a]volume=0.6,asetrate=48000*1.2,aresample=48000[a1]; \
+            //                   [a0][a1]amix=inputs=2:duration=first" \
+            //  mica_peel.ogg
+            for (n in 1..4) {
+                commandLine("ffmpeg", "-i", "$inDir/block/amethyst/place$n.ogg")
+            }
+        }
+    }
 }
 
 //tasks.register<Download>("fetchGo") {
@@ -247,6 +287,9 @@ tasks.processResources {
                 put("fabric", "*")
                 put("minecraft", minecraft_version)
                 put("cardinal-components-world", ">=$cca_version")
+            }
+            map("breaks") {
+                put("eclipse", "*") // politics - mod has a weird HWID check I don't like
             }
             map("custom") {
                 array("cardinal-components") {

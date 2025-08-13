@@ -4,16 +4,16 @@ import com.mojang.serialization
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import com.mojang.serialization.{Codec, DataResult, Decoder, DynamicOps, Encoder, Lifecycle, MapCodec}
 import net.minecraft.util.shape.VoxelShapes
-// ifversion(>=2100, <<
+// ifversion(>=2100, <[[
 import net.minecraft.storage.{ReadView, WriteView}
 import org.ladysnake.cca.api.v3.component.sync.AutoSyncedComponent
 import org.ladysnake.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
 import org.ladysnake.cca.api.v3.world.{WorldComponentFactoryRegistry, WorldComponentInitializer}
-// >>, <<
+// ]]>, <[[
 import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
 import dev.onyxstudios.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
 import dev.onyxstudios.cca.api.v3.world.{WorldComponentFactoryRegistry, WorldComponentInitializer}
-// >>)
+// ]]>)
 import it.unimi.dsi.fastutil.longs.{Long2ObjectMap, Long2ObjectOpenHashMap}
 import net.fabricmc.fabric.api.`object`.builder.v1.block.entity.{FabricBlockEntityType, FabricBlockEntityTypeBuilder}
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry
@@ -46,7 +46,7 @@ import scala.util.chaining.scalaUtilChainingOps
 
 private given ModID = ModID("mica")
 
-val /* << */ minecraft_version: /* >> */ Int = minecraft_version
+val /* <[[ */ minecraft_version: /* ]]> */ Int = minecraft_version
 trait Abstract[C[_]]:
   type T: C
   val value: T
@@ -179,20 +179,10 @@ extension [T] (c: BitCodec[T])
       override def read(r: InputStream): T = c.read(BitReader(r))
       override def write(w: OutputStream, x: T): Unit = c.write(BitWriter(w), x)
 // divert
-class RuneShift(val value: Int) extends AnyVal:
-  // changequote
-  def x = value & 0b11
-  def y = value >> 2 & 0b111
-  def z = value >> 5 & 0b11
-  def facing = Direction.values()(value >> 7 & 0b111)
-  def apply(x: Int = this.x, y: Int = this.y, z: Int = this.z, facing: Direction = this.facing) = RuneShift(x, y, z, facing)
 object RuneShift:
-  def apply(x: Int, y: Int, z: Int, facing: Direction) = new RuneShift(x & 0b11 | y << 2 & 0b11100 | z << 5 & 0b1100000 | facing.ordinal << 7)
-  extension (inline s: RuneShift)
-    inline def x_=(x: Int) = ${ x_impl('s, 'x) }
-    inline def y_=(y: Int) = ${ y_impl('s, 'y) }
-    inline def z_=(z: Int) = ${ z_impl('s, 'z) }
-    inline def facing_=(facing: Direction) = ${ facing_impl('s, 'facing) }
+  opaque type RuneShift = Int
+  inline def apply(value: Int): RuneShift = value
+  def apply(x: Int, y: Int, z: Int, facing: Direction): RuneShift = x & 0b11 | y << 2 & 0b11100 | z << 5 & 0b1100000 | facing.ordinal << 7
   private def x_impl(s: Expr[RuneShift], x: Expr[Int])(using q: Quotes): Expr[Unit] =
     import q.reflect.*
     Assign(s.asTerm, '{${s}(x = ${x})}.asTerm).asExprOf[Unit]
@@ -202,16 +192,23 @@ object RuneShift:
   private def z_impl(s: Expr[RuneShift], z: Expr[Int])(using q: Quotes): Expr[Unit] =
     import q.reflect.*
     Assign(s.asTerm, '{${s}(z = ${z})}.asTerm).asExprOf[Unit]
+  given ops: AnyRef:
+    extension (s: RuneShift)
+      @inline def value: Int = s
+      @inline def x = s & 0b11
+      @inline def y = s >> 2 & 0b111
+      @inline def z = s >> 5 & 0b11
+      @inline def facing = Direction.values()(s >> 7 & 0b111)
+      @inline def apply(x: Int = s.x, y: Int = s.y, z: Int = s.z, facing: Direction = s.facing): RuneShift = RuneShift(x, y, z, facing)
   private def facing_impl(s: Expr[RuneShift], facing: Expr[Direction])(using q: Quotes): Expr[Unit] =
     import q.reflect.*
     Assign(s.asTerm, '{${s}(facing = ${facing})}.asTerm).asExprOf[Unit]
-  // changequote(<<,>>)
   val shapeCache: Array[VoxelShape] = Array.ofDim[VoxelShape](768).tap: m =>
-    for i <- 0 until 768 do
-      val shift = new RuneShift(i)
+    for shift: RuneShift <- 0 until 768 do
       val middle = (shift.x / 4.0 - 0.5, shift.y / 8.0 - 0.5, shift.z / 4.0 - 0.5)
-      m(i) = VoxelShapes.cuboid(middle._1 - .25, middle._2, middle._3 - .25, middle._1 + .25, middle._2 + .0625, middle._3 + .25)
+      m(shift) = VoxelShapes.cuboid(middle._1 - .25, middle._2, middle._3 - .25, middle._1 + .25, middle._2 + .0625, middle._3 + .25)
 end RuneShift
+export RuneShift.RuneShift
 
 class sparse extends Annotation
 
@@ -230,7 +227,6 @@ object VarInt:
       Iterator.continually(r.readUnsignedByte())
         .dropAfter(x => (x & STOP_BIT) != 0)
         .map(_ & DATA_BIT)
-        // changequote([[,]])
         .foldLeft(0)(_ << 7 | _)
     override def write(w: DataOutput, x: VarInt): Unit =
       assume(x >= 0)
@@ -240,7 +236,6 @@ object VarInt:
         Iterator.unfold[Int, Int](x): x =>
           Option.unless(x == 0):
             val x1 = x >>> 7
-            // changequote(<<,>>)
             (x1, x & DATA_BIT)
         .toSeq.reverse match
           case h :+ t =>
@@ -264,9 +259,9 @@ inline given Codec[BoxedRune] =
       summon[Codec[r.Data]].xmap(BoxedRune(r, _),
         // FIXME: Rewrite [dispatch] to avoid this unsafe cast.
         _.data.asInstanceOf[r.Data])
-      // ifversion(>= 2100,<<
+      // ifversion(>= 2100,<[[
         .fieldOf("value")
-      // >>,)
+      // ]]>,)
     )
 
 //def dependentCodec[T, R](arg: Codec[T], rhs: [R] )
@@ -285,12 +280,14 @@ trait ParallelSection
 @register("empty")
 object EmptyRune extends Rune:
   override type Data = Unit
+  override def surfaceSprite: Identifier = Rune.BASIC_TEXTURE
   override def read(rhs: List[Rune]): (Unit, List[Rune]) = ((), rhs)
   override def execute(data: Unit, frame: ThunkFrame): ThunkFrame = frame
 
 @register("quote")
 object QuoteRune extends Rune:
   override type Data = Seq[BoxedRune]
+  override def surfaceSprite: Identifier = Rune.BASIC_TEXTURE
   override def read(rhs: List[Rune]): (Seq[BoxedRune], List[Rune]) =
     @throws[RunesParseError]
     def worker(rhs: List[Rune]): (List[BoxedRune], List[Rune]) =
@@ -312,11 +309,11 @@ object QuoteRune extends Rune:
   override def execute(data: Seq[BoxedRune], frame: ThunkFrame): ThunkFrame = ???
 
 sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
-  // ifversion(>=2100, <<
+  // ifversion(>=2100, <[[
   override def readData(c: ReadView): Unit =
-  // >>, <<
+  // ]]>, <[[
   override def readFromNbt(c: NbtCompound): Unit =
-  // >>)
+  // ]]>)
     for
       i <- 0L until c.getLong("c", 0L)
       k = c.getLong(s"k$i", 0L)
@@ -326,11 +323,11 @@ sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
     do
       contents(k) = summonUnlessSeeding[Registry[Rune]].get(r)
 
-  // ifversion(>=2100, <<
+  // ifversion(>=2100, <[[
   override def writeData(c: WriteView): Unit =
-  // >>, <<
+  // ]]>, <[[
   override def writeToNbt(c: NbtCompound): Unit =
-  // >>)
+  // ]]>)
     val palette = contents.values.toSeq.distinct.zipWithIndex.toMap
     var i = 0
     contents.forEach: (k, v) =>
@@ -342,25 +339,26 @@ sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
     palette.foreach: (k, i) =>
       if k != EmptyRune then
         c.putString(s"p${i}", registryFor[Rune].getId(k).toString)
-// forloop(n, 0, 767, <<
-// pushdef(RuneStorage, <<ifelse($#,0,<<<<$0>>>><<n>>,<<$0>><<<<(>>>><<$@>><<)>>)>>)
+// forloop(n, 0, 767, <[[
+// pushdef(RuneStorage, <[[ifelse($#,0,<[[<[[$0]]>]]><[[n]]>,<[[$0]]><[[<[[(]]>]]><[[$@]]><[[)]]>)]]>)
 case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends ConcreteRuneStorage:
   override type Concrete = RuneStorage
   contents.defaultReturnValue(EmptyRune)
 object RuneStorage:
-  val shift = new RuneShift(n)
-  given key: ComponentKey[RuneStorage] = ComponentRegistry.getOrCreate(Identifier.of("mica", "runes<<>>n"), classOf[RuneStorage])
+  val shift = RuneShift(n)
+  given key: ComponentKey[RuneStorage] = ComponentRegistry.getOrCreate(Identifier.of("mica", "runes<[[]]>n"), classOf[RuneStorage])
   // divert(1)
     /*dnl*/val factories: WorldComponentFactoryRegistry = erasedValue/*
 */Duck.register(factories, RuneStorage.key, classOf[RuneStorage], RuneStorage(_, Duck.mkMap()))
     AbstractRuneStorage.keys(n) = RuneStorage.key
     // divert
-// popdef(<<RuneStorage>>)
-// >>)
+// popdef(<[[RuneStorage]]>)
+// ]]>)
 
 @register("endquote")
 object EndQuoteRune extends Rune:
   type Data = Nothing
+  override def surfaceSprite: Identifier = Rune.BASIC_TEXTURE
   override def read(rhs: List[Rune]): (Nothing, List[Rune]) = throw RunesParseError(rhs.length, Text.literal("Unquote with no corresponding quote"))
   override def execute(data: Nothing, frame: ThunkFrame): ThunkFrame = data
 // divert

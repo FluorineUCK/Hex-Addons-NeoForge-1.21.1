@@ -5,6 +5,8 @@
 > [!CAUTION]
 > Mica is still in early development. It has not been fully tested, and game balance has not been considered. Make backups!
 
+TODO: finish readme
+
 ## Development
 
 if it breaks run `gradle processScala --seed compScala` for your version and try again

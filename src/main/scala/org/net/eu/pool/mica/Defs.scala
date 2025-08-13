@@ -8,16 +8,16 @@ import net.minecraft.registry.{Registries, Registry, RegistryKey, RegistryKeys}
 import net.minecraft.util.{ActionResult, Identifier}
 import net.minecraft.util.math.BlockPos
 import net.minecraft.world.World
-// ifversion(>=2100, <<
+// ifversion(>=2100, <[[
 import net.minecraft.storage.{ReadView, WriteView}
 import org.ladysnake.cca.api.v3.component.sync.AutoSyncedComponent
 import org.ladysnake.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
 import org.ladysnake.cca.api.v3.world.WorldComponentFactoryRegistry
-// >>, <<
+// ]]>, <[[
 import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
 import dev.onyxstudios.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
 import dev.onyxstudios.cca.api.v3.world.WorldComponentFactoryRegistry
-// >>)
+// ]]>)
 
 trait Registrar[T]:
   val value: T
@@ -36,7 +36,7 @@ trait Registrar[T]:
 def cursedRegister[T <: Item](identifier: Identifier, settings: Item.Settings)(itemFactory: Item.Settings => T): Registrar[T] =
   assert(identifier != null)
   val key = RegistryKey.of(RegistryKeys.ITEM, identifier)
-  lazy val item = itemFactory(settings /*ifversion(>=2102,<<*/.registryKey(key) /*>>)*/)
+  lazy val item = itemFactory(settings /*ifversion(>=2102,<[[*/.registryKey(key) /*]]>)*/)
   new Registrar[T]:
     override val value: T = item
 
@@ -55,7 +55,7 @@ def cursedRegister[T <: Item](identifier: Identifier, settings: Item.Settings)(i
 def cursedRegister[T <: Block](identifier: Identifier, settings: AbstractBlock.Settings)(blockFactory: (=> AbstractBlock.Settings => T) => AbstractBlock.Settings => T): Registrar[T] =
   val key = RegistryKey.of(RegistryKeys.BLOCK, identifier)
   lazy val fixed: AbstractBlock.Settings => T = blockFactory(fixed)
-  lazy val block = fixed(settings /*ifversion(>=2100,<<*/.registryKey(key) /*>>)*/)
+  lazy val block = fixed(settings /*ifversion(>=2100,<[[*/.registryKey(key) /*]]>)*/)
   new Registrar[T]:
     override val value: T = block
 
@@ -71,6 +71,8 @@ trait ThunkFrame derives HasRegistry:
  */
 trait Rune derives HasRegistry:
   type Data: Codec
+
+  def surfaceSprite: Identifier
 
   /**
    * Reads the rune's information from the list of runes.
@@ -97,6 +99,7 @@ trait Rune derives HasRegistry:
     cursedRegister(identifier, Item.Settings()):
       new Item(_):
         override def useOnBlock(context: ItemUsageContext): ActionResult =
+          println("GOT HERE 2")
           val p = context.getHitPos
           val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
           val b = BlockPos.Mutable(p.x, p.y, p.z)
@@ -112,13 +115,32 @@ trait Rune derives HasRegistry:
           // TODO: also check surrounding blocks
           val h = RuneShift(q.getX, q.getY, q.getZ, context.getSide)
           val s = AbstractRuneStorage.get(context.getWorld, h)
-          if s(b) == EmptyRune then
+          println(p)
+          println(h)
+          println(s(b))
+          var ok = true
+          if s(b) != null && s(b) != EmptyRune then ok = false
+          b.move(1, 0, 0)
+          if s(b) != null && s(b) != EmptyRune then ok = false
+          b.move(-2, 0, 0)
+          if s(b) != null && s(b) != EmptyRune then ok = false
+          b.move(1, 0, -1)
+          if s(b) != null && s(b) != EmptyRune then ok = false
+          b.move(0, 0, 2)
+          if s(b) != null && s(b) != EmptyRune then ok = false
+          b.move(0, 0, -1)
+          if ok then
             s(b) = Rune.this
             AbstractRuneStorage.sync(s.world, h)
-            ActionResult.CONSUME
+            println("done !")
+            ActionResult.SUCCESS
           else
+            println("nah")
             ActionResult.PASS
-object Rune
+object Rune:
+  final val BASIC_TEXTURE = Identifier.of("mica", "block/basic_rune.png")
+  final val SPELL_TEXTURE = Identifier.of("mica", "block/spell_rune.png")
+  final val IMPETUS_TEXTURE = Identifier.of("mica", "block/start_rune.png")
 
 private[mica] trait AbstractRuneStorage extends Component, AutoSyncedComponent:
   type Concrete <: ConcreteRuneStorage
