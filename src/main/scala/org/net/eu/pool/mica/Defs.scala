@@ -5,8 +5,9 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap
 import net.minecraft.block.{AbstractBlock, Block}
 import net.minecraft.item.{Item, ItemUsageContext}
 import net.minecraft.registry.{Registries, Registry, RegistryKey, RegistryKeys}
+import net.minecraft.util.math.Direction.{Axis, AxisDirection}
 import net.minecraft.util.{ActionResult, Identifier}
-import net.minecraft.util.math.BlockPos
+import net.minecraft.util.math.{BlockPos, Direction}
 import net.minecraft.world.World
 // ifversion(>=2100, <[[
 import net.minecraft.storage.{ReadView, WriteView}
@@ -103,6 +104,7 @@ trait Rune derives HasRegistry:
           val p = context.getHitPos
           val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
           val b = BlockPos.Mutable(p.x, p.y, p.z)
+          given World = context.getWorld
           if q.getX == 4 then
             q.setX(0)
             b.setX(b.getX + 1)
@@ -112,35 +114,58 @@ trait Rune derives HasRegistry:
           if q.getZ == 4 then
             q.setZ(0)
             b.setZ(b.getZ + 1)
-          // TODO: also check surrounding blocks
           val h = RuneShift(q.getX, q.getY, q.getZ, context.getSide)
-          val s = AbstractRuneStorage.get(context.getWorld, h)
-          println(p)
-          println(h)
-          println(s(b))
-          var ok = true
-          if s(b) != null && s(b) != EmptyRune then ok = false
-          b.move(1, 0, 0)
-          if s(b) != null && s(b) != EmptyRune then ok = false
-          b.move(-2, 0, 0)
-          if s(b) != null && s(b) != EmptyRune then ok = false
-          b.move(1, 0, -1)
-          if s(b) != null && s(b) != EmptyRune then ok = false
-          b.move(0, 0, 2)
-          if s(b) != null && s(b) != EmptyRune then ok = false
-          b.move(0, 0, -1)
-          if ok then
-            s(b) = Rune.this
-            AbstractRuneStorage.sync(s.world, h)
+          val ref = RuneRef(b, h)
+          if ref.isEmpty && ref.neighbors.forall(_.isEmpty) then
+            ref.rune = Rune.this
+            AbstractRuneStorage.sync(summon, h)
             println("done !")
             ActionResult.SUCCESS
           else
             println("nah")
             ActionResult.PASS
 object Rune:
-  final val BASIC_TEXTURE = Identifier.of("mica", "block/basic_rune.png")
-  final val SPELL_TEXTURE = Identifier.of("mica", "block/spell_rune.png")
-  final val IMPETUS_TEXTURE = Identifier.of("mica", "block/start_rune.png")
+  final val BASIC_TEXTURE = Identifier.of("mica", "block/basic_rune")
+  final val SPELL_TEXTURE = Identifier.of("mica", "block/spell_rune")
+  final val IMPETUS_TEXTURE = Identifier.of("mica", "block/start_rune")
+
+case class RuneRef(pos: BlockPos, shift: RuneShift):
+  def offset(dir: Direction): RuneRef =
+    dir match
+      case Direction.DOWN =>
+        if shift.y == 0 then RuneRef(pos.down, shift (y = 7))
+        else RuneRef(pos, shift (y = shift.y - 1))
+
+      case Direction.UP =>
+        if shift.y == 7 then RuneRef(pos.up, shift (y = 0))
+        else RuneRef(pos, shift (y = shift.y + 1))
+
+      case Direction.NORTH =>
+        if shift.z == 0 then RuneRef(pos.north, shift (z = 3))
+        else RuneRef(pos, shift (z = shift.z - 1))
+
+      case Direction.SOUTH =>
+        if shift.z == 3 then RuneRef(pos.south, shift (z = 0))
+        else RuneRef(pos, shift (z = shift.z + 1))
+
+      case Direction.WEST =>
+        if shift.x == 0 then RuneRef(pos.west, shift (x = 3))
+        else RuneRef(pos, shift (x = shift.x - 1))
+
+      case Direction.EAST =>
+        if shift.x == 3 then RuneRef(pos.east, shift (x = 0))
+        else RuneRef(pos, shift (x = shift.x + 1))
+
+  def rune(using World): Rune = shift.storage(pos)
+  def rune_=(r: Rune)(using World): Unit = shift.storage(pos) = r
+  def isEmpty(using World) = rune == null || rune == EmptyRune
+
+  def north = offset(Direction.NORTH)
+  def south = offset(Direction.SOUTH)
+  def east = offset(Direction.EAST)
+  def west = offset(Direction.WEST)
+
+  def neighbors = Seq(north, east, south, west, north.east, north.west, south.east, south.west)
 
 private[mica] trait AbstractRuneStorage extends Component, AutoSyncedComponent:
   type Concrete <: ConcreteRuneStorage

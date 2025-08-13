@@ -4,6 +4,9 @@ import com.mojang.serialization
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import com.mojang.serialization.{Codec, DataResult, Decoder, DynamicOps, Encoder, Lifecycle, MapCodec}
 import net.minecraft.util.shape.VoxelShapes
+
+import java.util.stream.LongStream
+import scala.util.boundary
 // ifversion(>=2100, <[[
 import net.minecraft.storage.{ReadView, WriteView}
 import org.ladysnake.cca.api.v3.component.sync.AutoSyncedComponent
@@ -200,6 +203,7 @@ object RuneShift:
       @inline def z = s >> 5 & 0b11
       @inline def facing = Direction.values()(s >> 7 & 0b111)
       @inline def apply(x: Int = s.x, y: Int = s.y, z: Int = s.z, facing: Direction = s.facing): RuneShift = RuneShift(x, y, z, facing)
+      def storage(using w: World) = w.getComponent(AbstractRuneStorage.keys(s.value))
   private def facing_impl(s: Expr[RuneShift], facing: Expr[Direction])(using q: Quotes): Expr[Unit] =
     import q.reflect.*
     Assign(s.asTerm, '{${s}(facing = ${facing})}.asTerm).asExprOf[Unit]
@@ -308,37 +312,61 @@ object QuoteRune extends Rune:
     worker(rhs)
   override def execute(data: Seq[BoxedRune], frame: ThunkFrame): ThunkFrame = ???
 
+lazy val emptyRuneKey = summon[Registry[Rune]].getId(EmptyRune)
 sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
   // ifversion(>=2100, <[[
   override def readData(c: ReadView): Unit =
   // ]]>, <[[
   override def readFromNbt(c: NbtCompound): Unit =
   // ]]>)
-    for
-      i <- 0L until c.getLong("c", 0L)
-      k = c.getLong(s"k$i", 0L)
-      v = c.getInt(s"v$i", 0)
-      p = c.getString(s"p$v", summonUnlessSeeding[Registry[Rune]].getId(EmptyRune).toString)
-      r <- Option.fromNullable(Identifier.tryParse(p))
-    do
-      contents(k) = summonUnlessSeeding[Registry[Rune]].get(r)
-
+    if c.getBoolean("m", true) then
+      contents.clear()
+    val n = c.getLong("c", -1L)
+    if n != -1 then
+      for
+        i <- 0L until c.getLong("c", 0L)
+        k = c.getLong(s"k$i", 0L)
+        v = c.getInt(s"v$i", 0)
+        p = c.getString(s"p$v", emptyRuneKey.toString)
+        r <- Option.fromNullable(Identifier.tryParse(p))
+      do
+        contents(k) = summonUnlessSeeding[Registry[Rune]].get(r)
+    else
+      boundary:
+        var i = 0
+        while true do
+          // ifversion(>=2100, <[[
+          val dh = c.getOptionalIntArray(s"h$i")
+          val dl = c.getOptionalIntArray(s"d$i")
+          // ]]>, <[[
+          val dh = c.getIntArray(s"h$i")
+          val dl = c.getIntArray(s"d$i")
+          // ]]>)
+          if dh.isEmpty || dl.isEmpty then boundary.break()
+          val rune = registryFor[Rune].get(Identifier.of(
+            c.getString(s"n$i", emptyRuneKey.getNamespace),
+            c.getString(s"p$i", emptyRuneKey.getPath),
+          ))
+          if rune != null then
+            for (h: Int, l: Int) <- dh.get.zip(dl.get) do
+              val k: Long = (h.toLong << 32) | (l & 0xFFFFFFFFL);
+              contents.put(k, rune);
+          i += 1
   // ifversion(>=2100, <[[
   override def writeData(c: WriteView): Unit =
   // ]]>, <[[
   override def writeToNbt(c: NbtCompound): Unit =
   // ]]>)
-    val palette = contents.values.toSeq.distinct.zipWithIndex.toMap
+    val palette = contents.groupMap(_._2)(_._1) - EmptyRune
     var i = 0
-    contents.forEach: (k, v) =>
-      if v != EmptyRune then
-        c.putLong(s"k$i", k)
-        c.putInt(s"v$i", palette(v))
-        i += 1
-    c.putLong("c", i)
-    palette.foreach: (k, i) =>
-      if k != EmptyRune then
-        c.putString(s"p${i}", registryFor[Rune].getId(k).toString)
+    for (k, v) <- palette do
+      val ns = registryFor[Rune].getId(k)
+      c.putString(s"n$i", ns.getNamespace)
+      c.putString(s"p$i", ns.getPath)
+      val (h, l) = v.map(n => ((n >>> 32).toInt, n.toInt)).unzip
+      c.putIntArray(s"h$i", h.toArray)
+      c.putIntArray(s"d$i", l.toArray)
+      i += 1
 // forloop(n, 0, 767, <[[
 // pushdef(RuneStorage, <[[ifelse($#,0,<[[<[[$0]]>]]><[[n]]>,<[[$0]]><[[<[[(]]>]]><[[$@]]><[[)]]>)]]>)
 case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends ConcreteRuneStorage:

@@ -302,6 +302,12 @@ tasks.processResources {
     )) {
         rename { "fabric.mod.json" }
     }
+
+    exclude("**/.cache/**")
+}
+
+tasks.named("ideaSyncTask") {
+    dependsOn("runDatagen")
 }
 
 abstract class FrozenFile: DefaultTask() {
