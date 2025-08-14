@@ -3,19 +3,31 @@ package org.eu.net.pool.hexic.client
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.datagen.v1.provider.FabricModelProvider
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
+import net.minecraft.client.MinecraftClient
+import net.minecraft.client.network.ClientPlayerEntity
 import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.inventory.Inventory
 import net.minecraft.item.ItemStack
 import net.minecraft.screen.slot.Slot
 import net.minecraft.util.collection.DefaultedList
+import org.eu.net.pool.common_curses.{HotbarRendering, SlotAccess, TextManipulator}
+import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.hexic.*
 
 import scala.language.experimental.{macros, saferExceptions}
 import scala.util.boundary
 
+inline def foldLocalPlayer[R](default: => R)(ifPresent: ClientPlayerEntity => R): R =
+  MinecraftClient.getInstance().player match
+    case null => default
+    case player => ifPresent(player)
+
 def init(): Unit =
-  println("Hello, client!")
+  HotbarRendering.Companion.getEvent.register: () =>
+    foldLocalPlayer(HotbarRendering.ALL):
+      _.getComponent(PlayerWispComponent.key).wispMedia.fold(HotbarRendering.ALL): _ =>
+        HotbarRendering.NONE
 
 def datagen(gen: FabricDataGenerator): Unit =
   val pack = gen.createPack()

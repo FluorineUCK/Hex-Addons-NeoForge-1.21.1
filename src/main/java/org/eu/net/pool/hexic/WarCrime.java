@@ -3,6 +3,8 @@ package org.eu.net.pool.hexic;
 import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import net.fabricmc.fabric.api.object.builder.v1.block.FabricBlockSettings;
+import net.minecraft.block.Block;
 import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.command.argument.RegistryEntryArgumentType;
 import net.minecraft.entity.Entity;
@@ -17,6 +19,7 @@ import org.jetbrains.annotations.NotNull;
 public class WarCrime extends BlockPos {
     public final @NotNull Entity e;
     public static @NotNull RegistryKey<World> thoughtWorld;
+    public static final @NotNull Block VOID_AIR = new Block(FabricBlockSettings.create().noCollision());
     
     public WarCrime(Entity e) {
         super(e.getBlockPos());

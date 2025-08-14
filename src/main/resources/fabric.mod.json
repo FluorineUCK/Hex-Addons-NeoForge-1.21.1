@@ -4,7 +4,9 @@
   "version": "${version}",
   "name": "Hexic",
   "description": "Utilities and helpers for my Hex Casting addons.",
-  "authors": [],
+  "authors": [
+    "PoolloverNathan"
+  ],
   "contact": {},
   "license": "GPL-3.0",
   "icon": "assets/hexic/icon.png",
@@ -21,6 +23,9 @@
     ],
     "mm:early_risers": [
       "org.eu.net.pool.hexic.EarlyRiser\u0024package::warCrimes"
+    ],
+    "cardinal-components": [
+      "org.eu.net.pool.hexic.ComponentInit"
     ]
   },
   "mixins": [
@@ -35,5 +40,10 @@
     "fabric-language-scala": ">=${scala_loader_version}",
     "fabric": "*",
     "minecraft": "${minecraft_version}"
+  },
+  "custom": {
+    "cardinal-components": [
+      "hexic:player_wisp"
+    ]
   }
 }
