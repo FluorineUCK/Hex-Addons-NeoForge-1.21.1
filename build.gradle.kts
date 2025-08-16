@@ -252,7 +252,24 @@ tasks.processResources {
                     .replace("\"", "\\\"").trim()
             )
             array("authors") {
-                put("PoolloverNathan")
+                map {
+                    put("name", "PoolloverNathan")
+                    map("contact") {
+                        put("discord", "https://discord.com/users/402104961812660226")
+                        put("github", "https://github.com/PoolloverNathan")
+                        put("codeberg", "https://github.com/PoolloverNathan")
+                    }
+                }
+            }
+            array("contributors") {
+                map {
+                    put("name", "dinosore_rs")
+                    put("role", "textures")
+                    map("contact") {
+                        put("discord", "https://discord.com/users/219925949309779970")
+                        put("github", "https://github.com/dinosore-rs")
+                    }
+                }
             }
             map("contact") {
 
