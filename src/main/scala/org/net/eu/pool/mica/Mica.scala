@@ -1,11 +1,39 @@
 package org.net.eu.pool.mica
+import com.mojang.authlib.properties.PropertyMap
 import com.mojang.datafixers.util.Pair
+import com.mojang.logging.LogUtils
 import com.mojang.serialization
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import com.mojang.serialization.{Codec, DataResult, Decoder, DynamicOps, Encoder, Lifecycle, MapCodec}
+import it.unimi.dsi.fastutil.longs.{Long2FloatMap, Long2IntMap, Long2IntMaps, Long2IntOpenHashMap, Long2LongMap}
+import net.minecraft.component.`type`.ProfileComponent
+import net.minecraft.component.{ComponentChanges, ComponentType, DataComponentTypes}
+import net.minecraft.entity.{Entity, ItemEntity, LivingEntity}
+import net.minecraft.entity.attribute.{EntityAttribute, EntityAttributeInstance}
+import net.minecraft.entity.decoration.DisplayEntity.TextDisplayEntity
+import net.minecraft.entity.effect.{StatusEffectInstance, StatusEffects}
+import net.minecraft.entity.player.PlayerEntity
+import net.minecraft.item.ItemStack
+import net.minecraft.loot.entry.ItemEntry
+import net.minecraft.server.world.ServerWorld
+import net.minecraft.sound.{SoundCategory, SoundEvent, SoundEvents}
+import net.minecraft.state.property.Property
+import net.minecraft.text.TextColor
+import net.minecraft.util.Uuids
 import net.minecraft.util.shape.VoxelShapes
+import net.minecraft.world.World.ExplosionSourceType
+import org.net.eu.pool.mica
+import org.slf4j.{Logger, LoggerFactory}
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
 
+import java.util.{Optional, UUID}
 import java.util.stream.LongStream
+import scala.::
+import scala.NamedTuple.{AnyNamedTuple, NamedTuple}
+import scala.Tuple.:*
+import scala.annotation.targetName
+import scala.collection.immutable.{AbstractSet, SortedSet}
+import scala.compiletime.constValue
 import scala.util.boundary
 // ifversion(>=2100, <[[
 import net.minecraft.storage.{ReadView, WriteView}
@@ -42,6 +70,7 @@ import scala.collection.convert.ImplicitConversions.given
 import scala.collection.immutable.{AbstractSeq, LinearSeq}
 import scala.compiletime.{deferred, erasedValue, summonInline}
 import scala.deriving.Mirror
+import scala.language.experimental.erasedDefinitions
 import scala.quoted.{Expr, Quotes}
 import scala.reflect.ClassTag
 import scala.tools.nsc.io.Path
@@ -49,14 +78,58 @@ import scala.util.chaining.scalaUtilChainingOps
 
 private given ModID = ModID("mica")
 
-val /* <[[ */ minecraft_version: /* ]]> */ Int = minecraft_version
+/**
+ * Current serial Minecraft version. This is solely provided for IDE completion; it is expanded before compile-time by m4.
+ */
+private[mica] val /* <[[ */ minecraft_version: /* ]]> */ Int = minecraft_version
+
+/**
+ * Represents a value such that the only thing known about it is that it is a member of a typeclass [[C]]. While this
+ * doesn't seem useful on the surface, it can be used to represent things similar to Java interfaces - the type
+ * `Abstract[ValueType]` could represent any value for which a [[ValueType]] exists, but without requiring the class
+ * itself to add to its `implements` clause.
+ * @tparam C Typeclass providing the sole known information about the type.
+ */
 trait Abstract[C[_]]:
+  /**
+   * Real type of [[value]]. Usually, this is used as a path-dependent type - the actual type is rarely known.
+   */
   type T: C
+  /**
+   * Backing value of the abstract.
+   */
   val value: T
+
+/**
+ * Helpers for creating and un-creating [[Abstract]] instances.
+ */
 object Abstract:
-  def apply[C[_], _T: C](x: _T): Abstract[C] = new Abstract[C]:
-    type T = _T
-    val value: _T = x
+  /**
+   * Construct an [[Abstract]] from a value and the proof of [[C]] in scope.
+   * @param x Backing value placed in [[Abstract.value]].
+   * @tparam C Typeclass for this [[Abstract]] instance.
+   * @tparam T Actual type within the [[Abstract]]. The return type is '''not''' narrowed to this type!
+   * @return Abstract instance of [[x]] plus the `C[x.type]` proof in scope.
+   */
+  def apply[C[_], T: C](x: T): Abstract[C] =
+    type _T = T
+    new Abstract[C]:
+      type T = _T
+      val value: _T = x
+
+  /**
+   * Splits an [[Abstract]] into its [[Abstract.value]] and proof. This is intended to be used with `given`-patterns:
+   * {{{
+   * val data: Abstract[C] = ???
+   * data match
+   *   case Abstract(value, given _) =>
+   *     // brings C[value.type] into scope
+   *     summon[C[value.type]]
+   * }}}
+   * @param x An [[Abstract]] value to dissect.
+   * @tparam C Typeclass to extract from the [[Abstract]].
+   * @return Tuple of the [[Abstract]]'s [[Abstract.value]] and associated proof.
+   */
   def unapply[C[_]](x: Abstract[C]): Some[(x.T, C[x.T])] =
     import x.given
     Some((x.value, /* WITH THIS TREASURE I */ summon))
@@ -94,10 +167,10 @@ extension (r: InputStream)
 extension (w: OutputStream)
   def put[T: ByteCodec as c](x: T): Unit = c.write(w, x)
 
-trait BitCodec[@specialized T]:
+private[mica] trait BitCodec[@specialized T]:
   def read(r: BitReader): T
   def write(w: BitWriter, x: T): Unit
-object BitCodec:
+private[mica] object BitCodec:
   /**
    * The [[Unit]] type is serialized as an empty sequence of bits.
    */
@@ -148,10 +221,87 @@ class MultipartSection:
   val layers: Array[Option[MultipartLayer]] = Array.fill(16)(None)
 
 // divert
+class immutable extends Annotation
+
+/**
+ * A '''side effect''' allows a [[Rune]] to have a greater effect on the world than mere arithmetic. Whereas runes
+ * don't have access to a [[ServerWorld]], side effects ''do'', letting them read from and even write to the world.
+ * However, they are less flexible than normal values - an execution ''must'' return a side effect to have it executed.
+ */
+trait SideEffect derives HasRegistry:
+  /**
+   * Arbitrary data for your side effect to use. For example, an effect that replaces a block would store the target
+   * [[BlockPos]], as well as the new [[Block]].
+   */
+  type Data
+  given dataCodec: Codec[Data] = deferred
+
+  /**
+   * Return value exposed to Mica code. This could be information such as a position (for a read-only effect), or
+   * information about changes made (for example, the old [[Block]]). In the case you have ''nothing'' valuable to
+   * return, use [[Unit]].
+   */
+  type Return: ValueType
+  given returnType: ValueType[Return] = deferred
+
+  /**
+   * Arbitrary data your side effect might need in [[unexecute]], in addition to your return value. This data is never
+   * written to disk, so can be anything. For example, the aforemented replace-block effect could store the associated
+   * [[BlockEntity]] of the block.
+   */
+  type RevertData
+
+  /**
+   * Check whether your side effect applies to the world ''before'' any changes. '''This method must not mutate `world`!'''
+   * @param data Arbitrary [[Data]] to use (such as a target position, etc.) in your cast.
+   * @param world Reference world for checking whether effects apply. '''Do not mutate this world!'''
+   */
+  @immutable def check(data: Data)(using @immutable world: World @immutable): Unit
+  @immutable def check(data: Data, player: PlayerEntity)(using @immutable world: World @immutable): Unit = check(data)
+
+  /**
+   * Apply your side effect to the world. This method should be reversible by [[unexecute]], in case a later effect's [[execute]] throws. However, avoid throwing in this method when possible - validate your effect in [[check]] instead.
+   * @param data Arbitrary [[Data]] to use (such as a target position, etc.) in your cast.
+   * @param world World to apply effects to; the same world as passed to [[check]].
+   * @return Information for reversing the effect. Spells should provide reversion data if possible.
+   */
+  def execute(data: Data)(using world: World): (Return, RevertData)
+
+  /**
+   * Apply a side effect that requires a player. This method is otherwise identical to [[execute(data:SideEffect)* the playerless version]] - keep its contract in mind.
+   * @param player Player initiating the cast.
+   */
+  def execute(data: Data, player: PlayerEntity)(using World): (Return, RevertData) = execute(data)
+
+  /**
+   * Un-apply your side effect, if possible. This method is rarely called, only in the case [[execute]] breaks its contract. However, it's safest to implement it if you can.
+   * @param data The same [[Data]] that [[execute]] was called with.
+   * @param return The value returned by [[execute]].
+   * @param revert The revert data returned by [[execute]].
+   * @param world World to reverse this effect in; the same world as [[execute]].
+   */
+  def unexecute(data: Data, `return`: Return, revert: RevertData)(using world: World): Unit
+
+  def translationFields(data: Data): Seq[AnyRef] = Seq()
+
+@register("noop")
+object NoopEffect extends SideEffect:
+  override type Data = Unit
+  override type Return = Unit
+  override type RevertData = Unit
+
+  override def check(data: Unit)(using world: World): Unit = ()
+  override def execute(data: Unit)(using world: World): (Unit, Unit) = ((), ())
+  override def unexecute(data: Unit, `return`: Unit, revert: Unit)(using world: World): Unit = ()
+
+given unitValueType: ValueType[Unit]:
+  override def eq[U: ValueType as v](x: Unit, y: U): Boolean = v eq unitValueType
+  override def show(x: Unit): Text = Text.literal("Unit").styled(_.withColor(0x7a7a7a))
+
+// divert(-1)
 trait ByteCodec[T]:
   def read(r: DataInput): T
   def write(w: DataOutput, x: T): Unit
-// divert(-1)
 
 given ByteCodec[MultipartSection]:
   override def read(r: InputStream): MultipartSection =
@@ -181,40 +331,18 @@ extension [T] (c: BitCodec[T])
     new ByteCodec[T]:
       override def read(r: InputStream): T = c.read(BitReader(r))
       override def write(w: OutputStream, x: T): Unit = c.write(BitWriter(w), x)
-// divert
-object RuneShift:
-  opaque type RuneShift = Int
-  inline def apply(value: Int): RuneShift = value
-  def apply(x: Int, y: Int, z: Int, facing: Direction): RuneShift = x & 0b11 | y << 2 & 0b11100 | z << 5 & 0b1100000 | facing.ordinal << 7
-  private def x_impl(s: Expr[RuneShift], x: Expr[Int])(using q: Quotes): Expr[Unit] =
-    import q.reflect.*
-    Assign(s.asTerm, '{${s}(x = ${x})}.asTerm).asExprOf[Unit]
-  private def y_impl(s: Expr[RuneShift], y: Expr[Int])(using q: Quotes): Expr[Unit] =
-    import q.reflect.*
-    Assign(s.asTerm, '{${s}(y = ${y})}.asTerm).asExprOf[Unit]
-  private def z_impl(s: Expr[RuneShift], z: Expr[Int])(using q: Quotes): Expr[Unit] =
-    import q.reflect.*
-    Assign(s.asTerm, '{${s}(z = ${z})}.asTerm).asExprOf[Unit]
-  given ops: AnyRef:
-    extension (s: RuneShift)
-      @inline def value: Int = s
-      @inline def x = s & 0b11
-      @inline def y = s >> 2 & 0b111
-      @inline def z = s >> 5 & 0b11
-      @inline def facing = Direction.values()(s >> 7 & 0b111)
-      @inline def apply(x: Int = s.x, y: Int = s.y, z: Int = s.z, facing: Direction = s.facing): RuneShift = RuneShift(x, y, z, facing)
-      def storage(using w: World) = w.getComponent(AbstractRuneStorage.keys(s.value))
-  private def facing_impl(s: Expr[RuneShift], facing: Expr[Direction])(using q: Quotes): Expr[Unit] =
-    import q.reflect.*
-    Assign(s.asTerm, '{${s}(facing = ${facing})}.asTerm).asExprOf[Unit]
-  val shapeCache: Array[VoxelShape] = Array.ofDim[VoxelShape](768).tap: m =>
-    for shift: RuneShift <- 0 until 768 do
-      val middle = (shift.x / 4.0 - 0.5, shift.y / 8.0 - 0.5, shift.z / 4.0 - 0.5)
-      m(shift) = VoxelShapes.cuboid(middle._1 - .25, middle._2, middle._3 - .25, middle._1 + .25, middle._2 + .0625, middle._3 + .25)
-end RuneShift
-export RuneShift.RuneShift
 
 class sparse extends Annotation
+
+// divert
+
+def assumed[T, U]: T =:= U = summon[Int =:= Int].asInstanceOf[T =:= U]
+
+inline given tupleCodec: [T <: Tuple] => Codec[T] = compiletime.summonFrom:
+  case ev: (T =:= EmptyTuple) => ev.substituteContra(Codec.unit(EmptyTuple))
+  case ev: (T =:= (h *: t)) => ev.substituteContra(Codec.pair(summonInline[Codec[h]], tupleCodec[t]).xmap(p => p.getFirst *: p.getSecond, { case h *: t => Pair(h, t) }))
+
+// divert(-1)
 
 extension [T] (i: Iterator[T]) def dropAfter(cond: T => Boolean): Iterator[T] =
   val split = i.span(!cond(_))
@@ -246,18 +374,110 @@ object VarInt:
             h.foreach(w.write)
             w.write(t | STOP_BIT)
           case _ => w.write(STOP_BIT)
+// divert
+
+@register("need_side_effect")
+object NeedSideEffectFrame extends ThunkFrame:
+  override type Data = Unit
+  override def accept[T: ValueType as ty](data: Unit, value: T): BoxedThunk =
+    ty.cast[BoxedSideEffect](value) match
+      case Some(e) => BoxedThunk(GotSideEffectFrame, e)
+
+@register("got_side_effect")
+object GotSideEffectFrame extends ThunkFrame:
+  override type Data = BoxedSideEffect
+  override def accept[T: ValueType](data: BoxedSideEffect, value: T): BoxedThunk =
+    //throw RuneError(Text.literal("Too many side effects in one cast"))
+    ???
+def findRunes(start: RuneRef, prev: Option[RuneRef])(using World): Option[List[(Rune, RuneRef)]] =
+  logger.debug(s"findRunes ${start} ${prev}")
+  if start.isEmpty then
+    None
+  else
+    val neigh = (start.rune.computeNeighbors(using start) -- prev).flatMap(findRunes(_, Some(start))).toSeq
+    neigh match
+      case Seq() =>
+        logger.debug(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | no more neighbors; stop here.")
+        Some(List((start.rune, start)))
+      case Seq(x) =>
+        val l = (start.rune, start)::x
+        logger.debug(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | ${l}")
+        Some(l)
+      case _ =>
+        logger.debug(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | too many neighbors!")
+        None
+
+given logger: Logger = LoggerFactory.getLogger(given_ModID.name)
+
+def parseRunes(runes: List[(Rune, RuneRef)])(using World): List[BoxedRune] =
+  runes match
+    case (head, given RuneRef)::next =>
+      val (data, rest) = head.read(next)
+      BoxedRune(head, data)::parseRunes(rest)
+    case Nil => Nil
+
+@tailrec
+def interpretRunes(runes: List[BoxedRune], stack: BoxedThunk): BoxedThunk =
+  println(s"Interpreter: runes = $runes, stack = $stack")
+  runes match
+    case head::next =>
+      val newStack = head.rune.execute(head.data, stack)
+      println(s"-> $head, stack = $newStack, $next")
+      interpretRunes(next, newStack)
+    case Nil =>
+      println("interpreter finished.")
+      stack
+
+@throws[RuneError]
+def interpretForSideEffect(runes: List[BoxedRune]): Option[BoxedSideEffect] =
+  val ret = interpretRunes(runes, BoxedThunk(NeedSideEffectFrame, ()))
+  ret.narrow(GotSideEffectFrame) match
+    case Some(value) => Some(value.data)
+    case None =>
+      println(s"Nothing seems to happen (top of stack is ${ret})")
+      None
+
+//given emptyTupleCodec: MapCodec[EmptyTuple] = MapCodec.unit(EmptyTuple)
+//inline given namedTupleCodec: [K <: String & Singleton, V: Codec as codec, R <: Tuple: MapCodec as tail] => MapCodec[(K, V) *: R] =
+//  RecordCodecBuilder.mapCodec[(K, V) *: R]: i =>
+//    i.group[V, R](
+//      codec.fieldOf(constValue[K]).forGetter { case h *: _ => h._2 },
+//      tail.forGetter { case _ *: t => t },
+//    ).apply(i, (h, t) => (constValue[K], h) *: t)
+
+extension [T1, T2, R1, R2] (ev$1: T1 =:= R1) def zip(ev$2: T2 =:= R2): (T1, T2) =:= (R1, R2) = assumed
+extension [T1, T2, R1, R2] (ev: (T1, T2) =:= (R1, R2)) def unzip: (T1 =:= R1, T2 =:= R2) = (assumed, assumed)
+
+//inline given namedTupleCodec: [N <: Tuple, T <: Tuple] => MapCodec[NamedTuple[N, T]] =
+//  compiletime.summonFrom:
+//    case ev: ((N, T) =:= (EmptyTuple, EmptyTuple)) => MapCodec.unit(NamedTuple.Empty.asInstanceOf)
+//    case ev: ((N, T) =:= (k *: ks, v *: vs)) =>
+//      erased val ev2 = summonInline[k <:< (String & Singleton & k)]
+//      val name = constValue[k].asInstanceOf[String]
+//      RecordCodecBuilder.mapCodec[NamedTuple[k *: ks, v *: vs]]: i =>
+//        i.group[v, vs](
+//          summonInline[Codec[v]].fieldOf(name).forGetter(???),
+//          namedTupleCodec[ks, vs].forGetter(???)
+//        ).apply(i, (h, t) => (name, h) *: t)
+
+//erased def namedTupleCodecTest: MapCodec[((a: Int, b: String))] = summon
 
 /**
- * Exception for when a [[Rune]] cannot fully read its arguments.
+ * Exception related to [[Rune]] evaluation, including the position.
  *
- * @param distance The distance from the *end* the error was thrown.
- * @param message
+ * @param message Cause of the error, displayed to the caster.
+ * @param ref Location of the rune that threw the error.
  */
-case class RunesParseError(distance: Int, message: Text) extends Exception
+case class RuneError(message: Text)(using val ref: RuneRef) extends Exception
 
+/**
+ * Stores a [[Rune]] together with its [[Rune.Data associated data]]. This allows easily passing around heterogeneous parsed rune values.
+ * @param rune The rune stored in this pair (responsible for determining [[data]]'s type).
+ * @param data The extra data associated with [[Rune]].
+ */
 case class BoxedRune(rune: Rune, data: rune.Data)
-inline given Codec[BoxedRune] =
-  summonUnlessSeeding[Codec[Rune]]
+inline given `dispatch codec for boxed runes`: Codec[BoxedRune] =
+  summon[Codec[Rune]]
     .dispatch[BoxedRune](_.rune, (r: Rune) =>
       import r.given
       summon[Codec[r.Data]].xmap(BoxedRune(r, _),
@@ -267,9 +487,75 @@ inline given Codec[BoxedRune] =
         .fieldOf("value")
       // ]]>,)
     )
+inline given `dispatch codec for boxed values`: Codec[BoxedValue] =
+  summon[Codec[ValueType[?]]]
+    .dispatch[BoxedValue](_.given_ValueType_T, {
+      case r: ValueType[t] =>
+        given ValueType[t] = r
+        r.codec.xmap(BoxedValue(_)(using r), _.value.asInstanceOf[t])
+        // ifversion(>= 2100,<[[
+        .fieldOf("value")
+    // ]]>,)
+    })
+given `dispatch codec for boxed thunk frames`: Codec[BoxedThunk] =
+  summon[Codec[ThunkFrame]]
+    .dispatch[BoxedThunk](_.tag, (r: ThunkFrame) =>
+      import r.given
+      summon[Codec[r.Data]].xmap(BoxedThunk(r, _),
+          // FIXME: Rewrite [dispatch] to avoid this unsafe cast.
+          _.data.asInstanceOf[r.Data])
+        // ifversion(>= 2100,<[[
+        .fieldOf("value")
+      // ]]>,)
+    )
+given `dispatch codec for boxed side-effects`: Codec[BoxedSideEffect] =
+  summon[Codec[SideEffect]]
+    .dispatch[BoxedSideEffect](_.effect, (r: SideEffect) =>
+      import r.given
+      summon[Codec[r.Data]].xmap(BoxedSideEffect(r, _),
+          // FIXME: Rewrite [dispatch] to avoid this unsafe cast.
+          _.data.asInstanceOf[r.Data])
+        // ifversion(>= 2100,<[[
+        .fieldOf("value")
+      // ]]>,)
+    )
 
+/**
+ * Stores a [[ThunkFrame]] together with its [[ThunkFrame.Data associated data]] on the stack.
+ * @param tag Type of this frame (must be registered).
+ * @param data Extra data for this frame (e.g. already-collected arguments).
+ */
+case class BoxedThunk(tag: ThunkFrame, data: tag.Data):
+  def narrow(to: ThunkFrame): Option[BoxedThunk { val tag: to.type; }] =
+    if tag eq to then
+      Some(asInstanceOf[BoxedThunk { val tag: to.type; }])
+    else
+      None
+object BoxedThunk:
+  inline def unapply[T](box: BoxedThunk): Option[(? <: Singleton & ThunkFrame { type Data = T; }, T)] =
+    ???
+
+trait BoxedValue:
+  type T: ValueType
+  val value: T
+  def ==(other: BoxedValue): Boolean =
+    import other.given
+    summon[ValueType[T]].eq(value, other.value)
+  def cast[R: {ValueType, ClassTag}]: Option[R] = summon[ValueType[T]].cast(value)
+  def show: Text = summon[ValueType[T]].show(value)
+object BoxedValue:
+  def apply[T: ValueType](value: T): BoxedValue =
+    type _T = T
+    val _value = value
+    new BoxedValue:
+      override type T = _T
+      override val value: _T = _value
 //def dependentCodec[T, R](arg: Codec[T], rhs: [R] )
 
+// y'know, I should really make a generic Boxed type
+case class BoxedSideEffect(effect: SideEffect, data: effect.Data)
+
+// divert(-1)
 /**
  * Stores additional data out-of-band with existing world chunks. This is useful if you want to e.g. manage chunk loading independently, or
  */
@@ -278,42 +564,46 @@ trait ParallelSection
 //object ExplodeRune extends Rune:
 //	type Data = (BlockPos, Int)--
 
+// divert
+
 /**
- * Does nothing. Pushes and pops no frames, consumes no runes, etc.
+ * Does nothing. Pushes and pops no frames, consumes no runes, etc. Used as a placeholder for missing runes.
  */
 @register("empty")
-object EmptyRune extends Rune:
-  override type Data = Unit
+object EmptyRune extends SimpleRune:
   override def surfaceSprite: Identifier = Rune.BASIC_TEXTURE
-  override def read(rhs: List[Rune]): (Unit, List[Rune]) = ((), rhs)
-  override def execute(data: Unit, frame: ThunkFrame): ThunkFrame = frame
+  override def execute(frame: BoxedThunk): BoxedThunk = frame
+  register:
+    item.register()
 
 @register("quote")
 object QuoteRune extends Rune:
-  override type Data = Seq[BoxedRune]
+  override type Data = Seq[Rune]
   override def surfaceSprite: Identifier = Rune.BASIC_TEXTURE
-  override def read(rhs: List[Rune]): (Seq[BoxedRune], List[Rune]) =
-    @throws[RunesParseError]
-    def worker(rhs: List[Rune]): (List[BoxedRune], List[Rune]) =
-      if rhs.isEmpty then
-        throw RunesParseError(0, Text.literal("Quote with no corresponding unquote"))
-      else if rhs.head == EndQuoteRune then
-        (List.empty, rhs)
-      else
-        val r = rhs.head
-        val (d, t) = r.read(rhs.tail)
-        val (b, t2) = try
-          worker(t)
-        catch
-          // FIXME: this +1 is going to bite me, isn't it?
-          case RunesParseError(distance, message) => throw RunesParseError(distance + 1, message)
-        locally:
-          (BoxedRune(r, d)::b, t2)
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (Seq[Rune], List[(Rune, RuneRef)]) =
+    @throws[RuneError]
+    def worker(rhs: List[(Rune, RuneRef)])(using ref: RuneRef): (List[Rune], List[(Rune, RuneRef)]) =
+      rhs match
+        case Nil => throw RuneError(Text.literal("Quote with no corresponding unquote"))
+        case (QuoteRune, given RuneRef)::xs =>
+          val (t, xt) = worker(xs)
+          val (u, xu) = worker(xt)
+          (t:::EndQuoteRune::u, xu)
+        case (EndQuoteRune, r)::xs => (Nil, xs)
+        case x::xs =>
+          val t = worker(xs)
+          (x._1::t._1, t._2)
     worker(rhs)
-  override def execute(data: Seq[BoxedRune], frame: ThunkFrame): ThunkFrame = ???
+  override def execute(data: Seq[Rune], frame: BoxedThunk): BoxedThunk =
+    frame.tag.accept(frame.data, data.map(BoxedValue(_)))
+  register:
+    item.register()
 
+/**
+ * The registry key of the [[EmptyRune]]. This should be the default rune.
+ */
 lazy val emptyRuneKey = summon[Registry[Rune]].getId(EmptyRune)
-sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
+private[mica] sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
   // ifversion(>=2100, <[[
   override def readData(c: ReadView): Unit =
   // ]]>, <[[
@@ -321,16 +611,20 @@ sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
   // ]]>)
     if c.getBoolean("m", true) then
       contents.clear()
+      heap0.clear()
+      heap1.clear()
+      heap2.clear()
+      heap3.clear()
     val n = c.getLong("c", -1L)
     if n != -1 then
       for
-        i <- 0L until c.getLong("c", 0L)
+        i <- 0L until n
         k = c.getLong(s"k$i", 0L)
         v = c.getInt(s"v$i", 0)
         p = c.getString(s"p$v", emptyRuneKey.toString)
         r <- Option.fromNullable(Identifier.tryParse(p))
       do
-        contents(k) = summonUnlessSeeding[Registry[Rune]].get(r)
+        contents(k) = summon[Registry[Rune]].get(r)
     else
       boundary:
         var i = 0
@@ -338,9 +632,17 @@ sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
           // ifversion(>=2100, <[[
           val dh = c.getOptionalIntArray(s"h$i")
           val dl = c.getOptionalIntArray(s"d$i")
+          val dx0 = c.getOptionalIntArray(s"x${i}0").orElse(Array.emptyIntArray)
+          val dx1 = c.getOptionalIntArray(s"x${i}1").orElse(Array.emptyIntArray)
+          val dx2 = c.getOptionalIntArray(s"x${i}2").orElse(Array.emptyIntArray)
+          val dx3 = c.getOptionalIntArray(s"x${i}3").orElse(Array.emptyIntArray)
           // ]]>, <[[
           val dh = c.getIntArray(s"h$i")
           val dl = c.getIntArray(s"d$i")
+          val dx0 = c.getIntArray(s"x${i}0").orElse(Array.emptyIntArray)
+          val dx1 = c.getIntArray(s"x${i}1").orElse(Array.emptyIntArray)
+          val dx2 = c.getIntArray(s"x${i}2").orElse(Array.emptyIntArray)
+          val dx3 = c.getIntArray(s"x${i}3").orElse(Array.emptyIntArray)
           // ]]>)
           if dh.isEmpty || dl.isEmpty then boundary.break()
           val rune = registryFor[Rune].get(Identifier.of(
@@ -348,9 +650,13 @@ sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
             c.getString(s"p$i", emptyRuneKey.getPath),
           ))
           if rune != null then
-            for (h: Int, l: Int) <- dh.get.zip(dl.get) do
-              val k: Long = (h.toLong << 32) | (l & 0xFFFFFFFFL);
-              contents.put(k, rune);
+            for ((h: Int, l: Int), i: Int) <- dh.get.zip(dl.get).zipWithIndex do
+              val k: Long = packLong(h, l);
+              contents.put(k, rune)
+              if dx0.length > i then heap0(k) = dx0(i)
+              if dx1.length > i then heap1(k) = dx1(i)
+              if dx2.length > i then heap2(k) = dx2(i)
+              if dx3.length > i then heap3(k) = dx3(i)
           i += 1
   // ifversion(>=2100, <[[
   override def writeData(c: WriteView): Unit =
@@ -363,37 +669,535 @@ sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
       val ns = registryFor[Rune].getId(k)
       c.putString(s"n$i", ns.getNamespace)
       c.putString(s"p$i", ns.getPath)
-      val (h, l) = v.map(n => ((n >>> 32).toInt, n.toInt)).unzip
+      val (h, l) = v.map(unpackLong(_)).unzip
       c.putIntArray(s"h$i", h.toArray)
       c.putIntArray(s"d$i", l.toArray)
+      val (p1, p2) = (for x <- v yield ((heap0(x), heap1(x)), (heap2(x), heap3(x)))).unzip
+      val (x0, x1) = p1.unzip; val (x2, x3) = p2.unzip
+      c.putIntArray(s"x${i}0", x0.toArray.map(x => if x == null then 0 else x.intValue))
+      c.putIntArray(s"x${i}1", x1.toArray.map(x => if x == null then 0 else x.intValue))
+      c.putIntArray(s"x${i}2", x2.toArray.map(x => if x == null then 0 else x.intValue))
+      c.putIntArray(s"x${i}3", x3.toArray.map(x => if x == null then 0 else x.intValue))
       i += 1
+
+@register("double")
+object DoubleLiteralRune extends Rune:
+  override type Data = Double
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (Double, List[(Rune, RuneRef)]) = (java.lang.Double.longBitsToDouble(packLong(ref.heap0, ref.heap1)), rhs)
+  override def execute(data: Double, frame: BoxedThunk): BoxedThunk = frame.tag.accept(frame.data, data)
+  register:
+    DoubleLiteralRune.item.register()
+
 // forloop(n, 0, 767, <[[
 // pushdef(RuneStorage, <[[ifelse($#,0,<[[<[[$0]]>]]><[[n]]>,<[[$0]]><[[<[[(]]>]]><[[$@]]><[[)]]>)]]>)
-case class RuneStorage(world: World, contents: Long2ObjectMap[Rune]) extends ConcreteRuneStorage:
+private[mica] case class RuneStorage(world: World,
+                                     contents: Long2ObjectMap[Rune] = Duck.mkMap(),
+                                     heap0: Long2IntMap = Long2IntOpenHashMap(),
+                                     heap1: Long2IntMap = Long2IntOpenHashMap(),
+                                     heap2: Long2IntMap = Long2IntOpenHashMap(),
+                                     heap3: Long2IntMap = Long2IntOpenHashMap()
+                                    ) extends ConcreteRuneStorage:
   override type Concrete = RuneStorage
   contents.defaultReturnValue(EmptyRune)
-object RuneStorage:
+private[mica] object RuneStorage:
   val shift = RuneShift(n)
   given key: ComponentKey[RuneStorage] = ComponentRegistry.getOrCreate(Identifier.of("mica", "runes<[[]]>n"), classOf[RuneStorage])
   // divert(1)
     /*dnl*/val factories: WorldComponentFactoryRegistry = erasedValue/*
-*/Duck.register(factories, RuneStorage.key, classOf[RuneStorage], RuneStorage(_, Duck.mkMap()))
+*/Duck.register(factories, RuneStorage.key, classOf[RuneStorage], RuneStorage(_))
     AbstractRuneStorage.keys(n) = RuneStorage.key
     // divert
 // popdef(<[[RuneStorage]]>)
 // ]]>)
+// forloop(n, 0, 63, <[[
+// pushdef(FluxStorageInfo, <[[ifelse($#,0,<[[<[[$0]]>]]><[[n]]>,<[[$0]]><[[<[[(]]>]]><[[$@]]><[[)]]>)]]>)
+private[mica] case class FluxStorageInfo(world: World, contents: Long2FloatMap) extends Component:
+  override def readData(readView: ReadView): Unit = ???
+  override def writeData(writeView: WriteView): Unit = ???
+// divert
+// popdef(<[[FluxStorageInfo]]>)
+// ]]>)
+
+given ValueType[Double]:
+  override def eq[U: ValueType as v](x: Double, y: U): Boolean = v.cast[Double](y).exists(y => x =~ y)
+  override def cast[R: ClassTag as r](x: Double): Option[R] =
+    r match
+      case ClassTag.Double => Some(x)
+      case ClassTag.Int =>
+        if x =~ x.round.toInt then
+          Some(x.round.toInt)
+        else
+          None
+      case _ => None
+
+  override def show(x: Double): Text = Text.literal(s"$x").styled(_.withColor(0xab3900))
+
+class RuneBeStartinShit private(val direction: Direction) extends Rune:
+  override def surfaceSprite: Identifier = Rune.IMPETUS_TEXTURE
+  override type Data = Unit
+  override def read(rhs: List[(Rune, RuneRef)])(using RuneRef, World): (Unit, List[(Rune, RuneRef)]) = ((), rhs)
+  override def execute(data: Unit, frame: BoxedThunk): BoxedThunk = frame
+  override def computeNeighbors(using r: RuneRef): Set[RuneRef] = direction match
+    case Direction.NORTH => Set(r.north.north)
+    case Direction.SOUTH => Set(r.south.south)
+    case Direction.WEST => Set(r.west.west)
+    case Direction.EAST => Set(r.east.east)
+  def register(): Unit =
+    Registry.register(registryFor[Rune], Identifier.of("mica", s"arrow_$direction"), this)
+    item.register()
+object RuneBeStartinShit:
+  val north = new RuneBeStartinShit(Direction.NORTH)
+  val east = new RuneBeStartinShit(Direction.EAST)
+  val south = new RuneBeStartinShit(Direction.SOUTH)
+  val west = new RuneBeStartinShit(Direction.WEST)
+  def apply(dir: Direction) = dir match
+    case Direction.NORTH => north
+    case Direction.SOUTH => east
+    case Direction.WEST => south
+    case Direction.EAST => west
+  def unapply(r: RuneBeStartinShit): Some[Direction] = Some(r.direction)
+  register:
+    RuneBeStartinShit.north.register()
+    RuneBeStartinShit.east.register()
+    RuneBeStartinShit.south.register()
+    RuneBeStartinShit.west.register()
+
+@register("seq")
+given ValueType[Seq[BoxedValue]]:
+  val color = TextColor.fromRgb(0xb6fc03)
+  override def eq[U: ValueType as v](x: Seq[BoxedValue], y: U): Boolean =
+    v.cast[Seq[BoxedValue]](y).exists(y => x.zip(y).forall(p => p._1 == p._2))
+  override def show(x: Seq[BoxedValue]): Text =
+    x match
+      case h+:t =>
+        val m = Text.literal("(").styled(_.withColor(color))
+        m.append(h.show)
+        for x <- t do
+          m.append(" ").append(x.show)
+        m.append(")")
+      case Seq() => Text.literal("()").styled(_.withColor(color))
+given ValueType[Rune]:
+  val color = TextColor.fromRgb(0xffe46e)
+  override def eq[U: ValueType as v](x: Rune, y: U): Boolean = v.cast[Rune](y).exists(y => x eq y)
+  override def show(x: Rune): Text = Text.literal(registryFor[Rune].getId(x).toTranslationKey("mica.runes"))
+
+@register("fatboy_slim")
+object PosLiteral extends Rune:
+  override type Data = RuneRef
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (RuneRef, List[(Rune, RuneRef)]) = (ref, rhs)
+  override def execute(data: RuneRef, frame: BoxedThunk): BoxedThunk = frame.tag.accept(frame.data, data.floatPos)
+  register:
+    PosLiteral.item.register()
+
+@register("teleport")
+object TeleportRune extends Rune:
+  override type Data = RuneRef
+  @register("teleport")
+  object Effect extends SideEffect:
+    override type Data = (RuneRef, EntityRef)
+    override type Return = Unit
+    override type RevertData = Vec3d
+    override def check(data: (RuneRef, EntityRef))(using world: World): Unit =
+      given RuneRef = data._1
+      if !world.getWorldBorder.contains(data._1.pos) then
+        throw RuneError(Text.literal("Cannot teleport outside the world border"))
+    override def execute(data: (RuneRef, EntityRef))(using world: World): (Unit, Vec3d) =
+      val entity = data._2.entity
+      if entity == null then
+        throw RuneError(Text.literal("Could not find ").append(summon[ValueType[EntityRef]].show(data._2)).append(" in the world"))(using data._1)
+      val pos = entity.getPos
+      entity.setPosition(data._1.floatPos)
+      ((), pos)
+    override def unexecute(data: (RuneRef, EntityRef), `return`: Unit, revert: Vec3d)(using world: World): Unit =
+      data._2.entity.setPosition(revert)
+  @register("teleport/0")
+  object Frame extends ThunkFrame:
+    override type Data = (RuneRef, BoxedThunk)
+    override def accept[T: ValueType as v](data: (RuneRef, BoxedThunk), value: T): BoxedThunk =
+      val entity = v.cast[EntityRef](value).get
+      println(data)
+      data._2.tag.accept(data._2.data, BoxedSideEffect(Effect, (data._1, entity)))
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (RuneRef, List[(Rune, RuneRef)]) = (ref, rhs)
+  override def execute(data: RuneRef, frame: BoxedThunk): BoxedThunk = BoxedThunk(Frame, (data, frame))
+  register:
+    TeleportRune.item.register()
+given Codec[RuneRef] = RecordCodecBuilder.create: i =>
+  i.group(
+    Codec.LONG.fieldOf("pos").xmap(BlockPos.fromLong, _.asLong).forGetter(_.pos),
+    Codec.INT.fieldOf("dir").xmap(RuneShift.apply, _.value).forGetter(_.shift),
+  ).apply(i, RuneRef(_, _))
+given Codec[((RuneRef, EntityRef))] = RecordCodecBuilder.create: i =>
+  i.group(
+    given_Codec_RuneRef.fieldOf("to").forGetter(_._1),
+    given_Codec_EntityRef.fieldOf("from").forGetter(_._2),
+  ).apply(i, (_, _))
+given Codec[((RuneRef, BoxedThunk))] = RecordCodecBuilder.create: i =>
+  i.group(
+    given_Codec_RuneRef.fieldOf("to").forGetter(_._1),
+    `dispatch codec for boxed thunk frames`.fieldOf("from").forGetter(_._2),
+  ).apply(i, (_, _))
+
+given `given_Codec_java.lang.Double`: Codec[java.lang.Double] = Codec.DOUBLE
+
+@register("reveal")
+private[mica] object RevealRune extends Rune:
+  override type Data = RuneRef
+  @register("reveal/0")
+  object Frame extends ThunkFrame:
+    override type Data = (RuneRef, BoxedThunk)
+    override def accept[T: ValueType](data: (RuneRef, BoxedThunk), value: T): BoxedThunk = ???
+  given Codec[(RuneRef, BoxedThunk)] =
+    RecordCodecBuilder.create: i =>
+      i.group(
+        codec[RuneRef].fieldOf("_1").forGetter(_._1),
+        codec[BoxedThunk].fieldOf("_2").forGetter(_._2),
+      ).apply(i, (_, _))
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (RevealRune.Data, List[(Rune, RuneRef)]) = (summon, rhs)
+  override def execute(data: RuneRef, frame: BoxedThunk): BoxedThunk = BoxedThunk(Frame, (data, frame))
+  register:
+    RevealRune.item.register()
+
+private[mica] object JackBlack:
+  def pickaxe(using ci: CallbackInfoReturnable[ActionResult])(ctx: ItemUsageContext): Unit =
+    val p = ctx.getHitPos
+    val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
+    val b = BlockPos.Mutable(p.x, p.y, p.z)
+    given World = ctx.getWorld
+    if q.getX == 4 then
+      q.setX(0)
+      b.setX(b.getX + 1)
+    if q.getY == 8 then
+      q.setY(0)
+      b.setY(b.getY + 1)
+    if q.getZ == 4 then
+      q.setZ(0)
+      b.setZ(b.getZ + 1)
+    val h = RuneShift(q.getX, q.getY, q.getZ, ctx.getSide)
+    val ref = RuneRef(b, h)
+    if !ref.isEmpty then
+      if !given_World.isClient then
+        val stack = ItemStack(ref.rune.item.value, 1)
+        assert(!stack.isEmpty)
+        assert(Registries.ITEM.getId(stack.getItem) != null)
+        stack.applyChanges(ComponentChanges.builder().add(DataComponentTypes.PROFILE,
+          ProfileComponent(
+            Optional.empty,
+            Optional.of(Uuids.toUuid(Array(ref.heap0, ref.heap1, ref.heap2, ref.heap3))),
+            PropertyMap())).build())
+        val ent: ItemEntity = ItemEntity(given_World, p.x, p.y, p.z, stack)
+        ent.setPosition(p)
+        ent.addVelocity(h.facing.getDoubleVector.multiply(0.1))
+        given_World.spawnEntity(ent)
+      ref.rune = EmptyRune
+      ci.setReturnValue(ActionResult.SUCCESS)
+  def flintAndSTEEL_!!(using ci: CallbackInfoReturnable[ActionResult])(ctx: ItemUsageContext): Unit =
+    val p = ctx.getHitPos
+    val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
+    val b = BlockPos.Mutable(p.x, p.y, p.z)
+    given World = ctx.getWorld
+    if q.getX == 4 then
+      q.setX(0)
+      b.setX(b.getX + 1)
+    if q.getY == 8 then
+      q.setY(0)
+      b.setY(b.getY + 1)
+    if q.getZ == 4 then
+      q.setZ(0)
+      b.setZ(b.getZ + 1)
+    val h = RuneShift(q.getX, q.getY, q.getZ, ctx.getSide)
+    val ref = RuneRef(b, h)
+    ref.rune match
+      case RuneBeStartinShit(d) =>
+        boundary:
+          val runes = findRunes(ref, None).getOrElse:
+            ci.setReturnValue(ActionResult.FAIL)
+            given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS)
+            ctx.getPlayer.sendMessage(Text.literal("The spark fizzles out."), true)
+            boundary.break()
+          ci.setReturnValue(ActionResult.SUCCESS)
+          try
+            given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.ITEM_FLINTANDSTEEL_USE, SoundCategory.PLAYERS)
+            val boxedRunes = parseRunes(runes)
+            interpretForSideEffect(boxedRunes) match
+              case Some(value) =>
+                println(s"Hello ladies and gentlemen! Today we will be executing ${value}! Are we on the client? ${given_World.isClient}!")
+                value.effect.check(value.data)
+                value.effect.execute(value.data)
+              case None =>
+                ctx.getPlayer.sendMessage(Text.literal("Nothing seems to happen..."), true)
+          catch
+            case e: RuneError =>
+              val p = e.ref.floatPos
+              given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS)
+              ctx.getPlayer.addStatusEffect(StatusEffectInstance(StatusEffects.NAUSEA, 5*20))
+              ctx.getPlayer.sendMessage(e.message, true)
+            case e: (NotImplementedError | MatchError) =>
+              e.printStackTrace()
+              ctx.getPlayer.addStatusEffect(StatusEffectInstance(StatusEffects.NAUSEA, 5*20))
+              given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS)
+              ctx.getPlayer.sendMessage(Text.literal("You feel strange..."), true)
+            case e: Exception =>
+              e.printStackTrace()
+              ctx.getPlayer.addStatusEffect(StatusEffectInstance(StatusEffects.NAUSEA, 15*20))
+              ctx.getPlayer.addStatusEffect(StatusEffectInstance(StatusEffects.BLINDNESS, 15*20))
+              given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS)
+              ctx.getPlayer.sendMessage(Text.literal("The world is falling apart at the seams..."), true)
+      case _ =>
+
+lazy val runeProbe: Registrar[Item] =
+  cursedRegister(Identifier.of("mica", "rune_probe"), Item.Settings()):
+    new Item(_):
+      override def useOnBlock(ctx: ItemUsageContext): ActionResult =
+        val p = ctx.getHitPos
+        val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
+        val b = BlockPos.Mutable(p.x, p.y, p.z)
+        given World = ctx.getWorld
+        if q.getX == 4 then
+          q.setX(0)
+          b.setX(b.getX + 1)
+        if q.getY == 8 then
+          q.setY(0)
+          b.setY(b.getY + 1)
+        if q.getZ == 4 then
+          q.setZ(0)
+          b.setZ(b.getZ + 1)
+        val h = RuneShift(q.getX, q.getY, q.getZ, ctx.getSide)
+        val ref = RuneRef(b, h)
+        given player: PlayerEntity = ctx.getPlayer
+        if given_World.isClient then
+          player.sendMessage(Text.literal("Client Rune Info:").styled(_.withColor(0xb36909)), false)
+        else
+          player.sendMessage(Text.literal("Server Rune Info:").styled(_.withColor(0x06bf72)), false)
+        player.sendMessage(Text.literal(s"Ref: ${ref} (${ref.pos.asLong}/${ref.shift.value}) [${ref.shift.x}, ${ref.shift.y}, ${ref.shift.z}, ${ref.shift.facing}]"), false)
+        player.sendMessage(Text.literal(s"Rune: ${ref.rune}"), false)
+        player.sendMessage(Text.literal(s"Heap: ${ref.heap0} ${ref.heap1} ${ref.heap2} ${ref.heap3}"), false)
+        ActionResult.SUCCESS
+@register("player_literal")
+object PlayerLiteral extends Rune:
+  override type Data = EntityRef
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (EntityRef, List[(Rune, RuneRef)]) =
+    val uuid = EntityRef(Uuids.toUuid(Array(ref.heap0, ref.heap1, ref.heap2, ref.heap3)))
+    println(s"playerliteral${ref}sayswhat? ${uuid} obviously")
+    (uuid, rhs)
+  override def execute(data: EntityRef, frame: BoxedThunk): BoxedThunk =
+    println(s"AND HE SHOOTS ${data} TO THE STACK")
+    frame.tag.accept(frame.data, data)
+  override def fillHeap(using ref: RuneRef, player: PlayerEntity, world: World)(): Unit =
+    val uuid = Uuids.toIntArray(player.getUuid)
+    ref.heap0 = uuid(0)
+    ref.heap1 = uuid(1)
+    ref.heap2 = uuid(2)
+    ref.heap3 = uuid(3)
+    println(s"who up player literal they ${uuid.mkString("Array(", ", ", ")")} (${ref}) on the client? ${world.isClient}")
+  register:
+    PlayerLiteral.item.register()
+
+@register("entity")
+given ValueType[EntityRef]:
+  override def eq[U: ValueType as v](x: EntityRef, y: U): Boolean = v.cast[EntityRef](y).exists(y => x.uuid == y.uuid)
+  override def show(x: EntityRef): Text = Text.literal(x.uuid.toString.split('-').last).styled(_.withColor(0x9116c9)/*.withFont(Identifier.of("minecraft", "illageralt"))*/)
+
+@register("side_effect")
+given ValueType[BoxedSideEffect]:
+  override def eq[U: ValueType as v](x: BoxedSideEffect, y: U): Boolean =
+    v.cast[BoxedSideEffect](y).exists(y => x.effect == y.effect && x.data == y.data)
+
+  override def show(x: BoxedSideEffect): Text = Text.translatable(registryFor[SideEffect].getId(x.effect).toTranslationKey("mica.side_effect"), x.effect.translationFields(x.data))
+
+case class EntityRef(target: UUID | Entity):
+  def uuid: UUID = target match
+    case u: UUID => u
+    case e: Entity => e.getUuid
+  def entity(using w: World): Entity = target match
+    case e: Entity => e
+    case u: UUID => w.getEntity(u)
+given Codec[EntityRef] = Uuids.STRICT_CODEC.xmap(EntityRef(_), _.uuid)
+trait UnaryRune extends SimpleRune:
+  type Arg0: {Codec, ValueType, ClassTag}
+  type Return: ValueType
+  private object ArgFrame extends ThunkFrame:
+    type Data = BoxedThunk
+    override def accept[T: ValueType as v](data: BoxedThunk, value: T): BoxedThunk =
+      v.cast[Arg0](value) match
+        case Some(value) =>
+          data.tag.accept(data.data, run(value))
+  override def execute(frame: BoxedThunk): BoxedThunk = BoxedThunk(ArgFrame, frame)
+  def run(x: Arg0): Return
+  protected def registerFrames(): Unit =
+    val id = registryFor[Rune].getId(this)
+    Registry.register(registryFor[ThunkFrame], id.withSuffixedPath("/0"), ArgFrame)
+trait BinaryRune extends SimpleRune:
+  type Arg0: {Codec, ValueType, ClassTag}
+  type Arg1: {Codec, ValueType, ClassTag}
+  type Return: ValueType
+  private object Arg0Frame extends ThunkFrame:
+    type Data = (frame: BoxedThunk)
+    override def accept[T: ValueType as v](data: (frame: BoxedThunk), value: T): BoxedThunk =
+      v.cast[Arg0](value) match
+        case Some(value) =>
+          BoxedThunk(Arg1Frame, (data.frame, value))
+  private object Arg1Frame extends ThunkFrame:
+    type Data = (frame: BoxedThunk, arg0: Arg0)
+    override def accept[T: ValueType as v](data: (frame: BoxedThunk, arg0: Arg0), value: T): BoxedThunk =
+      v.cast[Arg1](value) match
+        case Some(value) =>
+          val h = data.frame
+          h.tag.accept(h.data, run(data.arg0, value))
+  override def execute(frame: BoxedThunk): BoxedThunk = BoxedThunk(Arg0Frame, (frame = frame))
+  def run(x: Arg0, y: Arg1): Return
+  protected def registerFrames(): Unit =
+    val id = registryFor[Rune].getId(this)
+    if id == null then
+      throw IllegalStateException("Rune frames registered before rune itself")
+    Registry.register(registryFor[ThunkFrame], id.withSuffixedPath("/0"), Arg0Frame)
+    Registry.register(registryFor[ThunkFrame], id.withSuffixedPath("/1"), Arg1Frame)
+
+given `codec for just a frame`: Codec[((frame: BoxedThunk))] = codec[BoxedThunk].fieldOf("frame").codec().xmap((frame = _), _.frame)
+given [T: Codec as c] => Codec[((frame: BoxedThunk, arg0: T))] =
+  RecordCodecBuilder.create: i =>
+    i.group(
+      codec[BoxedThunk].fieldOf("frame").forGetter(_.frame),
+      c.fieldOf("arg0").forGetter(_.arg0)
+    ).apply(i, (_, _))
+
+@register("add")
+object AdditionRune extends BinaryRune:
+  override type Arg0 = Double
+  override type Arg1 = Double
+  override type Return = Double
+
+  override def run(x: Double, y: Double): Double = x + y
+
+  register:
+    registerFrames()
+    AdditionRune.item.register()
+
+given unmapsYourCodec: [T: MapCodec as c] => Codec[T] = c.codec
+
+@register("sub")
+object SubitionRune extends BinaryRune:
+  override type Arg0 = Double
+  override type Arg1 = Double
+  override type Return = Double
+
+  override def run(x: Double, y: Double): Double = x - y
+
+  register:
+    registerFrames()
+    SubitionRune.item.register()
+
+@register("mul")
+object MulitionRune extends BinaryRune:
+  override type Arg0 = Double
+  override type Arg1 = Double
+  override type Return = Double
+
+  override def run(x: Double, y: Double): Double = x * y
+
+  register:
+    registerFrames()
+    MulitionRune.item.register()
+
+given Codec[Double] = Codec.DOUBLE.xmap(locally(_), locally(_))
+
+@register("div")
+object DivitionRune extends BinaryRune:
+  override type Arg0 = Double
+  override type Arg1 = Double
+  override type Return = Double
+
+  override def run(x: Double, y: Double): Double = x / y
+
+  register:
+    registerFrames()
+    DivitionRune.item.register()
+
+extension (x: Double) @targetName("~=") def =~(y: Double): Boolean = Math.abs(x - y) < 0.0001
+
+given Codec[Vec3d] = Vec3d.CODEC
+given ValueType[Vec3d]:
+  override def eq[U: ValueType as v](x: Vec3d, y: U): Boolean =
+    v.cast[Vec3d](y).exists: y =>
+      x.x =~ y.x && x.y =~ y.y && x.z =~ y.z
+  override def cast[R: ClassTag](x: Vec3d): Option[R] = super.cast(x)
+
+  override def show(x: Vec3d): Text = Text.literal(s"{${x.x}, ${x.y}, ${x.z}}")
+
+inline def codec[T: Codec as c] = c
+
+case class AttributeReference(target: LivingEntity | UUID, attribute: EntityAttribute):
+  def uuid: UUID = target match
+    case e: LivingEntity => e.getUuid
+    case u: UUID => u
+  def entity(using w: World): Option[LivingEntity] = target match
+    case e: LivingEntity => Some(e)
+    case u: UUID => w.getEntity(u) match
+      case null => None
+      case e: LivingEntity => Some(e)
+      case _ => None
+  def attributeInstance(using World): Option[EntityAttributeInstance] = entity.map(_.getAttributeInstance(Registries.ATTRIBUTE.getEntry(attribute)))
+given `codec for entity attributes using the registry`: Codec[EntityAttribute] = Registries.ATTRIBUTE.getCodec
+given `codec for references to entity attributes`: Codec[AttributeReference] =
+  RecordCodecBuilder.create: i =>
+    i.group(
+      Uuids.INT_STREAM_CODEC.fieldOf("entity").forGetter(_.uuid),
+      codec[EntityAttribute].fieldOf("attribute").forGetter(_.attribute),
+    ).apply(i, AttributeReference(_, _))
+given `hey did you know attributes are values`: ValueType[AttributeReference]:
+  override def eq[U: ValueType as v](x: AttributeReference, y: U): Boolean = v.cast[AttributeReference](y).exists(y => (x.uuid == y.uuid) && (x.attribute eq y.target))
+  override def show(x: AttributeReference): Text = Text.translatable(x.attribute.getTranslationKey).styled(_.withColor(0x07b891))
+
+@register("nyaboom")
+object ExplosionRune extends BinaryRune:
+  override type Arg0 = Vec3d
+  override type Arg1 = Double
+  override type Return = BoxedSideEffect
+  override def surfaceSprite: Identifier = Rune.SPELL_TEXTURE
+
+  @register("nyaboom")
+  object Effect extends SideEffect:
+    override type Data = (pos: Vec3d, power: Double)
+    override type Return = Unit
+    override type RevertData = Unit // good luck un-exploding someone
+
+    override def check(data: (pos: Vec3d, power: Double))(using world: World): Unit =
+      // explosions are *probably* fine
+      ()
+    override def execute(data: (pos: Vec3d, power: Double))(using world: World): (Unit, Unit) =
+      if !world.isClient then
+        world.createExplosion(null: Entity, data.pos.x, data.pos.y, data.pos.z, data.power.toFloat, ExplosionSourceType.TRIGGER)
+      ((), ())
+    override def unexecute(data: (pos: Vec3d, power: Double), `return`: Unit, revert: Unit)(using world: World): Unit =
+      // can't unexplode people
+      ()
+
+  override def run(pos: Vec3d, power: Double) = BoxedSideEffect(Effect, (pos, power))
+
+  register:
+    ExplosionRune.item.register()
+    registerFrames()
+
+given Codec[((pos: Vec3d, power: Double))] =
+  RecordCodecBuilder.create[(pos: Vec3d, power: Double)]: i =>
+    i.group(
+      codec[Vec3d].fieldOf("pos").forGetter(_.pos),
+      codec[Double].fieldOf("power").forGetter(_.power),
+    ).apply(i, (pos, power) => (pos = pos, power = power))
 
 @register("endquote")
 object EndQuoteRune extends Rune:
   type Data = Nothing
   override def surfaceSprite: Identifier = Rune.BASIC_TEXTURE
-  override def read(rhs: List[Rune]): (Nothing, List[Rune]) = throw RunesParseError(rhs.length, Text.literal("Unquote with no corresponding quote"))
-  override def execute(data: Nothing, frame: ThunkFrame): ThunkFrame = data
+  override def read(rhs: List[(Rune, RuneRef)])(using RuneRef, World): (Nothing, List[(Rune, RuneRef)]) = throw RuneError(Text.literal("Unquote with no corresponding quote"))
+  override def execute(data: Nothing, frame: BoxedThunk): BoxedThunk = data
+
+  register:
+    EndQuoteRune.item.register()
 // divert
 
-given [T](using Codec[T]): Codec[Seq[T]] = Codec.list[T](summon).xmap(_.toSeq, locally(_))
-given Codec[Unit] = Codec.unit(())
-given Codec[Nothing] = Codec.of(new Encoder[Nothing]:
+given seqCodec: [T: Codec as c] => Codec[Seq[T]] = Codec.list[T](c).xmap(_.toSeq, locally(_))
+given unitCodec: Codec[Unit] = Codec.unit(())
+given nothingCodec: Codec[Nothing] = Codec.of(new Encoder[Nothing]:
   override def encode[T](input: Nothing, ops: DynamicOps[T], prefix: T): DataResult[T] = input, Decoder.error("Nothing codec"))
 
 extension [T] (x: T)
@@ -406,15 +1210,10 @@ extension [T] (x: T)
     case r: R => Some(r)
     case _ => None
 
-class ComponentInitializer extends WorldComponentInitializer:
-  def registerWorldComponentFactories(factories: WorldComponentFactoryRegistry) =
+private[mica] class ComponentInitializer extends WorldComponentInitializer:
+  def registerWorldComponentFactories(factories: WorldComponentFactoryRegistry): Unit =
     /*dnl*/ () /*
     *///undivert(1)
 def init(): Unit =
+  runeProbe.register()
   register()
-  // eww
-  println("BELIEVE IT OR NOT WE ARE HERE")
-  EmptyRune.item.register()
-  QuoteRune.item.register()
-  EndQuoteRune.item.register()
-  println("do you have hair?")

@@ -8,12 +8,12 @@ import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.renderer.v1.render.RenderLayerHelper
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.gl.RenderPipelines
-import net.minecraft.client.render.{BlockRenderLayer, RenderLayers, TexturedRenderLayers, VertexConsumer}
+import net.minecraft.client.render.{BlockRenderLayer, OverlayTexture, RenderLayer, RenderLayers, TexturedRenderLayers, VertexConsumer, VertexConsumerProvider}
 import net.minecraft.client.texture.{Sprite, SpriteAtlasTexture, SpriteLoader}
 import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.util.Identifier
-import net.minecraft.util.math.{BlockPos, Direction}
-import org.net.eu.pool.mica.{AbstractRuneStorage, EmptyRune, EndQuoteRune, HasRegistry, registryFor, QuoteRune, Rune, RuneShift, given}
+import net.minecraft.util.math.{BlockPos, Direction, MathHelper}
+import org.net.eu.pool.mica.{AbstractRuneStorage, EmptyRune, EndQuoteRune, HasRegistry, QuoteRune, Rune, RuneShift, registryFor, given}
 import net.minecraft.client.data.{BlockStateModelGenerator, ItemModelGenerator, ItemModels, Model, ModelIds, ModelSupplier}
 import net.minecraft.client.render.item.model.ItemModel
 import net.minecraft.util.math.Direction.Axis
@@ -35,6 +35,46 @@ given runeExt: AnyRef with
 		def sprite: Sprite = blockAtlas(r.spriteTexture)
 		def surface: Sprite = blockAtlas(r.surfaceSprite)
 
+class Renderer(val buffer: VertexConsumer, val matrices: MatrixStack):
+	var sprite: Option[Sprite] = None
+
+	def forSprite(uv: UV): UV =
+		sprite match
+			case Some(value) => (
+				u = MathHelper.lerp(uv.u, value.getMinU, value.getMaxU),
+				v = MathHelper.lerp(uv.v, value.getMinV, value.getMaxV),
+			)
+			case None => uv
+
+	def vert(vertex: Vertex, normal: V3): Unit =
+		val Vertex(pos, uv, color, light, overlay) = vertex
+		val newUV = forSprite(uv)
+		buffer.vertex(matrices.peek, pos.x, pos.y, pos.z)
+			.texture(newUV.u, newUV.v)
+			.color(color.r, color.g, color.b, color.a)
+			.light(light._1, light._2)
+			.overlay(overlay._1, overlay._2)
+			.normal(matrices.peek, normal.x, normal.y, normal.z)
+
+	// vtx0 ─── vtx1
+	//   │       │
+	// vtx3 ─── vtx2
+	def quad(vtx0: Vertex, vtx1: Vertex, vtx2: Vertex, vtx3: Vertex, normal: V3): Unit =
+		vert(vtx0, normal)
+		vert(vtx1, normal)
+		vert(vtx2, normal)
+		vert(vtx3, normal)
+
+	def rect(vtx0: Vertex, vtx1: Vertex, vtx2: Vertex, normal: V3): Unit =
+		// vtx0 ─── vtx1
+		//   │       │
+		// vtx3 ─── vtx2
+		val vtx3 = Vertex(pos = vtx0.pos + (vtx2.pos - vtx1.pos), uv = vtx0.uv + (vtx2.uv - vtx1.uv), color = vtx1.color, light = vtx1.light, overlay = vtx1.overlay)
+		quad(vtx0, vtx1, vtx2, vtx3, normal = normal)
+object Renderer:
+	def get(using VertexConsumer, MatrixStack): Renderer = Renderer(summon, summon)
+	def forLayer(layer: RenderLayer)(using p: VertexConsumerProvider, m: MatrixStack) = Renderer(p.getBuffer(layer), m)
+
 given v3Ext: AnyRef with
 	extension (v: V3)
 		def +(other: V3): V3 =
@@ -48,32 +88,7 @@ given uvExt: AnyRef with
 		def -(other: UV): UV =
 			(u = v.u - other.u, v = v.v - other.v)
 
-def vert(vertex: Vertex, normal: V3)(using c: VertexConsumer, stack: MatrixStack): Unit =
-	val Vertex(pos, uv, color, light, overlay) = vertex
-	c.vertex(stack.peek, pos.x, pos.y, pos.z)
-	.texture(uv.u, uv.v)
-	.color(color.r, color.g, color.b, color.a)
-	.light(light._1, light._2)
-	.overlay(overlay._1, overlay._1)
-	.normal(stack.peek, normal.x, normal.y, normal.z)
-
-// vtx0 ─── vtx1
-//   │       │
-// vtx3 ─── vtx2
-def quad(vtx0: Vertex, vtx1: Vertex, vtx2: Vertex, vtx3: Vertex, normal: V3)(using VertexConsumer, MatrixStack): Unit =
-	vert(vtx0, normal)
-	vert(vtx1, normal)
-	vert(vtx2, normal)
-	vert(vtx3, normal)
-
-def rect(vtx0: Vertex, vtx1: Vertex, vtx2: Vertex, normal: V3)(using VertexConsumer, MatrixStack): Unit =
-	// vtx0 ─── vtx1
-	//   │       │
-	// vtx3 ─── vtx2
-	val vtx3 = Vertex(pos = vtx0.pos + (vtx2.pos - vtx1.pos), uv = vtx0.uv + (vtx2.uv - vtx1.uv), color = vtx1.color, light = vtx1.light, overlay = vtx1.overlay)
-	quad(vtx0, vtx1, vtx2, vtx3, normal = normal)
-
-def withMatrices[T](body: => T)(using m: MatrixStack): T =
+inline def withMatrices[T](body: => T)(using m: MatrixStack): T =
 	m.push()
 	try
 		body
@@ -81,48 +96,66 @@ def withMatrices[T](body: => T)(using m: MatrixStack): T =
 		m.pop()
 
 def init(): Unit =
-	WorldRenderEvents.BEFORE_ENTITIES.register: ctx =>
-		given buf: VertexConsumer = ctx.consumers.getBuffer(TexturedRenderLayers.getEntityCutout)
-		given matrices: MatrixStack = ctx.matrixStack()
+	WorldRenderEvents.AFTER_ENTITIES.register: ctx =>
+		given matrices: MatrixStack = ctx.matrixStack
+		given VertexConsumerProvider = ctx.consumers
+		given r: Renderer = Renderer.forLayer(TexturedRenderLayers.getEntityCutout)
 		withMatrices:
 			matrices.translate(ctx.camera.getPos.negate)
 			var cur = BlockPos.Mutable()
+			RenderSystem.teardownOverlayColor()
 			for (k, i) <- AbstractRuneStorage.keys.zipWithIndex do
 				val c: AbstractRuneStorage = ctx.world.getComponent(k)
 				withMatrices:
 					val shift = RuneShift(i)
-					matrices.translate(shift.x / 4.0 - 0.5, shift.y / 8.0 - 0.5, shift.z / 4.0 - 0.5)
+					matrices.translate(shift.x / 4.0, shift.y / 8.0, shift.z / 4.0)
 					c.contents.forEach: (pos, rune) =>
 						cur.set(pos)
 						// TODO: more quads
-						quad(
-							Vertex(pos = (cur.getX + 0.25f, cur.getY + 0.625f, cur.getZ + 0.25f), uv = (rune.surface.getMinU, rune.surface.getMinV), color = (1, 1, 1, 1), light = (255, 255), overlay = (0, 15)),
-							Vertex(pos = (cur.getX + 0.25f, cur.getY + 0.625f, cur.getZ + 0.75f), uv = (rune.surface.getMinU, rune.surface.getMaxV), color = (1, 1, 1, 1), light = (255, 255), overlay = (0, 15)),
-							Vertex(pos = (cur.getX + 0.75f, cur.getY + 0.625f, cur.getZ + 0.75f), uv = (rune.surface.getMaxU, rune.surface.getMaxV), color = (1, 1, 1, 1), light = (255, 255), overlay = (0, 15)),
-							Vertex(pos = (cur.getX + 0.75f, cur.getY + 0.625f, cur.getZ + 0.25f), uv = (rune.surface.getMaxU, rune.surface.getMinV), color = (1, 1, 1, 1), light = (255, 255), overlay = (0, 15)),
-							normal = (0, 1, 0),
-						)
-						quad(
-							Vertex(pos = (cur.getX + 0.25f, cur.getY + 0.626f, cur.getZ + 0.25f), uv = (rune.sprite.getMinU, rune.sprite.getMinV), color = (1, 1, 1, 1), light = (255, 255), overlay = (0, 15)),
-							Vertex(pos = (cur.getX + 0.25f, cur.getY + 0.626f, cur.getZ + 0.75f), uv = (rune.sprite.getMinU, rune.sprite.getMaxV), color = (1, 1, 1, 1), light = (255, 255), overlay = (0, 15)),
-							Vertex(pos = (cur.getX + 0.75f, cur.getY + 0.626f, cur.getZ + 0.75f), uv = (rune.sprite.getMaxU, rune.sprite.getMaxV), color = (1, 1, 1, 1), light = (255, 255), overlay = (0, 15)),
-							Vertex(pos = (cur.getX + 0.75f, cur.getY + 0.626f, cur.getZ + 0.25f), uv = (rune.sprite.getMaxU, rune.sprite.getMinV), color = (1, 1, 1, 1), light = (255, 255), overlay = (0, 15)),
-							normal = (0, 1, 0),
-						)
+						withMatrices:
+							matrices.translate(cur.getX, cur.getY, cur.getZ)
+							val color: RGB = (1, 1, 1, 1)
+							val light: I2 = (255, 0)
+							val overlay: I2 = (0, 10) // magic number owo scary
+							r.sprite = Some(rune.surface)
+							r.quad(
+								Vertex(pos = (-0.25f, 0.125f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
+								Vertex(pos = (-0.25f, 0.125f, 0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.125f, 0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.125f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
+								normal = (0, 1, 0),
+							)
+							r.quad(
+								Vertex(pos = (-0.25f, 0f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
+								Vertex(pos = (-0.25f, 0.125f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.125f, -0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0f, -0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
+								normal = (0, 0, -1)
+							)
+							r.sprite = Some(rune.sprite)
+							r.quad(
+								Vertex(pos = (-0.25f, 0.126f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
+								Vertex(pos = (-0.25f, 0.126f, 0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.126f, 0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.126f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
+								normal = (0, 1, 0),
+							)
 
 class ModelBuilder extends ModelSupplier:
+	private var parent: Option[Identifier] = None
 	private val elements = JsonArray()
 	private val textures = JsonObject()
+	private val display = JsonObject()
 	opaque type Key = String
 	class Element private[ModelBuilder](faces: JsonObject):
 		def face(dir: Direction, texture: Key, uv: (from: UV, to: UV) = null, cullface: Direction = null, rotation: 0 | 90 | 180 | 270 = 0, tintindex: Int = -1): Unit =
 			if faces.has(dir.toString) then
 				throw IllegalArgumentException(s"Duplicate face $dir in element")
 			val faceObj = JsonObject()
-			faces.addProperty("texture", s"%$texture")
-			if uv != null then faces.add("uv", fromTuple((uv.from.u: Float, uv.from.v: Float, uv.to.u: Float, uv.to.v: Float)))
-			if rotation != 0 then faces.addProperty("rotation", rotation)
-			if tintindex >= 0 then faces.addProperty("tintindex", tintindex)
+			faceObj.addProperty("texture", s"#$texture")
+			if uv != null then faceObj.add("uv", fromTuple((uv.from.u: Float, uv.from.v: Float, uv.to.u: Float, uv.to.v: Float)))
+			if rotation != 0 then faceObj.addProperty("rotation", rotation)
+			if tintindex >= 0 then faceObj.addProperty("tintindex", tintindex)
 			faces.add(dir.toString, faceObj)
 	private def fromTuple(t: V3): JsonArray =
 		val ary = JsonArray()
@@ -160,13 +193,29 @@ class ModelBuilder extends ModelSupplier:
 			rotObject.addProperty("rescale", rotation.rescale)
 			el.add("rotation", rotObject)
 		val facesObj = JsonObject()
+		el.add("faces", facesObj)
 		elements.add(el)
-		Element(el)
+		Element(facesObj)
+	def parent(name: Identifier): Unit =
+		parent match
+			case None => parent = Some(name)
+			case Some(value) => throw IllegalArgumentException(s"Attempt to change parent to '$name', but it is already specified as '$value'")
+
+	def display(name: String, translation: V3, rotation: V3, scale: V3): Unit =
+		if display.has(name) then
+			throw IllegalArgumentException(s"Duplicate display $name")
+		val obj = JsonObject()
+		obj.add("rotation", fromTuple(rotation))
+		obj.add("translation", fromTuple(translation))
+		obj.add("scale", fromTuple(scale))
+		display.add(name, obj)
 
 	override def get: JsonElement =
 		val obj = JsonObject()
 		obj.add("textures", textures)
 		obj.add("elements", elements)
+		obj.add("display", display)
+		parent.foreach(i => obj.addProperty("parent", i.toString))
 		obj
 
 def datagenRune(rune: Rune)(using pack: FabricDataGenerator#Pack) =
@@ -178,10 +227,11 @@ def datagenRune(rune: Rune)(using pack: FabricDataGenerator#Pack) =
 				gen.register(rune.item.value)
 				gen.modelCollector.accept(ModelIds.getItemModelId(rune.item.value), {
 					val m = ModelBuilder()
+					m.parent(Identifier.ofVanilla("block/stone_pressure_plate"))
 					val surface = m.texture("surface", rune.surfaceSprite)
 					val sprite = m.texture("sprite", rune.spriteTexture)
-					val bottom = m.element(from = (4, 0, 4), to = (8, 2, 8))
-					bottom.face(Direction.UP, texture = surface, uv = (from = (0, 0), to = (1, 1)))
+					val bottom = m.element(from = (4, 0, 4), to = (12, 2, 12))
+					bottom.face(Direction.UP, texture = surface, uv = (from = (0, 0), to = (16, 16)))
 					m
 				})
 		}
@@ -189,6 +239,4 @@ def datagenRune(rune: Rune)(using pack: FabricDataGenerator#Pack) =
 
 def datagen(using gen: FabricDataGenerator): Unit =
 	given FabricDataGenerator#Pack = gen.createPack()
-	datagenRune(EmptyRune)
-	datagenRune(QuoteRune)
-	datagenRune(EndQuoteRune)
+	registryFor[Rune].forEach(datagenRune(_))

@@ -14,10 +14,21 @@ import scala.language.experimental.macros
 import scala.quoted.{Expr, Quotes, ToExpr, Type}
 import scala.reflect.ClassTag
 
-case class ModID(name: String)
+/**
+ * Helper type used with [[register]] for setting your mod ID.
+ * @param name Mod ID, pursuant to identifier rules.
+ */
+case class ModID(name: String):
+  Identifier.of(name, "any")
+
+/**
+ * Returns the mod ID of the current file.
+ */
 inline def modid(using m: ModID): String = m.name
 
 /**
+ * '''Deprecated''': The generated givens are hard to use in code. Derive [[HasRegistry]] instead.
+ *
  * This macro generates a registry for a class, allowing the [[register @register]] annotation to track its descendants.
  */
 @deprecated("@hasRegistry is hard to use correctly. Opt to derive HasRegistry instead.")
@@ -97,11 +108,16 @@ class hasRegistry extends MacroAnnotation:
  * Adds a hook to when a given object is registered by [[register @register]]. This could be used to, for example, add registrations to other registries (as [[Rune]] does).
  * @tparam T Object to listen for registrations on. This should be the *concrete type* of your object, not of the registry!
  */
-trait RegisterHook[T]:
+private[mica] trait RegisterHook[T]:
   def preRegister(target: T, key: Identifier)(using registry: Registry[? >: T]): Boolean = true
   def postRegister(target: T, key: Identifier)(using registry: Registry[? >: T]): Unit = ()
 
 private var registrarState: Option[mutable.Buffer[Expr[Unit]]] = Some(mutable.Buffer.empty)
+
+/**
+ * Registers the given value into the best registry for it. This macro may only be applied to `object` literals.
+ * @param key Combined with a [[ModID]] in scope to create the value's [[Identifier]]
+ */
 @compileTimeOnly("@register is expanded at compile-time")
 class register(key: String) extends MacroAnnotation:
   override def transform(using q: Quotes)(definition: q.reflect.Definition, companion: Option[q.reflect.Definition]): List[q.reflect.Definition] =
@@ -136,12 +152,40 @@ inline def trySummon[T]: Option[T] = compiletime.summonFrom:
 def liftOption[T: Type](expr: Option[Expr[T]])(using Quotes): Expr[Option[T]] = expr match
   case Some(value) => '{Some(${value})}
   case None => '{None}
-// exists at runtime
-val inits = mutable.Map.empty[String, Any]
-@compileTimeOnly("@register is expanded at compile-time")
 object register:
+  /**
+   * '''Implementation detail''' used to track [[register]]-blocks. Do not use.
+   * @deprecated Do not use.
+   */
+  private[register] val _inits = mutable.Map.empty[String, Any]
+
+  /**
+   * Executes all registrations created by [[register @register]] annotations and [[apply(R):R* register {...}]] blocks.
+   * {{{
+   * trait Foo derives HasRegistry
+   *
+   * @register("foo_impl")
+   * object FooImpl extends Foo
+   *
+   * def init() =
+   *   register()
+   * }}}
+   */
+  @compileTimeOnly("@register is expanded at compile-time")
   inline def apply(): Unit = ${ register.apply_impl }
-  inline def apply[R](value: => R): R = ${ register.apply_impl('value) }
+
+  /**
+   * Appends arbitrary code to the registration queue.
+   *
+   * > [!CAUTION]
+   * > If [[value]] references a local scope not visible from the [[apply():Unit* register()]] invocation, the compiler will crash!
+   *
+   * @param value
+   * @tparam R
+   * @return
+   */
+  @compileTimeOnly("@register is expanded at compile-time")
+  inline def apply(value: => Unit): Unit = ${ register.apply_impl('value) }
   private def apply_impl(using q: Quotes): Expr[Unit] =
     import q.reflect.*
     registrarState match
@@ -152,16 +196,15 @@ object register:
         report.error("Registrations have already been processed")
         '{()}
   end apply_impl
-  private def apply_impl[R: Type](body: Expr[R])(using q: Quotes): Expr[R] =
+  private def apply_impl(body: Expr[Unit])(using q: Quotes): Expr[Unit] =
     import q.reflect.*
     registrarState match
       case Some(l) =>
         val name = Symbol.freshName("register")
-        l += '{ inits(${Expr(name)}) = ${body} }
-        '{ inits(${Expr(name)}).asInstanceOf[R] }
+        l += body
       case None =>
         report.error("Registrations have already been processed")
-        '{??? : R}
+    '{()}
 
 trait HasRegistry[T]:
   given registryKey: RegistryKey[Registry[T]]

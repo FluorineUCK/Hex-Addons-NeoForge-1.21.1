@@ -40,21 +40,23 @@ val assetsArchive by tasks.register<Download>("assetsArchive") {
     overwrite(true)
     onlyIf { !dest.exists() }
 }
-val soundsDir by tasks.register<Sync>("sounds") {
+val soundsDir by tasks.register<Sync>("assets") {
     dependsOn(assetsArchive)
     inputs.file(assetsArchive.dest)
     val interest = "minecraft-assets-$minecraft_version/assets/minecraft/sounds"
     from(tarTree(assetsArchive.dest)) {
-        include("$interest/**")
         exclude("**/_list.json")
-        eachFile {
-            path = path.replace(interest, "")
-        }
     }
-    into("$buildDir/mcSounds")
+    val outDir = file("$buildDir/mc-assets")
+    into(outDir)
+    outputs.dir(outDir)
     // FIXME: hack
     doLast {
-        file("$buildDir/mcSounds/minecraft-assets-$minecraft_version").deleteRecursively()
+        outDir.listFiles().forEach {
+            it.listFiles().forEach {
+                it.renameTo(outDir.resolve(it.name))
+            }
+        }
     }
 }
 val synthSounds by tasks.register("synthSounds") {
@@ -102,6 +104,17 @@ val synthSounds by tasks.register("synthSounds") {
 
 base {
     archivesName.set(project.property("archives_base_name") as String)
+}
+
+sourceSets {
+    main {
+        scala {
+            srcDirs += file("src/main/java")
+        }
+        java {
+            srcDirs.clear()
+        }
+    }
 }
 
 val targetJavaVersion = 21
@@ -170,6 +183,8 @@ dependencies {
     include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}+$minecraft_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cca_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cca_version")!!)
+    include(modImplementation("io.github.0x3c50.renderer:renderer-fabric:2.1.2")!!)
+    //include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cca_version")!!)
 }
 
 object Statics {
@@ -270,9 +285,19 @@ tasks.processResources {
                         put("github", "https://github.com/dinosore-rs")
                     }
                 }
+                map {
+                    put("name", "afamiliarquiet")
+                    put("role", "stole your fops code") // she stole it first
+                    map("contact") {
+                        put("discord", "https://discord.com/users/813502272355958844")
+                        put("github", "https://github.com/afamiliarquiet")
+                    }
+                }
             }
             map("contact") {
-
+                put("issues", "https://codeberg.org/poollovernathan/mica/issues")
+                put("homepage", "https://codeberg.org/poollovernathan/mica")
+                put("sources", "git+https://codeberg.org/poollovernathan/mica")
             }
             put("license", "GPL-3.0")
             put("icon", "assets.mica/icon.png")
@@ -303,10 +328,8 @@ tasks.processResources {
                 put("fabric-language-scala", ">=${project.properties["scala_loader_version"]}")
                 put("fabric", "*")
                 put("minecraft", minecraft_version)
+//                put("cardinal-components-item", ">=$cca_version")
                 put("cardinal-components-world", ">=$cca_version")
-            }
-            map("breaks") {
-                put("eclipse", "*") // politics - mod has a weird HWID check I don't like
             }
             map("custom") {
                 array("cardinal-components") {
@@ -320,7 +343,16 @@ tasks.processResources {
         rename { "fabric.mod.json" }
     }
 
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+
     exclude("**/.cache/**")
+}
+
+tasks.register<ScalaDoc>("scaladocAll") {
+    dependsOn("classes")
+    dependsOn("clientClasses")
+    source(files("$buildDir/generated*Scala/**"))
+    destinationDir = file("$buildDir/docs/scaladoc")
 }
 
 tasks.named("ideaSyncTask") {
@@ -439,9 +471,8 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 tasks.withType<ScalaCompile> {
-    scalaCompileOptions.additionalParameters.add("-experimental")
-    scalaCompileOptions.additionalParameters.add("-explain-cyclic")
-//    scalaCompileOptions.additionalParameters.add("-Ydebug-cyclic")
+    scalaCompileOptions.additionalParameters.addAll(listOf("-experimental", "-explain-cyclic", "-Xprint-suspension", "-Ydebug", "-Xprint:typer"))
+    scalaCompileOptions.forkOptions.jvmArgs!!.add("-Xmx1G")
 }
 
 tasks.jar {
