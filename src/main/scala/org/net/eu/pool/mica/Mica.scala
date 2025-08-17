@@ -15,14 +15,17 @@ import net.minecraft.entity.effect.{StatusEffectInstance, StatusEffects}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.item.ItemStack
 import net.minecraft.loot.entry.ItemEntry
+import net.minecraft.network.codec.PacketCodecs
+import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.sound.{SoundCategory, SoundEvent, SoundEvents}
 import net.minecraft.state.property.Property
 import net.minecraft.text.TextColor
-import net.minecraft.util.Uuids
+import net.minecraft.util.{Hand, Rarity, Uuids}
 import net.minecraft.util.shape.VoxelShapes
 import net.minecraft.world.World.ExplosionSourceType
 import org.net.eu.pool.mica
+import org.net.eu.pool.mica.CraftTrinketRune.Effect
 import org.slf4j.{Logger, LoggerFactory}
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
 
@@ -792,6 +795,7 @@ object PosLiteral extends Rune:
 @register("teleport")
 object TeleportRune extends Rune:
   override type Data = RuneRef
+  override def surfaceSprite: Identifier = Rune.SPELL_TEXTURE
   @register("teleport")
   object Effect extends SideEffect:
     override type Data = (RuneRef, EntityRef)
@@ -807,6 +811,14 @@ object TeleportRune extends Rune:
         throw RuneError(Text.literal("Could not find ").append(summon[ValueType[EntityRef]].show(data._2)).append(" in the world"))(using data._1)
       val pos = entity.getPos
       entity.setPosition(data._1.floatPos)
+      entity match
+        case player: ServerPlayerEntity =>
+          val delta = pos.distanceTo(data._1.floatPos)
+          println(s"${player} moved ${delta} blocks by teleporting")
+          if delta >= 32 then
+            println("and gets the advancement")
+            val adv = player.getServer.getAdvancementLoader.get(Identifier.of(modid, "without_me"))
+            player.getAdvancementTracker.grantCriterion(adv, "mojang_won\'t_let_me_be")
       ((), pos)
     override def unexecute(data: (RuneRef, EntityRef), `return`: Unit, revert: Vec3d)(using world: World): Unit =
       data._2.entity.setPosition(revert)
@@ -839,6 +851,48 @@ given Codec[((RuneRef, BoxedThunk))] = RecordCodecBuilder.create: i =>
 
 given `given_Codec_java.lang.Double`: Codec[java.lang.Double] = Codec.DOUBLE
 
+val sideEffectComponent = ComponentType.builder().codec(codec[BoxedSideEffect]).packetCodec(PacketCodecs.codec(codec[BoxedSideEffect])).build()
+val runicTrinketItem =
+  val r = cursedRegister(Identifier.of("mica", "trinket"), Item.Settings().rarity(Rarity.UNCOMMON)):
+    new Item(_):
+      override def use(using world: World, user: PlayerEntity, hand: Hand): ActionResult =
+        val stack = user.getStackInHand(hand)
+        val effect = stack.get(sideEffectComponent)
+        try
+          effect.effect.execute(effect.data, user)
+          ActionResult.SUCCESS
+        catch case e: Exception =>
+          ActionResult.FAIL
+  r.register()
+  r.value
+
+@register("mk_trinket")
+private[mica] object CraftTrinketRune extends Rune:
+  override type Data = RuneRef
+  @register("mk_trinket/0")
+  object Frame extends ThunkFrame:
+    override type Data = (RuneRef, BoxedThunk)
+    override def accept[T: ValueType as v](data: (RuneRef, BoxedThunk), value: T): BoxedThunk = data._2.tag.accept(data._2.data, BoxedSideEffect(Effect, (data._1, v.cast[BoxedSideEffect](value).get)))
+  @register("mk_trinket")
+  object Effect extends SideEffect:
+    override type Data = (RuneRef, BoxedSideEffect)
+    override type Return = EntityRef
+    override type RevertData = Unit
+    override def check(data: (RuneRef, BoxedSideEffect))(using world: World): Unit = ()
+    override def execute(data: (RuneRef, BoxedSideEffect))(using world: World): (EntityRef, Unit) =
+      val stack = ItemStack(runicTrinketItem)
+      stack.set(sideEffectComponent, data._2)
+      val p = data._1.floatPos
+      val entity = ItemEntity(world, p.x, p.y, p.z, stack)
+      world.spawnEntity(entity)
+      (EntityRef(entity), ())
+    override def unexecute(data: (RuneRef, BoxedSideEffect), `return`: EntityRef, revert: Unit)(using world: World): Unit =
+      `return`.entity.discard()
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (RuneRef, List[(Rune, RuneRef)]) = (ref, rhs)
+  override def execute(data: RuneRef, frame: BoxedThunk): BoxedThunk = BoxedThunk(Frame, (data, frame))
+  register:
+    CraftTrinketRune.item.register()
+given Codec[(RuneRef, BoxedSideEffect)] = Codec.pair(codec[RuneRef], codec[BoxedSideEffect]).xmap(p => (p.getFirst, p.getSecond), p => Pair(p._1, p._2))
 @register("reveal")
 private[mica] object RevealRune extends Rune:
   override type Data = RuneRef
@@ -1216,4 +1270,5 @@ private[mica] class ComponentInitializer extends WorldComponentInitializer:
     *///undivert(1)
 def init(): Unit =
   runeProbe.register()
+  Registry.register(Registries.DATA_COMPONENT_TYPE, Identifier.of(modid, "effect"), sideEffectComponent)
   register()

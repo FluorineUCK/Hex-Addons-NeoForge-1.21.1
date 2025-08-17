@@ -5,20 +5,29 @@ import com.mojang.blaze3d.systems.RenderSystem
 import net.fabricmc.fabric.api.client.datagen.v1.provider.FabricModelProvider
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
+import net.fabricmc.fabric.api.datagen.v1.provider.FabricAdvancementProvider
 import net.fabricmc.fabric.api.renderer.v1.render.RenderLayerHelper
+import net.minecraft.advancement.criterion.{Criteria, ImpossibleCriterion}
+import net.minecraft.advancement.{Advancement, AdvancementCriterion, AdvancementDisplay, AdvancementDisplays, AdvancementEntry, AdvancementFrame, AdvancementRequirements, AdvancementRewards}
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.gl.RenderPipelines
 import net.minecraft.client.render.{BlockRenderLayer, OverlayTexture, RenderLayer, RenderLayers, TexturedRenderLayers, VertexConsumer, VertexConsumerProvider}
 import net.minecraft.client.texture.{Sprite, SpriteAtlasTexture, SpriteLoader}
 import net.minecraft.client.util.math.MatrixStack
-import net.minecraft.util.Identifier
+import net.minecraft.util.{AssetInfo, Identifier}
 import net.minecraft.util.math.{BlockPos, Direction, MathHelper}
 import org.net.eu.pool.mica.{AbstractRuneStorage, EmptyRune, EndQuoteRune, HasRegistry, QuoteRune, Rune, RuneShift, registryFor, given}
 import net.minecraft.client.data.{BlockStateModelGenerator, ItemModelGenerator, ItemModels, Model, ModelIds, ModelSupplier}
 import net.minecraft.client.render.item.model.ItemModel
+import net.minecraft.item.{ItemStack, Items}
+import net.minecraft.registry.RegistryWrapper
+import net.minecraft.text.Text
 import net.minecraft.util.math.Direction.Axis
 
+import java.util.Optional
+import java.util.function.Consumer
 import scala.util.chaining.scalaUtilChainingOps
+import scala.collection.convert.ImplicitConversions.given
 
 def blockAtlas = MinecraftClient.getInstance.getSpriteAtlas(SpriteAtlasTexture.BLOCK_ATLAS_TEXTURE).apply(_)
 
@@ -238,5 +247,31 @@ def datagenRune(rune: Rune)(using pack: FabricDataGenerator#Pack) =
 	)
 
 def datagen(using gen: FabricDataGenerator): Unit =
-	given FabricDataGenerator#Pack = gen.createPack()
+	given pack: FabricDataGenerator#Pack = gen.createPack()
 	registryFor[Rune].forEach(datagenRune(_))
+	pack.addProvider(
+		new FabricAdvancementProvider(_, _) {
+			override def generateAdvancement(wrapperLookup: RegistryWrapper.WrapperLookup, consumer: Consumer[AdvancementEntry]): Unit =
+				val rootId = Identifier.of("mica", "without_me")
+				consumer.accept(AdvancementEntry(
+					rootId,
+					Advancement(
+						parent = Optional.empty,
+						display = Optional.of(AdvancementDisplay(
+							icon = ItemStack(Items.ENDER_EYE),
+							title = Text.literal("Guess Who\'s Back, Back Again"),
+							description = Text.literal("Return to a Teleport Slate from over 32 blocks away"),
+							background = Optional.empty,
+							frame = AdvancementFrame.CHALLENGE,
+							showToast = true,
+							announceToChat = true,
+							hidden = true,
+						)),
+						rewards = AdvancementRewards.NONE,
+						criteria = java.util.Map.of("mojang_won\'t_let_me_be", AdvancementCriterion(Criteria.IMPOSSIBLE, ImpossibleCriterion.Conditions())),
+						requirements = AdvancementRequirements.allOf(Seq("mojang_won\'t_let_me_be")),
+						sendsTelemetryEvent = false
+					)
+				))
+		}
+	)
