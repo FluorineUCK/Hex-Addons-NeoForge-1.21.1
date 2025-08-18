@@ -25,6 +25,7 @@ import net.minecraft.util.{Hand, Rarity, Uuids}
 import net.minecraft.util.shape.VoxelShapes
 import net.minecraft.world.World.ExplosionSourceType
 import org.net.eu.pool.mica
+import org.net.eu.pool.mica.VoidRune.Frame
 import org.slf4j.{Logger, LoggerFactory}
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
 
@@ -534,6 +535,7 @@ case class BoxedThunk(tag: ThunkFrame, data: tag.Data):
       Some(asInstanceOf[BoxedThunk { val tag: to.type; }])
     else
       None
+  def accept[T: ValueType](value: T) = tag.accept(data, value)
 object BoxedThunk:
   inline def unapply[T](box: BoxedThunk): Option[(? <: Singleton & ThunkFrame { type Data = T; }, T)] =
     ???
@@ -789,7 +791,7 @@ given ValueType[(Rune, RuneRef)]:
   override def eq[U: ValueType as v](x: (Rune, RuneRef), y: U): Boolean = v.cast[(Rune, RuneRef)](y).exists(y => x._1 eq y._1)
   override def show(x: (Rune, RuneRef)): Text = Text.literal(registryFor[Rune].getId(x._1).toTranslationKey("mica.runes"))
 
-@register("fatboy_slim")
+@register("tone_indicator")
 object PosLiteral extends Rune:
   override type Data = RuneRef
   override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (RuneRef, List[(Rune, RuneRef)]) = (ref, rhs)
@@ -1329,7 +1331,7 @@ given ValueType[Vec3d]:
       x.x =~ y.x && x.y =~ y.y && x.z =~ y.z
   override def cast[R: ClassTag](x: Vec3d): Option[R] = super.cast(x)
 
-  override def show(x: Vec3d): Text = Text.literal(s"{${x.x}, ${x.y}, ${x.z}}")
+  override def show(x: Vec3d): Text = Text.literal(s"{${x.x}, ${x.y}, ${x.z}}").styled(_.withColor(0xad8d1a))
 
 inline def codec[T: Codec as c] = c
 
@@ -1354,6 +1356,24 @@ given `codec for references to entity attributes`: Codec[AttributeReference] =
 given `hey did you know attributes are values`: ValueType[AttributeReference]:
   override def eq[U: ValueType as v](x: AttributeReference, y: U): Boolean = v.cast[AttributeReference](y).exists(y => (x.uuid == y.uuid) && (x.attribute eq y.target))
   override def show(x: AttributeReference): Text = Text.translatable(x.attribute.getTranslationKey).styled(_.withColor(0x07b891))
+
+@register("void")
+object VoidRune extends SimpleRune:
+  @register("void/0")
+  object Frame extends ThunkFrame:
+    override type Data = BoxedThunk
+    override def accept[T: ValueType](data: BoxedThunk, value: T): BoxedThunk = data
+  override def execute(frame: BoxedThunk): BoxedThunk = BoxedThunk(Frame, frame)
+  register { item.register() }
+
+@register("twice")
+object TwiceRune extends SimpleRune:
+  @register("twice/0")
+  object Frame extends ThunkFrame:
+    override type Data = BoxedThunk
+    override def accept[T: ValueType](data: BoxedThunk, value: T): BoxedThunk = data.accept(value).accept(value)
+  override def execute(frame: BoxedThunk): BoxedThunk = BoxedThunk(Frame, frame)
+  register { item.register() }
 
 @register("nyaboom")
 object ExplosionRune extends BinaryRune:

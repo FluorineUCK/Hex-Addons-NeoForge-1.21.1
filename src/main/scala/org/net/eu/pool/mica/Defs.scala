@@ -33,6 +33,9 @@ import dev.onyxstudios.cca.api.v3.component.{Component, ComponentKey, ComponentR
 import dev.onyxstudios.cca.api.v3.world.WorldComponentFactoryRegistry
 // ]]>)
 
+given [T] => (reg: RegistryKey[? <: Registry[T]]) => Conversion[Identifier, RegistryKey[T]] = id => RegistryKey.of(reg, id)
+given [T]: Conversion[RegistryKey[T], Identifier] = _.getRegistry
+
 /**
  * Holds a deferred promise to add a value to a registry. This is returned by e.g. [[cursedRegister]] for you to call in your init function.
  *
@@ -285,7 +288,7 @@ trait Rune derives HasRegistry:
             b.setZ(b.getZ + 1)
           val h = RuneShift(q.getX, q.getY, q.getZ, context.getSide)
           given ref: RuneRef = RuneRef(b, h)
-          if ref.isEmpty && ref.neighbors.forall(_.isEmpty) then
+          if Rune.this != EmptyRune && ref.isEmpty && ref.neighbors.forall(_.isEmpty) then
             ref.rune = Rune.this
             try
               println(s"Loading placed NBT")
@@ -322,6 +325,28 @@ trait SimpleRune extends Rune:
   override def read(rhs: List[(Rune, RuneRef)])(using RuneRef, World): (Data, List[(Rune, RuneRef)]) = ((), rhs)
   override def execute(remainder: Unit, frame: BoxedThunk): BoxedThunk = execute(frame)
   def execute(frame: BoxedThunk): BoxedThunk
+
+sealed trait AnyRegistryKey:
+  type T
+  val key: RegistryKey[T]
+  def registry: Registry[T] = Registries.REGISTRIES.get(key.getRegistry).asInstanceOf[Registry[T]]
+  def value: Any = key.getValue
+object AnyRegistryKey:
+  def apply[T](key: RegistryKey[T]): AnyRegistryKey =
+    type _T = T
+    val _key = key
+    new AnyRegistryKey:
+      override type T = _T
+      override val key: RegistryKey[T] = _key
+  def apply[T](key: Identifier)(using RegistryKey[? <: Registry[T]]): AnyRegistryKey = apply(key: RegistryKey[T])
+  given Codec[AnyRegistryKey] = Identifier.CODEC.dispatch("registry", _.key.getRegistry, RegistryKey.createCodec(_).fieldOf("value").xmap(AnyRegistryKey(_), _.key.asInstanceOf[RegistryKey[Object]]))
+
+given [T]: RegistryKey[? <: Registry[T]] = Registries.REGISTRIES.getKey.asInstanceOf[RegistryKey[? <: Registry[T]]]
+
+@register("registry_key")
+given ValueType[AnyRegistryKey]:
+  override def eq[U: ValueType as v](x: AnyRegistryKey, y: U): Boolean = v.cast[AnyRegistryKey](y).contains(x)
+  override def show(x: AnyRegistryKey): Text = Text.translatable(x.key.toTranslationKey(x.key.getRegistry.toShortTranslationKey)).withColor(0x2dccfc)
 
 /**
  * Holder object for [[Rune! Rune]] registries and common values of [[Rune.surfaceSprite]].
