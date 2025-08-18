@@ -164,6 +164,7 @@ repositories {
     maven { url = uri("https://maven.ladysnake.org/releases/") }
     maven { url = uri("https://maven.gegy.dev/releases") }
     maven { url = uri("https://maven.skye.vg/") }
+    maven { url = uri("https://maven.krysztal.dev/releases") }
     exclusiveContent {
         forRepository {
             maven { url = uri("https://api.modrinth.com/maven/") }
@@ -182,13 +183,15 @@ dependencies {
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
     modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
 
-    include(modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")!!)
+    modImplementation("dev.krysztal:krysztal-language-scala:3.3.0+scala.3.7.1")
     include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}+$minecraft_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cca_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cca_version")!!)
     //include(modImplementation("io.github.0x3c50.renderer:renderer-fabric:2.1.2")!!)
-    mergedDeps(provider { "org.scala-lang:scala3-library_3:${scala.scalaVersion.get()}" })
-    include(provider { "org.scala-lang:scala3-library_3:${scala.scalaVersion.get()}" })
+    //mergedDeps("org.scala-lang:scala-library:2.12.21-M2")
+    //include("org.scala-lang:scala-library:2.12.21-M2")
+    //mergedDeps(provider { "org.scala-lang:scala3-library_3:${scala.scalaVersion.get()}" })
+    //include(provider { "org.scala-lang:scala3-library_3:${scala.scalaVersion.get()}" })
     //include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cca_version")!!)
 }
 
@@ -334,7 +337,7 @@ tasks.processResources {
             }
             map("depends") {
                 put("fabricloader", ">=${project.properties["loader_version"]}")
-                put("fabric-language-scala", ">=${project.properties["scala_loader_version"]}")
+                put("krysztal-language-scala", "3.3.0+scala.3.7.1")
                 put("fabric", "*")
                 put("minecraft", minecraft_version)
 //                put("cardinal-components-item", ">=$cca_version")
