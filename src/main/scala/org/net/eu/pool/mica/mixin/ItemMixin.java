@@ -11,16 +11,17 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Group;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(net.minecraft.item.Item.class)
-public class ItemMixin {
-    @Shadow @Final private RegistryEntry.Reference<Item> registryEntry;
+public abstract class ItemMixin {
+    @Shadow @Deprecated public abstract RegistryEntry.Reference<Item> getRegistryEntry();
 
-    @Inject(method = "useOnBlock", at = @At("HEAD"), cancellable = true)
+    @Inject(method = {"useOnBlock", "method_7884"}, at = @At("HEAD"), cancellable = true, remap = false)
     void useOnBlock(ItemUsageContext context, CallbackInfoReturnable<ActionResult> cir) {
-        if (registryEntry.isIn(ItemTags.PICKAXES)) {
+        if (getRegistryEntry().isIn(ItemTags.PICKAXES)) {
             JackBlack$.MODULE$.pickaxe(cir, context);
         }
     }

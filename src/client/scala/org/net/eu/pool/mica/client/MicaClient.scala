@@ -24,6 +24,7 @@ import net.minecraft.registry.RegistryWrapper
 import net.minecraft.text.Text
 import net.minecraft.util.math.Direction.Axis
 
+import java.nio.file.{Files, Path}
 import java.util.Optional
 import java.util.function.Consumer
 import scala.util.chaining.scalaUtilChainingOps
@@ -245,6 +246,11 @@ def datagenRune(rune: Rune)(using pack: FabricDataGenerator#Pack) =
 				})
 		}
 	)
+	val projectRoot = System.getenv("PROJECT_ROOT")
+	if projectRoot != null then
+		val texture = rune.spriteTexture
+		val textureFile = Path.of(s"$projectRoot/src/client/resources/assets/${texture.getNamespace}/textures/${texture.getPath}.png")
+		if !Files.exists(textureFile) then Files.createFile(textureFile)
 
 def datagen(using gen: FabricDataGenerator): Unit =
 	given pack: FabricDataGenerator#Pack = gen.createPack()

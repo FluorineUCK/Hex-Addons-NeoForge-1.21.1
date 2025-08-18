@@ -174,16 +174,21 @@ repositories {
     }
 }
 
+val mergedDeps by configurations.creating
+
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft("com.mojang:minecraft:$minecraft_version")
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
     modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
+
     include(modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")!!)
     include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}+$minecraft_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cca_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cca_version")!!)
-    include(modImplementation("io.github.0x3c50.renderer:renderer-fabric:2.1.2")!!)
+    //include(modImplementation("io.github.0x3c50.renderer:renderer-fabric:2.1.2")!!)
+    mergedDeps(provider { "org.scala-lang:scala3-library_3:${scala.scalaVersion.get()}" })
+    include(provider { "org.scala-lang:scala3-library_3:${scala.scalaVersion.get()}" })
     //include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cca_version")!!)
 }
 
@@ -242,6 +247,10 @@ loom {
         vmArg("-XX:+FlightRecorder")
         programArgs("--username", "PoolloverNathan")
     }
+}
+
+tasks.named<Jar>("jar") {
+    from(mergedDeps.resolve())
 }
 
 tasks.withType<ProcessResources> {

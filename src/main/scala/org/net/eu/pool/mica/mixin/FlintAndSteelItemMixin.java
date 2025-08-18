@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(FlintAndSteelItem.class)
 public class FlintAndSteelItemMixin {
-    @Inject(method = "useOnBlock", at = @At("HEAD"), cancellable = true)
+    @Inject(method = {"useOnBlock", "method_7884"}, at = @At("HEAD"), cancellable = true)
     void startRunes(ItemUsageContext context, CallbackInfoReturnable<ActionResult> cir) {
         JackBlack$.MODULE$.flintAndSTEEL_$bang$bang(cir, context);
     }
