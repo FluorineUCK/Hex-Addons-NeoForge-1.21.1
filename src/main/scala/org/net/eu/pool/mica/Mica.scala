@@ -1429,8 +1429,4 @@ def init(): Unit =
   println(s"Rune registry contains ${registryFor[Rune].size} runes")
   val config = Path.of("config/mica:extra_classes.txt")
   if Files.exists(config) then
-    Files.readAllLines(config).forEach: line =>
-      val ary = line.split("\t")
-      ary(0) match
-        case "INVOKE" =>
-          Class.forName(ary(1)).newInstance().asInstanceOf[Runnable].run()
+    logger.warn("Ignoring config/mica:extra_classes.txt as it is deprecated. Remove the file to silence this warning.")
