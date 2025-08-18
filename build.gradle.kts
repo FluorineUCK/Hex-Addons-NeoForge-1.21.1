@@ -186,7 +186,7 @@ dependencies {
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
     modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
 
-    modImplementation("dev.krysztal:krysztal-language-scala:3.3.0+scala.3.7.1")
+    include(modImplementation("dev.krysztal:krysztal-language-scala:3.3.0+scala.3.7.1")!!)
     include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}+$minecraft_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cca_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cca_version")!!)

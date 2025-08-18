@@ -6,6 +6,8 @@ import com.mojang.serialization
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import com.mojang.serialization.{Codec, DataResult, Decoder, DynamicOps, Encoder, Lifecycle, MapCodec}
 import it.unimi.dsi.fastutil.longs.{Long2FloatMap, Long2IntMap, Long2IntMaps, Long2IntOpenHashMap, Long2LongMap}
+import net.fabricmc.loader.api.{FabricLoader, Version}
+import net.minecraft.Bootstrap
 import net.minecraft.component.`type`.ProfileComponent
 import net.minecraft.component.{ComponentChanges, ComponentType, DataComponentTypes}
 import net.minecraft.entity.{Entity, ItemEntity, LivingEntity}
@@ -1431,12 +1433,19 @@ given nothingCodec: Codec[Nothing] = Codec.of(new Encoder[Nothing]:
 extension [T] (x: T)
   /**
    * Tries to cast the value to the given type.
-   * @tparam R The destination type of the cast.
+   * @tparam R The destination type of the cast.git status-
    * @return [[Some]] if the cast succeeds.
    */
   def cast[R: ClassTag]: Option[R] = x match
     case r: R => Some(r)
     case _ => None
+
+@tailrec
+def panic(reason: String): Nothing =
+  Bootstrap.SYSOUT.println(s"thread '${Thread.currentThread.getName}' panicked at '$reason'")
+  Bootstrap.SYSOUT.flush()
+  Runtime.getRuntime.halt(101)
+  panic(reason)
 
 private[mica] class ComponentInitializer extends WorldComponentInitializer:
   def registerWorldComponentFactories(factories: WorldComponentFactoryRegistry): Unit =
@@ -1447,6 +1456,11 @@ def init(): Unit =
   Registry.register(Registries.DATA_COMPONENT_TYPE, Identifier.of(modid, "effect"), sideEffectComponent)
   register()
   println(s"Rune registry contains ${registryFor[Rune].size} runes")
+  val klsContainer = FabricLoader.getInstance().getModContainer("krysztal-language-scala").orElseGet(() => panic("no such mod 'krysztal-language-scala'"))
+  val scalaVersion = klsContainer.getMetadata.getVersion.getFriendlyString.split("\\+scala\\.")(1)
+  println(s"KLS version = $scalaVersion")
+  if (Version.parse(scalaVersion) compareTo Version.parse("3.7.1")) < 0 then
+    panic("mod 'krysztal-language-scala' bundles outdated version of scala. please use at least 3.7.1")
   try
     val config = Path.of("config/mica:extra_classes.txt")
     if Files.exists(config) then
