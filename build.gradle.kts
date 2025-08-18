@@ -2,6 +2,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonArray
 import de.undercouch.gradle.tasks.download.Download
+import net.fabricmc.loom.task.prod.ClientProductionRunTask
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import kotlin.text.replace
 
@@ -177,6 +178,8 @@ repositories {
 
 val mergedDeps by configurations.creating
 
+tasks.register<ClientProductionRunTask>("prodClient")
+
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft("com.mojang:minecraft:$minecraft_version")
@@ -187,6 +190,7 @@ dependencies {
     include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}+$minecraft_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cca_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cca_version")!!)
+    include(modImplementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     //include(modImplementation("io.github.0x3c50.renderer:renderer-fabric:2.1.2")!!)
     //mergedDeps("org.scala-lang:scala-library:2.12.21-M2")
     //include("org.scala-lang:scala-library:2.12.21-M2")

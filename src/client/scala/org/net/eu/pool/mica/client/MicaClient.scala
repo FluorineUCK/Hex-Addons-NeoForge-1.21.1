@@ -107,49 +107,49 @@ inline def withMatrices[T](body: => T)(using m: MatrixStack): T =
 
 def init(): Unit =
 	WorldRenderEvents.BEFORE_ENTITIES.register: ctx =>
-//		given matrices: MatrixStack = ctx.matrixStack
-//		given VertexConsumerProvider = ctx.consumers
-//		given r: Renderer = Renderer.forLayer(TexturedRenderLayers.getEntityCutout)
-//		withMatrices:
-//			matrices.translate(ctx.camera.getPos.negate)
-//			var cur = BlockPos.Mutable()
-//			RenderSystem.teardownOverlayColor()
-//			for (k, i) <- AbstractRuneStorage.keys.zipWithIndex do
-//				val c: AbstractRuneStorage = ctx.world.getComponent(k)
-//				withMatrices:
-//					val shift = RuneShift(i)
-//					matrices.translate(shift.x / 4.0, shift.y / 8.0, shift.z / 4.0)
-//					c.contents.forEach: (pos, rune) =>
-//						cur.set(pos)
-//						// TODO: more quads
-//						withMatrices:
-//							matrices.translate(cur.getX, cur.getY, cur.getZ)
-//							val color: RGB = (1, 1, 1, 1)
-//							val light: I2 = (255, 0)
-//							val overlay: I2 = (0, 10) // magic number owo scary
-//							r.sprite = Some(rune.surface)
-//							r.quad(
-//								Vertex(pos = (-0.25f, 0.125f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (-0.25f, 0.125f, 0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (0.25f, 0.125f, 0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (0.25f, 0.125f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
-//								normal = (0, 1, 0),
-//							)
-//							r.quad(
-//								Vertex(pos = (-0.25f, 0f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (-0.25f, 0.125f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (0.25f, 0.125f, -0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (0.25f, 0f, -0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
-//								normal = (0, 0, -1)
-//							)
-//							r.sprite = Some(rune.sprite)
-//							r.quad(
-//								Vertex(pos = (-0.25f, 0.126f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (-0.25f, 0.126f, 0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (0.25f, 0.126f, 0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
-//								Vertex(pos = (0.25f, 0.126f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
-//								normal = (0, 1, 0),
-//							)
+		given matrices: MatrixStack = ctx.matrixStack
+		given VertexConsumerProvider = ctx.consumers
+		given r: Renderer = Renderer.forLayer(TexturedRenderLayers.getEntityCutout)
+		withMatrices:
+			matrices.translate(ctx.camera.getPos.negate)
+			var cur = BlockPos.Mutable()
+			RenderSystem.teardownOverlayColor()
+			for (k, i) <- AbstractRuneStorage.keys.zipWithIndex do
+				val c: AbstractRuneStorage = ctx.world.getComponent(k)
+				withMatrices:
+					val shift = RuneShift(i)
+					matrices.translate(shift.x / 4.0, shift.y / 8.0, shift.z / 4.0)
+					c.contents.forEach: (pos, rune) =>
+						cur.set(pos)
+						// TODO: more quads
+						withMatrices:
+							matrices.translate(cur.getX, cur.getY, cur.getZ)
+							val color: RGB = (1, 1, 1, 1)
+							val light: I2 = (255, 0)
+							val overlay: I2 = (0, 10) // magic number owo scary
+							r.sprite = Some(rune.surface)
+							r.quad(
+								Vertex(pos = (-0.25f, 0.125f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
+								Vertex(pos = (-0.25f, 0.125f, 0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.125f, 0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.125f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
+								normal = (0, 1, 0),
+							)
+							r.quad(
+								Vertex(pos = (-0.25f, 0f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
+								Vertex(pos = (-0.25f, 0.125f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.125f, -0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0f, -0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
+								normal = (0, 0, -1)
+							)
+							r.sprite = Some(rune.sprite)
+							r.quad(
+								Vertex(pos = (-0.25f, 0.126f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
+								Vertex(pos = (-0.25f, 0.126f, 0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.126f, 0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
+								Vertex(pos = (0.25f, 0.126f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
+								normal = (0, 1, 0),
+							)
 		()
 
 class ModelBuilder extends ModelSupplier:

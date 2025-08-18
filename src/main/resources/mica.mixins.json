@@ -8,6 +8,7 @@
     "FlintAndSteelItemMixin",
     "ItemMixin"
   ],
+  "plugin": "org.net.eu.pool.mica.Plugin",
   "injectors": {
     "defaultRequire": 1
   },
