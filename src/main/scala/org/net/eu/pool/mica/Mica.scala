@@ -1447,6 +1447,8 @@ def init(): Unit =
   Registry.register(Registries.DATA_COMPONENT_TYPE, Identifier.of(modid, "effect"), sideEffectComponent)
   register()
   println(s"Rune registry contains ${registryFor[Rune].size} runes")
-  val config = Path.of("config/mica:extra_classes.txt")
-  if Files.exists(config) then
-    logger.warn("Ignoring config/mica:extra_classes.txt as it is deprecated. Remove the file to silence this warning.")
+  try
+    val config = Path.of("config/mica:extra_classes.txt")
+    if Files.exists(config) then
+      logger.warn("Ignoring config/mica:extra_classes.txt as it is deprecated. Remove the file to silence this warning.")
+  catch case e => ()
