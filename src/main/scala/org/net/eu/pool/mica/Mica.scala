@@ -615,12 +615,31 @@ object QuoteRune extends Rune:
  * The registry key of the [[EmptyRune]]. This should be the default rune.
  */
 lazy val emptyRuneKey = summon[Registry[Rune]].getId(EmptyRune)
-private[mica] sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
+
+@register("double")
+object DoubleLiteralRune extends Rune:
+  override type Data = Double
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (Double, List[(Rune, RuneRef)]) = (java.lang.Double.longBitsToDouble(packLong(ref.heap0, ref.heap1)), rhs)
+  override def execute(data: Double, frame: BoxedThunk): BoxedThunk = frame.tag.accept(frame.data, data)
+  register:
+    DoubleLiteralRune.item.register()
+
+// forloop(n, 0, 767, <[[
+// pushdef(RuneStorage, <[[ifelse($#,0,<[[<[[$0]]>]]><[[n]]>,<[[$0]]><[[<[[(]]>]]><[[$@]]><[[)]]>)]]>)
+private[mica] case class RuneStorage(world: World,
+                                     contents: Long2ObjectMap[Rune] = Duck.mkMap(),
+                                     heap0: Long2IntMap = Long2IntOpenHashMap(),
+                                     heap1: Long2IntMap = Long2IntOpenHashMap(),
+                                     heap2: Long2IntMap = Long2IntOpenHashMap(),
+                                     heap3: Long2IntMap = Long2IntOpenHashMap()
+                                    ) extends AbstractRuneStorage:
+  override type Concrete = RuneStorage
+  contents.defaultReturnValue(EmptyRune)
   // ifversion(>=2100, <[[
   override def readData(c: ReadView): Unit =
   // ]]>, <[[
   override def readFromNbt(c: NbtCompound): Unit =
-  // ]]>)
+    // ]]>)
     if c.getBoolean("m", true) then
       contents.clear()
       heap0.clear()
@@ -674,7 +693,7 @@ private[mica] sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
   override def writeData(c: WriteView): Unit =
   // ]]>, <[[
   override def writeToNbt(c: NbtCompound): Unit =
-  // ]]>)
+    // ]]>)
     val palette = contents.groupMap(_._2)(_._1) - EmptyRune
     var i = 0
     for (k, v) <- palette do
@@ -691,26 +710,6 @@ private[mica] sealed trait ConcreteRuneStorage extends AbstractRuneStorage:
       c.putIntArray(s"x${i}2", x2.toArray.map(x => if x == null then 0 else x.intValue))
       c.putIntArray(s"x${i}3", x3.toArray.map(x => if x == null then 0 else x.intValue))
       i += 1
-
-@register("double")
-object DoubleLiteralRune extends Rune:
-  override type Data = Double
-  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (Double, List[(Rune, RuneRef)]) = (java.lang.Double.longBitsToDouble(packLong(ref.heap0, ref.heap1)), rhs)
-  override def execute(data: Double, frame: BoxedThunk): BoxedThunk = frame.tag.accept(frame.data, data)
-  register:
-    DoubleLiteralRune.item.register()
-
-// forloop(n, 0, 767, <[[
-// pushdef(RuneStorage, <[[ifelse($#,0,<[[<[[$0]]>]]><[[n]]>,<[[$0]]><[[<[[(]]>]]><[[$@]]><[[)]]>)]]>)
-private[mica] case class RuneStorage(world: World,
-                                     contents: Long2ObjectMap[Rune] = Duck.mkMap(),
-                                     heap0: Long2IntMap = Long2IntOpenHashMap(),
-                                     heap1: Long2IntMap = Long2IntOpenHashMap(),
-                                     heap2: Long2IntMap = Long2IntOpenHashMap(),
-                                     heap3: Long2IntMap = Long2IntOpenHashMap()
-                                    ) extends ConcreteRuneStorage:
-  override type Concrete = RuneStorage
-  contents.defaultReturnValue(EmptyRune)
 private[mica] object RuneStorage:
   val shift = RuneShift(n)
   given key: ComponentKey[RuneStorage] = ComponentRegistry.getOrCreate(Identifier.of("mica", "runes<[[]]>n"), classOf[RuneStorage])
@@ -831,6 +830,7 @@ object TeleportRune extends Rune:
           if delta >= 32 then
             println("and gets the advancement")
             val adv = player.getServer.getAdvancementLoader.get(Identifier.of(modid, "without_me"))
+            if adv == null || adv.value == null then panic(s"no such advancement '$modid:without_me'")
             player.getAdvancementTracker.grantCriterion(adv, "mojang_won\'t_let_me_be")
         case _ =>
       ((), pos)

@@ -151,21 +151,22 @@ fabricApi {
 
 repositories {
     mavenLocal()
-	maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
     maven { url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") }
     maven { url = uri("https://dl.cloudsmith.io/public/libp2p/jvm-libp2p/maven/") }
     maven { url = uri("https://artifacts.consensys.net/public/maven/maven/") }
     maven { url = uri("https://jitpack.io/") }
+    //maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
     maven { url = uri("https://maven.quiltmc.org/repository/release/") }
     maven { url = uri("https://maven.terraformersmc.com/") }
     maven { url = uri("https://maven.shedaniel.me/") }
     maven { url = uri("https://maven.blamejared.com/") }
     maven { url = uri("https://masa.dy.fi/maven/") }
-    maven { url = uri("https://maven.jamieswhiteshirt.com/libs-release/") }
+    //maven { url = uri("https://maven.jamieswhiteshirt.com/libs-release/") }
     maven { url = uri("https://maven.ladysnake.org/releases/") }
     maven { url = uri("https://maven.gegy.dev/releases") }
     maven { url = uri("https://maven.skye.vg/") }
     maven { url = uri("https://maven.krysztal.dev/releases") }
+    maven { url = uri("https://repo.sleeping.town/") }
     exclusiveContent {
         forRepository {
             maven { url = uri("https://api.modrinth.com/maven/") }
@@ -191,6 +192,7 @@ dependencies {
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cca_version")!!)
     include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cca_version")!!)
     include("maven.modrinth:cardinal-components-api:$cca_version")
+    modImplementation("folk.sisby:crunchy-crunchy-advancements:1.7.1+1.21")
     include(modImplementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
 //    include(modImplementation("maven.modrinth:familiar-magic:1.1.4")!!)
     //include(modImplementation("io.github.0x3c50.renderer:renderer-fabric:2.1.2")!!)
@@ -490,7 +492,11 @@ tasks.withType<JavaCompile>().configureEach {
 
 tasks.withType<ScalaCompile> {
     scalaCompileOptions.additionalParameters.addAll(listOf("-experimental", "-explain-cyclic", "-Xprint-suspension", "-Ydebug", "-Xprint:typer"))
-    scalaCompileOptions.forkOptions.jvmArgs!!.add("-Xmx1G")
+    scalaCompileOptions.forkOptions.jvmArgs!!.add("-Xmx12G")
+}
+
+tasks.withType<Zip> {
+    entryCompression = ZipEntryCompression.STORED
 }
 
 tasks.jar {
