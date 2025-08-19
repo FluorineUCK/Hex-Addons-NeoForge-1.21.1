@@ -1440,6 +1440,9 @@ extension [T] (x: T)
     case r: R => Some(r)
     case _ => None
 
+//@register("find_people")
+
+
 @tailrec
 def panic(reason: String): Nothing =
   Bootstrap.SYSOUT.println(s"thread '${Thread.currentThread.getName}' panicked at '$reason'")
