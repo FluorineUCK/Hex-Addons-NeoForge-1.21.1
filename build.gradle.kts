@@ -194,6 +194,9 @@ dependencies {
     include("maven.modrinth:cardinal-components-api:$cca_version")
     modImplementation("folk.sisby:crunchy-crunchy-advancements:1.7.1+1.21")
     include(modImplementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
+    modImplementation("net.modfest:fireblanket:0.8.3+toybox-1.21.7") { exclude("com.github.bawnorton.mixinsquared") }
+    include(modImplementation("com.github.Bawnorton.MixinSquared:mixinsquared-common:0.3.3")!!)
+    include(modImplementation("com.github.Bawnorton.MixinSquared:mixinsquared-fabric:0.3.3")!!)
 //    include(modImplementation("maven.modrinth:familiar-magic:1.1.4")!!)
     //include(modImplementation("io.github.0x3c50.renderer:renderer-fabric:2.1.2")!!)
     //mergedDeps("org.scala-lang:scala-library:2.12.21-M2")
