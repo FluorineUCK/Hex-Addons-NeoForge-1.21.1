@@ -5,6 +5,7 @@ import com.mojang.logging.LogUtils
 import com.mojang.serialization
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import com.mojang.serialization.{Codec, DataResult, Decoder, DynamicOps, Encoder, Lifecycle, MapCodec}
+import io.github.afamiliarquiet.be_a_doll.{BeADoll, BeAMaid}
 import it.unimi.dsi.fastutil.longs.{Long2FloatMap, Long2IntMap, Long2IntMaps, Long2IntOpenHashMap, Long2LongMap}
 import net.fabricmc.loader.api.{FabricLoader, Version}
 import net.minecraft.Bootstrap
@@ -12,8 +13,10 @@ import net.minecraft.component.`type`.ProfileComponent
 import net.minecraft.component.{ComponentChanges, ComponentType, DataComponentTypes}
 import net.minecraft.entity.{Entity, ItemEntity, LivingEntity}
 import net.minecraft.entity.attribute.{EntityAttribute, EntityAttributeInstance}
+import net.minecraft.entity.decoration.ArmorStandEntity
 import net.minecraft.entity.decoration.DisplayEntity.TextDisplayEntity
-import net.minecraft.entity.effect.{StatusEffectInstance, StatusEffects}
+import net.minecraft.entity.effect.{StatusEffect, StatusEffectCategory, StatusEffectInstance, StatusEffects}
+import net.minecraft.entity.passive.{GolemEntity, IronGolemEntity}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.item.ItemStack
 import net.minecraft.loot.entry.ItemEntry
@@ -646,10 +649,10 @@ private[mica] case class RuneStorage(world: World,
       heap1.clear()
       heap2.clear()
       heap3.clear()
-    val n = c.getLong("c", -1L)
-    if n != -1 then
+    val ct = c.getLong("c", -1L)
+    if ct != -1 then
       for
-        i <- 0L until n
+        i <- 0L until ct
         k = c.getLong(s"k$i", 0L)
         v = c.getInt(s"v$i", 0)
         p = c.getString(s"p$v", emptyRuneKey.toString)
@@ -884,6 +887,53 @@ object ThothRune extends BinaryRune:
     y.flatMap: y =>
       val frame = interpretRunes(insts, base)
       frame.tag.accept(frame.data, y.value).narrow(CollectFrame).get.data
+
+@register("healing")
+object HealEffect extends StatusEffect(StatusEffectCategory.BENEFICIAL, 0xc94628):
+  override def canApplyUpdateEffect(duration: Int, amplifier: Int): Boolean = true
+  override def applyUpdateEffect(world: ServerWorld, entity: LivingEntity, amplifier: Int): Boolean =
+    entity.heal((entity.getMaxHealth - entity.getHealth) * 0.04f)
+    true
+
+extension [T: Registry as r](x: T)
+  def registryEntry: RegistryEntry[T] = r.getEntry(x)
+
+given Registry[StatusEffect] = Registries.STATUS_EFFECT
+
+extension (ent: LivingEntity)
+  def isOrganic = ent match
+    case _: (GolemEntity | ArmorStandEntity) => false
+    case p: PlayerEntity =>
+      lazy val isDoll = BeAMaid.isDoll(p)
+      try !isDoll catch case _ => true
+    case _ => true
+
+@register("heal")
+object HealTargetRune extends UnaryRune:
+  register { item.register(); registerFrames() }
+  override type Arg0 = EntityRef
+  override type Return = BoxedSideEffect
+  @register("heal")
+  object Effect extends SideEffect:
+    override type Data = EntityRef
+    override type Return = Double
+    override type RevertData = Unit
+
+    override def check(data: EntityRef)(using world: World): Unit =
+      data.entity match
+        case l: LivingEntity =>
+          assert(l.isOrganic)
+    override def execute(data: EntityRef)(using world: World): (Double, Unit) =
+      data.entity match
+        case l: LivingEntity =>
+          l.addStatusEffect(StatusEffectInstance(HealEffect.registryEntry, 3*20, 0))
+          var healthPrediction = l.getHealth: Double
+          for i <- 0 until 3*20 do
+            healthPrediction += (l.getMaxHealth - l.getHealth) * 0.04
+          (healthPrediction, ())
+
+    override def unexecute(data: EntityRef, `return`: Double, revert: Unit)(using world: World): Unit = ???
+  override def run(x: EntityRef): BoxedSideEffect = BoxedSideEffect(Effect, x)
 
 case class Derived[T, R](value: T):
   private var state: Option[R] = None

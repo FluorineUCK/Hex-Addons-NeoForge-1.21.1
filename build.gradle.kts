@@ -197,6 +197,7 @@ dependencies {
     modImplementation("net.modfest:fireblanket:0.8.3+toybox-1.21.7") { exclude("com.github.bawnorton.mixinsquared") }
     include(modImplementation("com.github.Bawnorton.MixinSquared:mixinsquared-common:0.3.3")!!)
     include(modImplementation("com.github.Bawnorton.MixinSquared:mixinsquared-fabric:0.3.3")!!)
+    modImplementation("com.github.afamiliarquiet:be-a-doll:1.0.0")
 //    include(modImplementation("maven.modrinth:familiar-magic:1.1.4")!!)
     //include(modImplementation("io.github.0x3c50.renderer:renderer-fabric:2.1.2")!!)
     //mergedDeps("org.scala-lang:scala-library:2.12.21-M2")
