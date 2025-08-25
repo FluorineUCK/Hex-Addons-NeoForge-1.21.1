@@ -910,6 +910,7 @@ given ValueType[Seq[BoxedValue]]:
           m.append(" ").append(x.show)
         m.append(")")
       case Seq() => Text.literal("()").styled(_.withColor(color))
+  override def replace(x: Seq[BoxedValue])(action: [T: ValueType] => T => BoxedValue): BoxedValue = super.replace(x.map(v => v.given_ValueType_T.replace(v.value)(action)))(action)
 given ValueType[(Rune, RuneRef)]:
   val color = TextColor.fromRgb(0xffe46e)
   override def eq[U: ValueType as v](x: (Rune, RuneRef), y: U): Boolean = v.cast[(Rune, RuneRef)](y).exists(y => x._1 eq y._1)
@@ -1055,6 +1056,17 @@ object HealTargetRune extends UnaryRune:
     override def unexecute(data: EntityRef, `return`: Double, revert: Unit)(using world: World): Unit = ???
   override def run(x: EntityRef): BoxedSideEffect = BoxedSideEffect(Effect, x)
 
+trait RelocatableRune:
+  rune: Rune =>
+  def relocate(data: rune.Data): rune.Data
+
+// @register("relocate")
+// object RelocateRune extends UnaryRune:
+//   @register("relocate/0")
+//   object RelocateFrame0 extends ThunkFrame
+//   @register("relocate/1")
+//   object RelocateFrame1 extends ThunkFrame
+
 case class Derived[T, R](value: T):
   private var state: Option[R] = None
   def apply(f: T => R): R = state.getOrElse { state = Some(f(value)); state.get }
@@ -1073,6 +1085,7 @@ given ValueType[BoxedValue]:
     summon[ValueType[x.T]].show(x.value)
   override def present(x: BoxedValue): Boolean = x.given_ValueType_T.present(x.value)
   override def typeof(x: BoxedValue): ValueType[?] = x.given_ValueType_T
+  override def replace(x: BoxedValue)(action: [T: ValueType] => T => BoxedValue): BoxedValue = x.given_ValueType_T.replace(x.value)(action)
 
 @register("defer")
 object DeferEffectRune extends SimpleRune:

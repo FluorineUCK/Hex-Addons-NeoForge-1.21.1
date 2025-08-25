@@ -1,5 +1,8 @@
 # User-specific stuff
 .idea/
+.bloop/
+.metals/
+.vscode/
 
 *.iml
 *.ipr

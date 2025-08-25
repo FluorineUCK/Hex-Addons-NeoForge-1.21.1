@@ -456,6 +456,7 @@ trait ValueType[T: Codec]:
       case x: R => Some(x)
       case _ => None
   def show(x: T): Text
+  def replace(x: T)(action: [T: ValueType] => T => BoxedValue): BoxedValue = action(x)(using this)
   def codec: Codec[T] = summon
   def present(x: T): Boolean = true
   def typeof(x: T): ValueType[?] = this

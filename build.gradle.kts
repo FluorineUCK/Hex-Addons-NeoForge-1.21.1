@@ -12,7 +12,7 @@ plugins {
     id("maven-publish")
     id("idea")
     id("de.undercouch.download") version "5.6.0"
-    id("org.eu.net.pool.mc")
+    id("org.eu.net.pool.mc-plugin") version "0.1.0"
 }
 
 version = project.property("mod_version") as String

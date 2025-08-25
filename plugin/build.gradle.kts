@@ -12,6 +12,7 @@ plugins {
     `java-gradle-plugin`
     `kotlin-dsl`
     kotlin("jvm") version "2.0.21"
+    id("com.gradle.plugin-publish") version "1.2.1"
 }
 
 repositories {
@@ -27,9 +28,11 @@ tasks.withType<KotlinCompile> {
     compilerOptions.freeCompilerArgs.add("-Xcontext-receivers")
 }
 
+group = "org.eu.net.pool"
+version = "0.1.0"
 gradlePlugin {
     val plugin by plugins.creating {
-        id = "org.eu.net.pool.mc"
+        id = "org.eu.net.pool.mc-plugin"
         implementationClass = "org.eu.net.pool.mc_plugin.Plugin"
     }
 }
