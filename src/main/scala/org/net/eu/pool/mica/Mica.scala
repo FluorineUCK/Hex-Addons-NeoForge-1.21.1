@@ -394,9 +394,10 @@ object BoxRune extends Rune:
 
 class unsafe extends Annotation
 
-case class ByteRepr[+T] private[ByteRepr](bytes: IArray[Byte]) extends AnyVal
+case class ByteRepr[+T] private[ByteRepr](bytes: IArray[Byte]) extends AnyVal:
+  @unsafe def asReprOf[R]: ByteRepr[R] = this.asInstanceOf[ByteRepr[R]]
 object ByteRepr:
-  def fromBytes(bytes: IArray[Byte]): ByteRepr[?] = bytes.asInstanceOf[Array[Byte]]
+  def fromBytes(bytes: IArray[Byte]): ByteRepr[?] = ByteRepr(bytes)
   given [T] => Conversion[T, ByteRepr[T]] = x => ByteRepr(ByteArrayOutputStream().tap(ObjectOutputStream(_).writeObject(x)).toByteArray.assumeImmutable)
   given [T] => Conversion[ByteRepr[T], T] = x => ObjectInputStream(ByteArrayInputStream(x.bytes.assumeWillNotMutate)).readObject().asInstanceOf[T]
 import ByteRepr.given
@@ -411,20 +412,15 @@ object SidedExecutePacket:
 
 trait ServerExecutor private[mica]():
   def run(body: ClientExecutor ?=> Unit): Unit
-trait ClientExecutor private[mica](val player: ServerPlayerEntity):
-  def run(body: ServerExecutor ?=> Unit): Unit
-
-def toPlayer[R](player: ServerPlayerEntity)(body: ClientExecutor ?=> R): R =
-  given ClientExecutor(player):
-    override def run(body: => Unit): Unit =
-      ServerPlayNetworking.send(this.player, SidedExecutePacket[Unit](_ => body))
-  body
+class ClientExecutor private[mica](val player: ServerPlayerEntity):
+  def run(body: ServerExecutor ?=> Unit): Unit =
+    ServerPlayNetworking.send(this.player, SidedExecutePacket[ServerExecutor](body(using _)))
 
 def runOnServer(body: ClientExecutor ?=> Unit)(using e: ServerExecutor): Unit = e.run(body)
 def runOnClient(body: ServerExecutor ?=> Unit)(using e: ClientExecutor): Unit = e.run(body)
-def runOnClient(who: ServerPlayerEntity)(body: ServerExecutor ?=> Unit): Unit =
-  toPlayer(who):
-    runOnClient(_ ?=> body)
+def runOn(player: ServerPlayerEntity)(body: ServerExecutor ?=> Unit): Unit =
+  given ClientExecutor = ClientExecutor(player)
+  runOnClient(_ ?=> body)
 
 // divert(-1)
 trait ByteCodec[T]:
@@ -1338,7 +1334,16 @@ lazy val runeProbe: Registrar[Item] =
   cursedRegister(Identifier.of("mica", "rune_probe"), Item.Settings()):
     new Item(_):
       override def useOnBlock(ctx: ItemUsageContext): ActionResult =
-        Exception("Rune stuff").printStackTrace()
+        Exception("Rune stuff #1").printStackTrace()
+        ctx.getPlayer match
+          case p: ServerPlayerEntity =>
+            runOn(p):
+              Exception("Rune stuff #2").printStackTrace()
+              runOnServer:
+                Exception("Rune stuff #3").printStackTrace()
+                runOnClient:
+                  Exception("Rune stuff #4").printStackTrace()
+          case _ => println("no.")
         val p = ctx.getHitPos
         val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
         val b = BlockPos.Mutable(p.x, p.y, p.z)
@@ -1635,6 +1640,6 @@ def init(): Unit =
   catch case e => ()
   PayloadTypeRegistry.playC2S.register(SidedExecutePacket.id, SidedExecutePacket.codec)
   PayloadTypeRegistry.playS2C.register(SidedExecutePacket.id, SidedExecutePacket.codec)
-  ServerPlayNetworking.registerGlobalReceiver[SidedExecutePacket[ClientExecutor]](SidedExecutePacket.id, (p, ctx) => p.payload(toPlayer(ctx.player)))
+  ServerPlayNetworking.registerGlobalReceiver[SidedExecutePacket[ClientExecutor]](SidedExecutePacket.id, (p, ctx) => p.payload(ClientExecutor(ctx.player)))
 
 def println(msg: Any): Unit = logger.info(msg.toString)

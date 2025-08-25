@@ -8,4 +8,4 @@ import scala.runtime.FunctionXXL;
 import java.io.Serializable;
 
 @Mixin({forloop(n,1,22,<[[<[[scala.Function]]>n<[[.class, ]]>]]>)FunctionXXL.class, Product.class, Identifier.class})
-public class SerializableMixin implements Serializable {}
+public interface SerializableMixin extends Serializable {}
