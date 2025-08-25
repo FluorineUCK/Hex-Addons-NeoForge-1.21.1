@@ -3,9 +3,11 @@ package org.net.eu.pool.mica.client
 import com.google.gson.{JsonArray, JsonElement, JsonObject}
 import com.mojang.blaze3d.systems.RenderSystem
 import net.fabricmc.fabric.api.client.datagen.v1.provider.FabricModelProvider
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.{WorldRenderContext, WorldRenderEvents}
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.datagen.v1.provider.FabricAdvancementProvider
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.fabricmc.fabric.api.renderer.v1.render.RenderLayerHelper
 import net.minecraft.advancement.criterion.{Criteria, ImpossibleCriterion}
 import net.minecraft.advancement.{Advancement, AdvancementCriterion, AdvancementDisplay, AdvancementDisplays, AdvancementEntry, AdvancementFrame, AdvancementRequirements, AdvancementRewards}
@@ -16,11 +18,13 @@ import net.minecraft.client.texture.{Sprite, SpriteAtlasTexture, SpriteLoader}
 import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.util.{AssetInfo, Identifier}
 import net.minecraft.util.math.{BlockPos, Direction, MathHelper}
-import org.net.eu.pool.mica.{AbstractRuneStorage, EmptyRune, EndQuoteRune, HasRegistry, QuoteRune, Rune, RuneShift, registryFor, given}
+import org.net.eu.pool.mica.{AbstractRuneStorage, ClientExecutor, EmptyRune, EndQuoteRune, HasRegistry, QuoteRune, Rune, RuneShift, ServerExecutor, SidedExecutePacket, registryFor, given}
 import net.minecraft.client.data.{BlockStateModelGenerator, ItemModelGenerator, ItemModels, Model, ModelIds, ModelSupplier}
 import net.minecraft.client.render.item.model.ItemModel
 import net.minecraft.item.{ItemStack, Items}
+import net.minecraft.network.packet.CustomPayload
 import net.minecraft.registry.RegistryWrapper
+import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
 import net.minecraft.util.math.Direction.Axis
 
@@ -252,6 +256,11 @@ def datagenRune(rune: Rune)(using pack: FabricDataGenerator#Pack) =
     val textureFile = Path.of(s"$projectRoot/src/client/resources/assets/${texture.getNamespace}/textures/${texture.getPath}.png")
     if !Files.exists(textureFile) then Files.createFile(textureFile)
 
+given ServerExecutor:
+  override def run(body: ClientExecutor ?=> Unit): Unit =
+    val packet = SidedExecutePacket[ClientExecutor](body(using _))
+    ClientPlayNetworking.send(packet)
+
 def datagen(using gen: FabricDataGenerator): Unit =
   given pack: FabricDataGenerator#Pack = gen.createPack()
   registryFor[Rune].forEach(datagenRune(_))
@@ -282,4 +291,5 @@ def datagen(using gen: FabricDataGenerator): Unit =
     }
   )
 
-def init() = println("new dummy client init")
+def init() =
+  ClientPlayNetworking.registerGlobalReceiver[SidedExecutePacket[ServerExecutor]](SidedExecutePacket.id, (p, ctx) => p.payload(summon))

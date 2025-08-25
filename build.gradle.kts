@@ -1,8 +1,7 @@
-import com.google.gson.Gson
-import com.google.gson.JsonObject
-import com.google.gson.JsonArray
 import de.undercouch.gradle.tasks.download.Download
 import net.fabricmc.loom.task.prod.ClientProductionRunTask
+import org.eu.net.pool.mc_plugin.Environment
+import org.eu.net.pool.mc_plugin.JsonDsl
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import kotlin.text.replace
 
@@ -13,19 +12,12 @@ plugins {
     id("maven-publish")
     id("idea")
     id("de.undercouch.download") version "5.6.0"
+    id("org.eu.net.pool.mc")
 }
 
 version = project.property("mod_version") as String
 group = project.property("maven_group") as String
-val minecraft_version: String by project.properties
 val cca_version by lazy { project.property("cca_version") as String }
-
-val serialVersion = minecraft_version.let {
-    val (maj, min, pat) = it.toString().split('.')
-    min.toInt() * 100 + pat.toInt()
-}
-
-project.buildDir = file("build$serialVersion")
 
 fun <T> List<T>.uncons() = first() to drop(1)
 run {
@@ -41,7 +33,7 @@ val assetsArchive by tasks.register<Download>("assetsArchive") {
     overwrite(true)
     onlyIf { !dest.exists() }
 }
-val soundsDir by tasks.register<Sync>("assets") {
+val assetsDir by tasks.register<Sync>("assets") {
     dependsOn(assetsArchive)
     inputs.file(assetsArchive.dest)
     val interest = "minecraft-assets-$minecraft_version/assets/minecraft/sounds"
@@ -61,7 +53,7 @@ val soundsDir by tasks.register<Sync>("assets") {
     }
 }
 val synthSounds by tasks.register("synthSounds") {
-    dependsOn(soundsDir)
+    dependsOn(assetsDir)
     val inDir = "$buildDir/mcSounds"
     val outDir = "$buildDir/generatedSounds"
     inputs.dir(inDir)
@@ -177,8 +169,6 @@ repositories {
     }
 }
 
-val mergedDeps by configurations.creating
-
 tasks.register<ClientProductionRunTask>("prodClient")
 
 dependencies {
@@ -207,65 +197,11 @@ dependencies {
     //include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cca_version")!!)
 }
 
-object Statics {
-    val File.wslPath
-        get() = path.replace('\\', '/').replace(Regex("^([A-Z]):")) { g -> "/mnt/${g.groupValues[1].lowercase()}" }
-}
-
-@DslMarker
-annotation class JsonDsl {
-    sealed interface Element
-    @JsonDsl
-    class Object(val element: JsonObject = JsonObject()): Element {
-        fun put(key: String, value: String) {
-            element.addProperty(key, value)
-        }
-        fun put(key: String, value: Number) {
-            element.addProperty(key, value)
-        }
-        fun put(key: String, value: Boolean) {
-            element.addProperty(key, value)
-        }
-        fun array(key: String, action: JsonDsl.Array.() -> Unit) {
-            element.add(key, JsonArray().also { Array(it).action() })
-        }
-        fun map(key: String, action: Object.() -> Unit) {
-            element.add(key, JsonObject().also { Object(it).action() })
-        }
-
-        override fun toString(): String = Gson().toJson(element)
-    }
-    @JsonDsl
-    class Array(val element: JsonArray = JsonArray()): Element {
-        fun put(value: String) {
-            element.add(value)
-        }
-        fun put(value: Number) {
-            element.add(value)
-        }
-        fun put(value: Boolean) {
-            element.add(value)
-        }
-        fun array(action: JsonDsl.Array.() -> Unit) {
-            element.add(JsonArray().also { Array(it).action() })
-        }
-        fun map(action: Object.() -> Unit) {
-            element.add(JsonObject().also { Object(it).action() })
-        }
-
-        override fun toString(): String = Gson().toJson(element)
-    }
-}
-
 loom {
     runs["client"].apply {
         vmArg("-XX:+FlightRecorder")
         programArgs("--username", "PoolloverNathan")
     }
-}
-
-tasks.named<Jar>("jar") {
-    from(mergedDeps.resolve())
 }
 
 tasks.withType<ProcessResources> {
@@ -279,96 +215,61 @@ tasks.withType<ProcessResources> {
     filteringCharset = "UTF-8"
 }
 
+preprocessor {
+    sourceSets.all {
+        processTask<JavaCompile>("java")
+        processTask<KotlinCompile>("kotlin")
+        processTask<ScalaCompile>("scala")
+    }
+}
+
 tasks.processResources {
-    from(resources.text.fromString(
-        JsonDsl.Object().apply {
-            put("schemaVersion", 1)
-            put("id", "mica")
-            put("version", version.toString())
-            put("name", "Mica")
-            put("description",
-                file("README.md").readText().split("<!-- summary -->")[1].lineSequence().first().replace("\\", "\\\\")
-                    .replace("\"", "\\\"").trim()
-            )
-            array("authors") {
-                map {
-                    put("name", "PoolloverNathan")
-                    map("contact") {
-                        put("discord", "https://discord.com/users/402104961812660226")
-                        put("github", "https://github.com/PoolloverNathan")
-                        put("codeberg", "https://github.com/PoolloverNathan")
-                    }
-                }
+    preprocessor {
+        fabricMod("mica", version.toString()) {
+            name = "Mica"
+            description = file("README.md").readText().split("<!-- summary -->")[1].lineSequence().first().replace("\\", "\\\\").replace("\"", "\\\"").trim()
+            icon = "assets/mica/icon.png"
+            author("PoolloverNathan") {
+                put("discord", "https://discord.com/users/402104961812660226")
+                put("github", "https://github.com/PoolloverNathan")
+                put("codeberg", "https://github.com/PoolloverNathan")
             }
-            array("contributors") {
-                map {
-                    put("name", "dinosore_rs")
-                    put("role", "textures")
-                    map("contact") {
-                        put("discord", "https://discord.com/users/219925949309779970")
-                        put("github", "https://github.com/dinosore-rs")
-                    }
-                }
-                map {
-                    put("name", "afamiliarquiet")
-                    put("role", "stole your fops code") // she stole it first
-                    map("contact") {
-                        put("discord", "https://discord.com/users/813502272355958844")
-                        put("github", "https://github.com/afamiliarquiet")
-                    }
-                }
+            contributor("dinosore_rs", "textures") {
+                put("discord", "https://discord.com/users/219925949309779970")
+                put("github", "https://github.com/dinosore-rs")
             }
-            map("contact") {
-                put("issues", "https://codeberg.org/poollovernathan/mica/issues")
-                put("homepage", "https://codeberg.org/poollovernathan/mica")
-                put("sources", "git+https://codeberg.org/poollovernathan/mica")
+            contributor("afamiliarquiet", "stole your fops code" /* it stole it first */) {
+                put("discord", "https://discord.com/users/813502272355958844")
+                put("github", "https://github.com/afamiliarquiet")
             }
-            put("license", "GPL-3.0")
-            put("icon", "assets.mica/icon.png")
-            put("environment", "*")
-            map("entrypoints") {
-                array("fabric-datagen") {
-                    put("org.net.eu.pool.mica.client.MicaClient\$package::datagen")
-                }
-                array("client") {
-                    put("org.net.eu.pool.mica.client.MicaClient\$package::init")
-                }
-                array("main") {
-                    put("org.net.eu.pool.mica.Mica\$package::init")
-                }
-                array("cardinal-components") {
-                    put("org.net.eu.pool.mica.ComponentInitializer")
-                }
-            }
-            array("mixins") {
-                put("mica.mixins.json")
-                map {
-                    put("config", "mica.client.mixins.json")
-                    put("environment", "client")
-                }
-            }
-            map("depends") {
-                put("fabricloader", ">=${project.properties["loader_version"]}")
-                put("krysztal-language-scala", "3.3.0+scala.3.7.1")
-                put("fabric", "*")
-                put("minecraft", minecraft_version)
-//                put("cardinal-components-item", ">=$cca_version")
-                put("cardinal-components-world", ">=$cca_version")
-            }
-            map("custom") {
+            contact("issues", "https://codeberg.org/poollovernathan/mica/issues")
+            contact("homepage", "https://codeberg.org/poollovernathan/mica")
+            contact("sources", "git+https://codeberg.org/poollovernathan/mica")
+
+            entrypoint("org.net.eu.pool.mica.Mica\$package::init")
+            entrypoint("org.net.eu.pool.mica.client.MicaClient\$package::init", Environment.Client)
+            entrypoint("fabric-datagen", "org.net.eu.pool.mica.client.MicaClient\$package::datagen")
+            entrypoint("cardinal-components", "org.net.eu.pool.mica.ComponentInitializer")
+            mixins("mica.mixins.json")
+            mixins("mica.client.mixins.json", Environment.Client)
+
+            depends("fabricloader", ">=${project.properties["loader_version"]}")
+            depends("krysztal-language-scala", "3.3.0+scala.3.7.1")
+            depends("fabric", "*")
+            depends("minecraft", minecraft_version)
+            //depends("cardinal-components-item", ">=$cca_version")
+            depends("cardinal-components-world", ">=$cca_version")
+
+            custom {
                 array("cardinal-components") {
                     for (i in 0..767) {
                         put("mica:runes$i")
                     }
                 }
             }
-        }.toString()
-    )) {
-        rename { "fabric.mod.json" }
+        }
     }
-
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
-
     exclude("**/.cache/**")
 }
 
@@ -380,109 +281,7 @@ tasks.register<ScalaDoc>("scaladocAll") {
 }
 
 tasks.named("ideaSyncTask") {
-    dependsOn("runDatagen")
-}
-
-abstract class FrozenFile: DefaultTask() {
-    @get:InputFiles val macroFiles: ListProperty<RegularFile> = project.objects.listProperty()
-    @get:OutputFile val frozenFile: Property<RegularFile> = project.objects.fileProperty()
-    @get:Input val globals: MapProperty<String, String> = project.objects.mapProperty()
-    init {
-        inputs.files(macroFiles)
-        inputs.property("globals", globals)
-        outputs.file(frozenFile)
-    }
-    @TaskAction
-    fun run() {
-        project.exec {
-            Statics.run {
-                val args = mutableListOf("m4", "-F", frozenFile.get().asFile.wslPath)
-                globals.get().forEach { k, v ->
-                    args.add("-D$k=$v")
-                }
-                macroFiles.get().forEach {
-                    args.add(it.asFile.wslPath)
-                }
-                commandLine = args
-            }
-        }
-    }
-}
-
-private val makeFrozen = {
-    open class Task @Inject constructor() : FrozenFile() {
-        @Input
-        @Option(description = "Run the build in seed mode. This compiles only the portion of source needed to bootstrap actual compilation (e.g. macros).")
-        var seed: Boolean = false
-    }
-    tasks.register<Task>("freezeMacros", Task::class.java) {
-        macroFiles.add(project.layout.projectDirectory.file("macros.m4"))
-        frozenFile = project.layout.buildDirectory.file("macros.m4f")
-        globals.put("minecraft_version", serialVersion.toString())
-        globals.put("SEED", provider { if (seed) "1" else "0" })
-    }
-}()
-
-sourceSets.all {
-    fun processTask(lang: String, body: Pair<String, Task>.(Provider<Directory>) -> Unit) {
-        val inDir = project.layout.projectDirectory.dir("src/${this@all.name}/$lang")
-        val outDir = project.layout.buildDirectory.dir(getTaskName("generated", lang))
-        val frozen = project.layout.buildDirectory.file("macros.m4f")
-        val task by tasks.register(getTaskName("process", lang)) {
-            inputs.dir(inDir).optional()
-            inputs.file(frozen)
-            dependsOn(makeFrozen)
-            outputs.dir(outDir)
-			onlyIf { file(inDir).exists() }
-            doLast {
-                fileTree(inDir).files.forEach {
-                    file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").parentFile.mkdirs()
-                    Statics.run {
-                        exec {
-                            commandLine("bash", "-c", "m4 -R ${frozen.get().asFile.wslPath} ${it.wslPath}")
-                            standardOutput = file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").outputStream()
-                        }
-                    }
-                }
-            }
-        }
-        idea {
-            module {
-                generatedSourceDirs.add(outDir.get().asFile)
-            }
-        }
-        (getCompileTaskName(lang) to task).body(outDir)
-    }
-    processTask("java") {
-        tasks.named<JavaCompile>(first) {
-            inputs.property("minecraft_version", serialVersion)
-            inputs.property("seed", project.properties["seed"])
-            dependsOn(second)
-            doFirst {
-                setSource(it)
-            }
-        }
-    }
-    processTask("kotlin") {
-        tasks.named<KotlinCompile>(first) {
-            inputs.property("minecraft_version", serialVersion)
-            inputs.property("seed", project.properties["seed"])
-            dependsOn(second)
-            doFirst {
-                setSource(it)
-            }
-        }
-    }
-    processTask("scala") {
-        tasks.named<ScalaCompile>(first) {
-            inputs.property("minecraft_version", serialVersion)
-            inputs.property("seed", project.properties["seed"])
-            dependsOn(second)
-            doFirst {
-                setSource(it)
-            }
-        }
-    }
+//    dependsOn("runDatagen")
 }
 
 tasks.withType<JavaCompile>().configureEach {

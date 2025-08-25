@@ -310,7 +310,7 @@ trait Rune derives HasRegistry:
             println("nah")
             ActionResult.PASS
 
-  def computeNeighbors(using r: RuneRef): Set[RuneRef] = Set(r.north.north, r.east.east, r.south.south, r.west.west)
+  def computeNeighbors(using r: RuneRef): Set[RuneRef] = r.adjacent
   def ignite(using r: RuneRef, ci: CallbackInfoReturnable[ActionResult])(ctx: ItemUsageContext): Unit = ()
   def fillHeap(using RuneRef, PlayerEntity, World)(): Unit = ()
 
@@ -402,7 +402,7 @@ case class RuneRef(pos: BlockPos, shift: RuneShift):
       heap2 = 0
       heap3 = 0
     shift.storage(pos) = r
-  def isEmpty(using World) = rune == null || rune == EmptyRune
+  def isEmpty(using World): Boolean = rune == null || rune == EmptyRune
   def heap0(using World): Int = shift.storage.heap0.get(pos.asLong)
   def heap0_=(r: Int)(using World): Unit = shift.storage.heap0.put(pos.asLong, r)
   def heap1(using World): Int = shift.storage.heap1.get(pos.asLong)
@@ -412,13 +412,20 @@ case class RuneRef(pos: BlockPos, shift: RuneShift):
   def heap3(using World): Int = shift.storage.heap3.get(pos.asLong)
   def heap3_=(r: Int)(using World): Unit = shift.storage.heap3.put(pos.asLong, r)
 
-  def north = offset(Direction.NORTH)
-  def south = offset(Direction.SOUTH)
-  def east = offset(Direction.EAST)
-  def west = offset(Direction.WEST)
+  def north: RuneRef = offset(Direction.NORTH)
+  def south: RuneRef = offset(Direction.SOUTH)
+  def east: RuneRef = offset(Direction.EAST)
+  def west: RuneRef = offset(Direction.WEST)
 
-  def neighbors = Set(north, east, south, west, north.east, north.west, south.east, south.west)
-  def adjacent = Set(north.north, east.east, south.south, west.west)
+  lazy val neighbors: Set[RuneRef] = Set(
+    north,      east,       south,      west,
+    north.east, north.west, south.east, south.west
+  )
+  lazy val adjacent: Set[RuneRef] = Set(
+    north.north,      east.east,       south.south,      west.west,
+    north.north.east, east.east.north, south.south.east, west.west.north,
+    north.north.west, east.east.south, south.south.west, west.west.south,
+  )
 
 private[mica] trait AbstractRuneStorage extends Component, AutoSyncedComponent:
   type Concrete <: AbstractRuneStorage
@@ -442,7 +449,6 @@ object AbstractRuneStorage:
   private[mica] val keys: Array[ComponentKey[? <: AbstractRuneStorage]] = Array.fill(768)(null)
   def get(world: World, shift: RuneShift): AbstractRuneStorage = keys(shift.value).get(world)
   def sync(world: World, shift: RuneShift): Unit = keys(shift.value).sync(world)
-
 trait ValueType[T: Codec]:
   def eq[U: ValueType](x: T, y: U): Boolean
   def cast[R: ClassTag](x: T): Option[R] =
@@ -451,5 +457,8 @@ trait ValueType[T: Codec]:
       case _ => None
   def show(x: T): Text
   def codec: Codec[T] = summon
+  def present(x: T): Boolean = true
+  def typeof(x: T): ValueType[?] = this
+trait UntypedValue
 object ValueType:
   given HasRegistry[ValueType[?]] = HasRegistry.derived

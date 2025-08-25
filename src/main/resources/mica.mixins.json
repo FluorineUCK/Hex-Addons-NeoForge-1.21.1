@@ -6,7 +6,9 @@
   "mixins": [
     "BrainMixin",
     "FlintAndSteelItemMixin",
-    "ItemMixin"
+    "ItemMixin",
+    "SerializableMixin",
+    "ServerPlayNetworkingContextMixin"
   ],
   "plugin": "org.net.eu.pool.mica.Plugin",
   "injectors": {

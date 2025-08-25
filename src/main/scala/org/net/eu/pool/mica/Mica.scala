@@ -5,8 +5,12 @@ import com.mojang.logging.LogUtils
 import com.mojang.serialization
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import com.mojang.serialization.{Codec, DataResult, Decoder, DynamicOps, Encoder, Lifecycle, MapCodec}
+import io.github.afamiliarquiet.be_a_doll.item.DollcraftItem
+import io.github.afamiliarquiet.be_a_doll.mixin.shoulder_riding.OopsDollDeletedYouPlayerManagerMixin
 import io.github.afamiliarquiet.be_a_doll.{BeADoll, BeAMaid}
+import io.netty.buffer.ByteBuf
 import it.unimi.dsi.fastutil.longs.{Long2FloatMap, Long2IntMap, Long2IntMaps, Long2IntOpenHashMap, Long2LongMap}
+import net.fabricmc.fabric.api.networking.v1.{PayloadTypeRegistry, ServerPlayNetworking}
 import net.fabricmc.loader.api.{FabricLoader, Version}
 import net.minecraft.Bootstrap
 import net.minecraft.component.`type`.ProfileComponent
@@ -20,12 +24,14 @@ import net.minecraft.entity.passive.{GolemEntity, IronGolemEntity}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.item.ItemStack
 import net.minecraft.loot.entry.ItemEntry
-import net.minecraft.network.codec.PacketCodecs
-import net.minecraft.server.network.ServerPlayerEntity
+import net.minecraft.network.PacketByteBuf
+import net.minecraft.network.codec.{PacketCodec, PacketCodecs}
+import net.minecraft.network.packet.CustomPayload
+import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntity}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.sound.{SoundCategory, SoundEvent, SoundEvents}
 import net.minecraft.state.property.Property
-import net.minecraft.text.{TextCodecs, TextColor, Texts}
+import net.minecraft.text.{MutableText, TextCodecs, TextColor, Texts}
 import net.minecraft.util.{Hand, Rarity, Uuids}
 import net.minecraft.util.shape.VoxelShapes
 import net.minecraft.world.World.ExplosionSourceType
@@ -34,6 +40,7 @@ import org.net.eu.pool.mica.VoidRune.Frame
 import org.slf4j.{Logger, LoggerFactory}
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
 
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
 import java.nio.file.{Files, Path}
 import java.util.{Optional, UUID}
 import java.util.stream.LongStream
@@ -41,6 +48,7 @@ import scala.::
 import scala.NamedTuple.{AnyNamedTuple, NamedTuple}
 import scala.Tuple.:*
 import scala.annotation.targetName
+import scala.beans.BeanProperty
 import scala.collection.immutable.{AbstractSet, SortedSet}
 import scala.compiletime.constValue
 import scala.runtime.ObjectRef
@@ -86,6 +94,7 @@ import scala.reflect.ClassTag
 import scala.util.chaining.scalaUtilChainingOps
 
 private given ModID = ModID("mica")
+given (m: ModID) => Logger = LoggerFactory.getLogger(m.name)
 
 /**
  * Current serial Minecraft version. This is solely provided for IDE completion; it is expanded before compile-time by m4.
@@ -230,6 +239,23 @@ class MultipartSection:
   val layers: Array[Option[MultipartLayer]] = Array.fill(16)(None)
 
 // divert
+
+extension [T: ValueType as v] (x: T) def castValue[R: ClassTag]: Option[R] = v.cast(x)
+
+extension (ctx: StringContext) def t(args: AnyRef*): MutableText = Text.translatable(ctx.parts.map(_.replace("%", "%%")).mkString("%s"), args*)
+
+given Codec[BeADoll.Variant] = BeADoll.Variant.CODEC
+given ValueType[BeADoll.Variant]:
+  override def eq[U: ValueType](x: BeADoll.Variant, y: U): Boolean = y.castValue[BeADoll.Variant] contains x
+  override def show(x: BeADoll.Variant): Text = x match
+    case BeADoll.Variant.REPRESSED => t"Repressed".withColor(0x7a7a7a)
+    case BeADoll.Variant.WOODEN => t"Wooden".withColor(0xc2a166)
+    case BeADoll.Variant.CLAY => t"Clay".withColor(0x934833)
+    case BeADoll.Variant.CLOTH => t"Cloth".withColor(0xdbdbdb)
+
+given Codec[Boolean] = Codec.BOOL.xmap(_.booleanValue, boolean2Boolean)
+
+// divert
 class immutable extends Annotation
 
 /**
@@ -293,6 +319,11 @@ trait SideEffect derives HasRegistry:
 
   def translationFields(data: Data): Seq[AnyRef] = Seq()
 
+given seqCodec: [T: Codec as c] => Codec[Seq[T]] = c.listOf().xmap(_.toSeq, locally(_))
+given unitCodec: Codec[Unit] = Codec.unit(())
+given nothingCodec: Codec[Nothing] = Codec.of(new Encoder[Nothing]:
+  override def encode[T](input: Nothing, ops: DynamicOps[T], prefix: T): DataResult[T] = input, Decoder.error("Nothing codec"))
+
 @register("noop")
 object NoopEffect extends SideEffect:
   override type Data = Unit
@@ -307,6 +338,94 @@ given unitValueType: ValueType[Unit]:
   override def eq[U: ValueType as v](x: Unit, y: U): Boolean = v eq unitValueType
   override def show(x: Unit): Text = Text.literal("Unit").styled(_.withColor(0x7a7a7a))
 
+@register("drop")
+object DropRune extends SimpleRune:
+  override def execute(frame: BoxedThunk) = BoxedThunk(Frame, frame)
+  @register("drop/0")
+  object Frame extends ThunkFrame:
+    type Data = BoxedThunk
+    override def accept[T: ValueType](data: BoxedThunk, value: T): BoxedThunk = data
+
+@register("copy")
+object CopyRune extends SimpleRune:
+  override def execute(frame: BoxedThunk) = BoxedThunk(Frame, frame)
+  @register("copy/0")
+  object Frame extends ThunkFrame:
+    type Data = BoxedThunk
+    override def accept[T: ValueType](data: BoxedThunk, value: T): BoxedThunk = data accept value accept value
+
+extension [T: Registry as r] (x: T) def registryId: Identifier = r.getId(x)
+
+trait Display[T]:
+  def display(x: T): Text
+
+given ValueType[BoxedRune]:
+  override def eq[T: ValueType as v](x: BoxedRune, y: T): Boolean = v.cast[BoxedRune](y).contains(x)
+  override def show(x: BoxedRune): Text = Text translatable x.rune.registryId.toTranslationKey("mica.rune") withColor 0xbd9146
+
+@register("join")
+object JoinRune extends Rune:
+  override type Data = (BoxedRune, BoxedRune)
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): ((BoxedRune, BoxedRune), List[(Rune, RuneRef)]) =
+    rhs match
+      case Nil => throw RuneError(Text.literal("Can't join nothing"))
+      case (rune, given RuneRef)::next =>
+        val (boxed, rhs) = rune.read(next)
+        rhs match
+          case Nil => throw RuneError(Text.literal("Can't join nothing"))
+          case (rune2, given RuneRef)::next =>
+            val (boxed2, rhs) = rune2.read(next)
+            ((BoxedRune(rune, boxed), BoxedRune(rune2, boxed2)), rhs)
+
+  override def execute(data: (BoxedRune, BoxedRune), frame: BoxedThunk): BoxedThunk =
+    val frame2 = data._1.rune.execute(data._1.data, frame)
+    data._2.rune.execute(data._2.data, frame2)
+
+@register("box")
+object BoxRune extends Rune:
+  override type Data = BoxedRune
+  override def read(rhs: List[(Rune, RuneRef)])(using ref: RuneRef, world: World): (BoxedRune, List[(Rune, RuneRef)]) =
+    rhs match
+      case Nil => throw RuneError(Text.literal("Can't box nothing"))
+      case (head, given RuneRef)::next =>
+        val (data, rhs) = head.read(next)
+        (BoxedRune(head, data), rhs)
+  override def execute(data: BoxedRune, frame: BoxedThunk): BoxedThunk = frame accept data
+
+class unsafe extends Annotation
+
+case class ByteRepr[+T] private[ByteRepr](bytes: IArray[Byte]) extends AnyVal
+object ByteRepr:
+  def fromBytes(bytes: IArray[Byte]): ByteRepr[?] = bytes.asInstanceOf[Array[Byte]]
+  given [T] => Conversion[T, ByteRepr[T]] = x => ByteRepr(ByteArrayOutputStream().tap(ObjectOutputStream(_).writeObject(x)).toByteArray.assumeImmutable)
+  given [T] => Conversion[ByteRepr[T], T] = x => ObjectInputStream(ByteArrayInputStream(x.bytes.assumeWillNotMutate)).readObject().asInstanceOf[T]
+import ByteRepr.given
+
+class SidedExecutePacket[T](val payload: T => Unit) extends CustomPayload:
+  override def getId: CustomPayload.Id[SidedExecutePacket[T]] = summon
+object SidedExecutePacket:
+  given id: [T] => CustomPayload.Id[SidedExecutePacket[T]] = CustomPayload.Id(Identifier.of("mica", "run_sided"))
+  given codec: [T] => PacketCodec[PacketByteBuf, SidedExecutePacket[T]] = new PacketCodec[PacketByteBuf, SidedExecutePacket[T]]:
+    override def encode(buf: PacketByteBuf, value: SidedExecutePacket[T]): Unit = buf.writeByteArray((value.payload: ByteRepr[T => Unit]).bytes.assumeWillNotMutate)
+    override def decode(buf: PacketByteBuf): SidedExecutePacket[T] = SidedExecutePacket(ByteRepr.fromBytes(buf.readByteArray().assumeImmutable).asInstanceOf[ByteRepr[T => Unit]])
+
+trait ServerExecutor private[mica]():
+  def run(body: ClientExecutor ?=> Unit): Unit
+trait ClientExecutor private[mica](val player: ServerPlayerEntity):
+  def run(body: ServerExecutor ?=> Unit): Unit
+
+def toPlayer[R](player: ServerPlayerEntity)(body: ClientExecutor ?=> R): R =
+  given ClientExecutor(player):
+    override def run(body: => Unit): Unit =
+      ServerPlayNetworking.send(this.player, SidedExecutePacket[Unit](_ => body))
+  body
+
+def runOnServer(body: ClientExecutor ?=> Unit)(using e: ServerExecutor): Unit = e.run(body)
+def runOnClient(body: ServerExecutor ?=> Unit)(using e: ClientExecutor): Unit = e.run(body)
+def runOnClient(who: ServerPlayerEntity)(body: ServerExecutor ?=> Unit): Unit =
+  toPlayer(who):
+    runOnClient(_ ?=> body)
+
 // divert(-1)
 trait ByteCodec[T]:
   def read(r: DataInput): T
@@ -318,9 +437,9 @@ given ByteCodec[MultipartSection]:
     val topMask = r.read()
     val section = MultipartSection()
     for n <- 0 to 7 do
-      /*dnl*/if bottomMask & (1 << n) != 0 then
+      /*dnl*/if (bottomMask & (1 << n)) != 0 then
         section.layers(n) = r.get()
-      /*dnl*/if topMask & (1 << n) != 0 then
+      /*dnl*/if (topMask & (1 << n)) != 0 then
         section.layers(n+8) = r.get()
     section
   override def write(w: OutputStream, x: MultipartSection): Unit =
@@ -346,10 +465,14 @@ class sparse extends Annotation
 // divert
 
 def assumed[T, U]: T =:= U = summon[Int =:= Int].asInstanceOf[T =:= U]
+extension [T](x: Array[T]) @unsafe def assumeImmutable: IArray[T] = x.asInstanceOf
+extension [T](x: IArray[T]) @unsafe def assumeWillNotMutate: Array[T] = x.asInstanceOf
 
-inline given tupleCodec: [T <: Tuple] => Codec[T] = compiletime.summonFrom:
+inline given tupleCodec: [T <: NonEmptyTuple] => Codec[T] = tupleCodecImpl[T]
+inline def tupleCodecImpl[T <: Tuple]: Codec[T] = compiletime.summonFrom:
   case ev: (T =:= EmptyTuple) => ev.substituteContra(Codec.unit(EmptyTuple))
-  case ev: (T =:= (h *: t)) => ev.substituteContra(Codec.pair(summonInline[Codec[h]], tupleCodec[t]).xmap(p => p.getFirst *: p.getSecond, { case h *: t => Pair(h, t) }))
+  case ev: (T =:= Tuple1[t]) => ev.substituteContra(summonInline[Codec[t]].xmap(Tuple1(_), _._1))
+  case ev: (T =:= (h *: t)) => ev.substituteContra(Codec.pair(summonInline[Codec[h]], tupleCodecImpl[t]).xmap(p => p.getFirst *: p.getSecond, { case h *: t => Pair(h, t) }))
 
 // divert(-1)
 
@@ -398,12 +521,12 @@ object GotSideEffectFrame extends ThunkFrame:
   override def accept[T: ValueType](data: BoxedSideEffect, value: T): BoxedThunk =
     //throw RuneError(Text.literal("Too many side effects in one cast"))
     ???
-def findRunes(start: RuneRef, prev: Option[RuneRef])(using World): Option[List[(Rune, RuneRef)]] =
+def findRunes(start: RuneRef, prev: Set[RuneRef] = Set.empty)(using World): Option[List[(Rune, RuneRef)]] =
   logger.debug(s"findRunes ${start} ${prev}")
   if start.isEmpty then
     None
   else
-    val neigh = (start.rune.computeNeighbors(using start) -- prev).flatMap(findRunes(_, Some(start))).toSeq
+    val neigh = (start.rune.computeNeighbors(using start) -- prev).flatMap(findRunes(_, prev + start)).toSeq
     neigh match
       case Seq() =>
         logger.debug(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | no more neighbors; stop here.")
@@ -744,6 +867,7 @@ given ValueType[Double]:
           None
       case _ => None
 
+  override def present(x: Double): Boolean = x =~ 0.0
   override def show(x: Double): Text = Text.literal(s"$x").styled(_.withColor(0xab3900))
 
 class RuneBeStartinShit private(val direction: Direction) extends Rune:
@@ -901,7 +1025,7 @@ extension [T: Registry as r](x: T)
 given Registry[StatusEffect] = Registries.STATUS_EFFECT
 
 extension (ent: LivingEntity)
-  def isOrganic = ent match
+  def isOrganic: Boolean = ent match
     case _: (GolemEntity | ArmorStandEntity) => false
     case p: PlayerEntity =>
       lazy val isDoll = BeAMaid.isDoll(p)
@@ -951,6 +1075,8 @@ given ValueType[BoxedValue]:
   override def show(x: BoxedValue): Text =
     import x.given
     summon[ValueType[x.T]].show(x.value)
+  override def present(x: BoxedValue): Boolean = x.given_ValueType_T.present(x.value)
+  override def typeof(x: BoxedValue): ValueType[?] = x.given_ValueType_T
 
 @register("defer")
 object DeferEffectRune extends SimpleRune:
@@ -1173,7 +1299,7 @@ private[mica] object JackBlack:
     ref.rune match
       case RuneBeStartinShit(d) =>
         boundary:
-          val runes = findRunes(ref, None).getOrElse:
+          val runes = findRunes(ref).getOrElse:
             ci.setReturnValue(ActionResult.FAIL)
             given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS)
             ctx.getPlayer.sendMessage(Text.literal("The spark fizzles out."), true)
@@ -1212,6 +1338,7 @@ lazy val runeProbe: Registrar[Item] =
   cursedRegister(Identifier.of("mica", "rune_probe"), Item.Settings()):
     new Item(_):
       override def useOnBlock(ctx: ItemUsageContext): ActionResult =
+        Exception("Rune stuff").printStackTrace()
         val p = ctx.getHitPos
         val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
         val b = BlockPos.Mutable(p.x, p.y, p.z)
@@ -1367,14 +1494,14 @@ object DivitionRune extends BinaryRune:
   override type Arg0 = Double
   override type Arg1 = Double
   override type Return = Double
-
   override def run(x: Double, y: Double): Double = x / y
-
   register:
     registerFrames()
     DivitionRune.item.register()
 
-extension (x: Double) @targetName("~=") def =~(y: Double): Boolean = Math.abs(x - y) < 0.0001
+extension (x: Double)
+  @targetName("=~") def =~(y: Double): Boolean = Math.abs(x - y) < 0.0001
+  @targetName("!~") def !~(y: Double): Boolean = !(x =~ y)
 
 given Codec[Vec3d] = Vec3d.CODEC
 given ValueType[Vec3d]:
@@ -1382,7 +1509,6 @@ given ValueType[Vec3d]:
     v.cast[Vec3d](y).exists: y =>
       x.x =~ y.x && x.y =~ y.y && x.z =~ y.z
   override def cast[R: ClassTag](x: Vec3d): Option[R] = super.cast(x)
-
   override def show(x: Vec3d): Text = Text.literal(s"{${x.x}, ${x.y}, ${x.z}}").styled(_.withColor(0xad8d1a))
 
 inline def codec[T: Codec as c] = c
@@ -1399,12 +1525,8 @@ case class AttributeReference(target: LivingEntity | UUID, attribute: EntityAttr
       case _ => None
   def attributeInstance(using World): Option[EntityAttributeInstance] = entity.map(_.getAttributeInstance(Registries.ATTRIBUTE.getEntry(attribute)))
 given `codec for entity attributes using the registry`: Codec[EntityAttribute] = Registries.ATTRIBUTE.getCodec
-given `codec for references to entity attributes`: Codec[AttributeReference] =
-  RecordCodecBuilder.create: i =>
-    i.group(
-      Uuids.INT_STREAM_CODEC.fieldOf("entity").forGetter(_.uuid),
-      codec[EntityAttribute].fieldOf("attribute").forGetter(_.attribute),
-    ).apply(i, AttributeReference(_, _))
+given `codec for references to entity attributes`: Codec[AttributeReference] = RecordCodecBuilder.create: i =>
+  i.group(Uuids.INT_STREAM_CODEC.fieldOf("entity").forGetter(_.uuid), codec[EntityAttribute].fieldOf("attribute").forGetter(_.attribute)).apply(i, AttributeReference(_, _))
 given `hey did you know attributes are values`: ValueType[AttributeReference]:
   override def eq[U: ValueType as v](x: AttributeReference, y: U): Boolean = v.cast[AttributeReference](y).exists(y => (x.uuid == y.uuid) && (x.attribute eq y.target))
   override def show(x: AttributeReference): Text = Text.translatable(x.attribute.getTranslationKey).styled(_.withColor(0x07b891))
@@ -1475,11 +1597,6 @@ object EndQuoteRune extends Rune:
     EndQuoteRune.item.register()
 // divert
 
-given seqCodec: [T: Codec as c] => Codec[Seq[T]] = c.listOf().xmap(_.toSeq, locally(_))
-given unitCodec: Codec[Unit] = Codec.unit(())
-given nothingCodec: Codec[Nothing] = Codec.of(new Encoder[Nothing]:
-  override def encode[T](input: Nothing, ops: DynamicOps[T], prefix: T): DataResult[T] = input, Decoder.error("Nothing codec"))
-
 extension [T] (x: T)
   /**
    * Tries to cast the value to the given type.
@@ -1489,9 +1606,6 @@ extension [T] (x: T)
   def cast[R: ClassTag]: Option[R] = x match
     case r: R => Some(r)
     case _ => None
-
-//@register("find_people")
-
 
 @tailrec
 def panic(reason: String): Nothing =
@@ -1519,3 +1633,8 @@ def init(): Unit =
     if Files.exists(config) then
       logger.warn("Ignoring config/mica:extra_classes.txt as it is deprecated. Remove the file to silence this warning.")
   catch case e => ()
+  PayloadTypeRegistry.playC2S.register(SidedExecutePacket.id, SidedExecutePacket.codec)
+  PayloadTypeRegistry.playS2C.register(SidedExecutePacket.id, SidedExecutePacket.codec)
+  ServerPlayNetworking.registerGlobalReceiver[SidedExecutePacket[ClientExecutor]](SidedExecutePacket.id, (p, ctx) => p.payload(toPlayer(ctx.player)))
+
+def println(msg: Any): Unit = logger.info(msg.toString)
