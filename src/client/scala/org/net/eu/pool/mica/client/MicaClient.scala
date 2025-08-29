@@ -6,7 +6,7 @@ import net.fabricmc.fabric.api.client.datagen.v1.provider.FabricModelProvider
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.{WorldRenderContext, WorldRenderEvents}
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
-import net.fabricmc.fabric.api.datagen.v1.provider.FabricAdvancementProvider
+import net.fabricmc.fabric.api.datagen.v1.provider.{FabricAdvancementProvider, FabricLootTableProvider, SimpleFabricLootTableProvider}
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.fabricmc.fabric.api.renderer.v1.render.RenderLayerHelper
 import net.minecraft.advancement.criterion.{Criteria, ImpossibleCriterion}
@@ -16,23 +16,31 @@ import net.minecraft.client.gl.RenderPipelines
 import net.minecraft.client.render.{BlockRenderLayer, OverlayTexture, RenderLayer, RenderLayers, TexturedRenderLayers, VertexConsumer, VertexConsumerProvider}
 import net.minecraft.client.texture.{Sprite, SpriteAtlasTexture, SpriteLoader}
 import net.minecraft.client.util.math.MatrixStack
-import net.minecraft.util.{AssetInfo, Identifier}
+import net.minecraft.util.{ActionResult, AssetInfo, Hand, Identifier}
 import net.minecraft.util.math.{BlockPos, Direction, MathHelper}
 import org.net.eu.pool.mica.{AbstractRuneStorage, ClientExecutor, EmptyRune, EndQuoteRune, HasRegistry, QuoteRune, Rune, RuneShift, ServerExecutor, SidedExecutePacket, registryFor, given}
 import net.minecraft.client.data.{BlockStateModelGenerator, ItemModelGenerator, ItemModels, Model, ModelIds, ModelSupplier}
 import net.minecraft.client.render.item.model.ItemModel
-import net.minecraft.item.{ItemStack, Items}
+import net.minecraft.data.DataWriter
+import net.minecraft.item.{Item, ItemStack, Items}
+import net.minecraft.loot.{LootPool, LootTable}
 import net.minecraft.network.packet.CustomPayload
-import net.minecraft.registry.RegistryWrapper
+import net.minecraft.registry.{RegistryKey, RegistryKeys, RegistryWrapper}
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
+import net.minecraft.util.hit.BlockHitResult
 import net.minecraft.util.math.Direction.Axis
+import net.minecraft.world.World
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
 
 import java.nio.file.{Files, Path}
 import java.util.Optional
-import java.util.function.Consumer
+import java.util.concurrent.CompletableFuture
+import java.util.function.{BiConsumer, Consumer}
+import scala.annotation.targetName
 import scala.util.chaining.scalaUtilChainingOps
 import scala.collection.convert.ImplicitConversions.given
+import scala.util.boundary.Label
 
 def blockAtlas = MinecraftClient.getInstance.getSpriteAtlas(SpriteAtlasTexture.BLOCK_ATLAS_TEXTURE).apply(_)
 
@@ -231,6 +239,10 @@ class ModelBuilder extends ModelSupplier:
     obj.add("display", display)
     parent.foreach(i => obj.addProperty("parent", i.toString))
     obj
+
+trait EarlyBlockInteractionHandler:
+  this: Item =>
+  @targetName("mica$earlyUseOnBlock") def earlyUseOnBlock(using ServerPlayerEntity, World, Label[ActionResult])(stack: ItemStack, hand: Hand, hitResult: BlockHitResult): Unit
 
 def datagenRune(rune: Rune)(using pack: FabricDataGenerator#Pack) =
   pack.addProvider(

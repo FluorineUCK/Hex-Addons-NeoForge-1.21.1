@@ -15,6 +15,7 @@ import net.minecraft.util.math.{BlockPos, Direction, Vec3d}
 import net.minecraft.util.shape.{VoxelShape, VoxelShapes}
 import net.minecraft.world.World
 import org.net.eu.pool.mica.RevealRune.Frame
+import org.slf4j.{Logger, LoggerFactory}
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
 
 import scala.annotation.MacroAnnotation
@@ -342,11 +343,6 @@ object AnyRegistryKey:
   given Codec[AnyRegistryKey] = Identifier.CODEC.dispatch("registry", _.key.getRegistry, RegistryKey.createCodec(_).fieldOf("value").xmap(AnyRegistryKey(_), _.key.asInstanceOf[RegistryKey[Object]]))
 
 given [T]: RegistryKey[? <: Registry[T]] = Registries.REGISTRIES.getKey.asInstanceOf[RegistryKey[? <: Registry[T]]]
-
-@register("registry_key")
-given ValueType[AnyRegistryKey]:
-  override def eq[U: ValueType as v](x: AnyRegistryKey, y: U): Boolean = v.cast[AnyRegistryKey](y).contains(x)
-  override def show(x: AnyRegistryKey): Text = Text.translatable(x.key.toTranslationKey(x.key.getRegistry.toShortTranslationKey)).withColor(0x2dccfc)
 
 /**
  * Holder object for [[Rune! Rune]] registries and common values of [[Rune.surfaceSprite]].

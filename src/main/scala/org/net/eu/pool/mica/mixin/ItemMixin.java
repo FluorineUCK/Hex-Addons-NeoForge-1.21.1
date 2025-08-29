@@ -14,6 +14,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Group;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import scala.runtime.BoxedUnit;
+import scala.util.boundary;
 
 @Mixin(net.minecraft.item.Item.class)
 public abstract class ItemMixin {
@@ -22,7 +24,10 @@ public abstract class ItemMixin {
     @Inject(method = {"useOnBlock", "method_7884"}, at = @At("HEAD"), cancellable = true, remap = false)
     void useOnBlock(ItemUsageContext context, CallbackInfoReturnable<ActionResult> cir) {
         if (getRegistryEntry().isIn(ItemTags.PICKAXES)) {
-            JackBlack$.MODULE$.pickaxe(cir, context);
+            JackBlack$.MODULE$.cir2label(label -> {
+                JackBlack$.MODULE$.pickaxe(label, context);
+                return BoxedUnit.UNIT;
+            }, cir);
         }
     }
 }

@@ -114,37 +114,51 @@ private[mica] trait RegisterHook[T]:
 
 private var registrarState: Option[mutable.Buffer[Expr[Unit]]] = Some(mutable.Buffer.empty)
 
+extension (q: Quotes) inline def quote[R](inline body: R): Expr[R] =
+  given Quotes = q
+  '{ body }
+
+trait ConditionallyRegistered(val shouldRegister: Boolean)
+
+inline def errorDeferred(msg: String): Nothing = ${errorDeferred_impl('msg)}
+def errorDeferred_impl(msg: Expr[String])(using q: Quotes) =
+  q.reflect.report.warning(msg.valueOrError)
+  '{ throw IllegalStateException(s"errorDeferred: ${${msg}}") }
+
 /**
  * Registers the given value into the best registry for it. This macro may only be applied to `object` literals.
  * @param key Combined with a [[ModID]] in scope to create the value's [[Identifier]]
  */
 @compileTimeOnly("@register is expanded at compile-time")
 class register(key: String) extends MacroAnnotation:
-  override def transform(using q: Quotes)(definition: q.reflect.Definition, companion: Option[q.reflect.Definition]): List[q.reflect.Definition] =
+  override inline def transform(using q: Quotes)(definition: q.reflect.Definition, companion: Option[q.reflect.Definition]): List[q.reflect.Definition] =
     import q.reflect.*
-    val cl =
-      definition match
-        case cl@ClassDef(_, _, _, _, _) if cl.symbol.flags.is(Flags.Module) => cl
-        case _ =>
-          report.error("Only objects may be annotated at this time")
-          return List(definition) :++ companion
-    cl.symbol.typeRef.asType match
-      case '[t] =>
-        registrarState match
-          case Some(l) =>
-            val modid: Expr[ModID] = Expr.summon[ModID]
-              .getOrElse:
-                report.error(s"No mod ID found in file")
-                '{ ModID("unknown") }
-            val actualThis: Expr[t] = Ref(cl.symbol.companionModule).asExprOf[t]
-            l += '{
-              Registry.register(summonInline[Registry[? >: t]], Identifier.of(${modid}.name, ${Expr(key)}), ${actualThis})
-              ()
-            }
-            List(ClassDef.copy(cl)(cl.symbol.name, cl.constructor, cl.parents, cl.self, cl.body)) :++ companion
-          case None =>
-            report.error("Registrations were processed too early")
-    List(definition) :++ companion
+    definition match
+      case cl@ClassDef(_, _, _, _, _) if cl.symbol.flags.is(Flags.Module) =>
+        cl.symbol.typeRef.asType match
+          case '[t] =>
+            registrarState match
+              case Some(l) =>
+                val modid: Expr[ModID] = Expr.summon[ModID]
+                  .getOrElse:
+                    report.error(s"No mod ID found in file")
+                    '{ ModID("unknown") }
+                val actualThis = Ref(cl.symbol.companionModule).asExprOf[t]
+                l += '{
+                  if !${actualThis}.isInstanceOf[ConditionallyRegistered] || ${actualThis}.asInstanceOf[ConditionallyRegistered].shouldRegister then
+                    Registry.register(
+                      compiletime.summonFrom:
+                        case r: Registry[? >: t] => r.asInstanceOf[Registry[t]]
+                        case _ => errorDeferred(${val s: String = s"Cannot find a registry for ${TypeRepr.of[t].show(using Printer.TypeReprShortCode)}"; Expr(s)})
+                    , Identifier.of(${modid}.name, ${Expr(key)}), ${actualThis}.asInstanceOf[t])
+                  ()
+                }
+                List(ClassDef.copy(cl)(cl.symbol.name, cl.constructor, cl.parents, cl.self, cl.body)) :++ companion
+              case None =>
+                report.error("Registrations were processed too early")
+      case _ =>
+        report.error("Only objects may be annotated at this time")
+      List(definition) :++ companion
 end register
 inline def trySummon[T]: Option[T] = compiletime.summonFrom:
   case x: T => Some(x)

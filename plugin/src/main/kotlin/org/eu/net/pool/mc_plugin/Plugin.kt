@@ -14,6 +14,7 @@ import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.AbstractCopyTask
+import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputFile
@@ -21,8 +22,11 @@ import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskAction
 import org.gradle.kotlin.dsl.get
 import org.gradle.language.jvm.tasks.ProcessResources
+import java.io.File
 
 typealias PT = context(Project) SourceSet.(String, Pair<String, Task>.(Provider<Directory>) -> Unit) -> Unit
+
+val m4path = System.getenv("PATH").split(':').onEach { println(it) }.first { File("$it/m4").exists() } + "/m4"
 
 class Plugin: Plugin<Project> {
     override fun apply(project: Project) {
@@ -58,7 +62,7 @@ class PreprocessorExtension(val project: Project, val minecraft_version: String,
                 project.fileTree(inDir).files.forEach {
                     project.file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").parentFile.mkdirs()
                     project.exec {
-                        commandLine("m4", "-R", frozen.get().asFile.path, it.path)
+                        commandLine(m4path, "-R", frozen.get().asFile.path, it.path)
                         standardOutput = project.file("${outDir.get()}/${it.relativeTo(inDir.asFile)}").outputStream()
                     }
                 }
@@ -96,7 +100,7 @@ abstract class FrozenFile: DefaultTask() {
     @TaskAction
     fun run() {
         project.exec {
-            val args = mutableListOf("m4", "-F", frozenFile.get().asFile.path)
+            val args = mutableListOf(m4path, "-F", frozenFile.get().asFile.path)
             globals.get().forEach { k, v -> args.add("-D$k=$v") }
             macroFiles.get().forEach { args.add(it.asFile.path) }
             commandLine = args

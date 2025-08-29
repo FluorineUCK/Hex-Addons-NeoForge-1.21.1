@@ -184,7 +184,7 @@ dependencies {
     include("maven.modrinth:cardinal-components-api:$cca_version")
     modImplementation("folk.sisby:crunchy-crunchy-advancements:1.7.1+1.21")
     include(modImplementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
-    modImplementation("net.modfest:fireblanket:0.8.3+toybox-1.21.7") { exclude("com.github.bawnorton.mixinsquared") }
+    modCompileOnly("net.modfest:fireblanket:0.8.3+toybox-1.21.7") { exclude("com.github.bawnorton.mixinsquared") }
     include(modImplementation("com.github.Bawnorton.MixinSquared:mixinsquared-common:0.3.3")!!)
     include(modImplementation("com.github.Bawnorton.MixinSquared:mixinsquared-fabric:0.3.3")!!)
     modImplementation("com.github.afamiliarquiet:be-a-doll:1.0.0")

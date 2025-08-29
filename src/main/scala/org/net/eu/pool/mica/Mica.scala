@@ -53,6 +53,7 @@ import scala.collection.immutable.{AbstractSet, SortedSet}
 import scala.compiletime.constValue
 import scala.runtime.ObjectRef
 import scala.util.boundary
+import scala.util.boundary.{Break, Label}
 // ifversion(>=2100, <[[
 import net.minecraft.storage.{ReadView, WriteView}
 import org.ladysnake.cca.api.v3.component.sync.AutoSyncedComponent
@@ -94,7 +95,6 @@ import scala.reflect.ClassTag
 import scala.util.chaining.scalaUtilChainingOps
 
 private given ModID = ModID("mica")
-given (m: ModID) => Logger = LoggerFactory.getLogger(m.name)
 
 /**
  * Current serial Minecraft version. This is solely provided for IDE completion; it is expanded before compile-time by m4.
@@ -518,24 +518,22 @@ object GotSideEffectFrame extends ThunkFrame:
     //throw RuneError(Text.literal("Too many side effects in one cast"))
     ???
 def findRunes(start: RuneRef, prev: Set[RuneRef] = Set.empty)(using World): Option[List[(Rune, RuneRef)]] =
-  logger.debug(s"findRunes ${start} ${prev}")
+  println(s"findRunes ${start} ${prev}")
   if start.isEmpty then
     None
   else
     val neigh = (start.rune.computeNeighbors(using start) -- prev).flatMap(findRunes(_, prev + start)).toSeq
     neigh match
       case Seq() =>
-        logger.debug(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | no more neighbors; stop here.")
+        println(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | no more neighbors; stop here.")
         Some(List((start.rune, start)))
       case Seq(x) =>
         val l = (start.rune, start)::x
-        logger.debug(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | ${l}")
+        println(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | ${l}")
         Some(l)
       case _ =>
-        logger.debug(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | too many neighbors!")
+        println(s"\tfindRunes ${start} ${prev}, neigh = ${neigh} | too many neighbors!")
         None
-
-given logger: Logger = LoggerFactory.getLogger(given_ModID.name)
 
 def parseRunes(runes: List[(Rune, RuneRef)])(using World): List[BoxedRune] =
   runes match
@@ -1029,6 +1027,9 @@ extension (ent: LivingEntity)
       try !isDoll catch case _ => true
     case _ => true
 
+object castedValue:
+  def unapply[T: {ValueType, ClassTag}](x: Any)(using v: ValueType[x.type]): Option[T] = v.cast(x)
+
 @register("heal")
 object HealTargetRune extends UnaryRune:
   register { item.register(); registerFrames() }
@@ -1058,7 +1059,19 @@ object HealTargetRune extends UnaryRune:
 
 trait RelocatableRune:
   rune: Rune =>
-  def relocate(data: rune.Data): rune.Data
+  def relocate(pos: Vec3d)(data: rune.Data): rune.Data
+
+extension [T] (f: T => T)
+  def on[U >: T](extractor: PartialFunction[U, T]): U => U =
+    case extractor(x) => f(x)
+    case x => x
+
+def liftPartial[T, R](f: T => Option[R]): PartialFunction[T, R] =
+  object matcher:
+    def unapply(x: T): Option[R] = f(x)
+  { case matcher(x) => x }
+
+extension [T: ValueType] (x: T) def relocateValues(pos: Vec3d) = ???
 
 // @register("relocate")
 // object RelocateRune extends UnaryRune:
@@ -1256,8 +1269,24 @@ private[mica] object RevealRune extends Rune:
   register:
     RevealRune.item.register()
 
+def tryBoundary[B, R](body: Label[B] ?=> R): Either[B, R] =
+  given lbl: Label[B] = Label()
+  try
+    Right(body)
+  catch
+    case b: boundary.Break[B] if b.label eq lbl => Left(b.value)
+
+@register("registry_key")
+given ValueType[AnyRegistryKey]:
+  override def eq[U: ValueType as v](x: AnyRegistryKey, y: U): Boolean = v.cast[AnyRegistryKey](y).contains(x)
+  override def show(x: AnyRegistryKey): Text = Text.translatable(x.key.toTranslationKey(x.key.getRegistry.toShortTranslationKey)).withColor(0x2dccfc)
+
 private[mica] object JackBlack:
-  def pickaxe(using ci: CallbackInfoReturnable[ActionResult])(ctx: ItemUsageContext): Unit =
+  def cir2label[R: CallbackInfoReturnable as ci](body: Label[R] ?=> Unit): Unit =
+    tryBoundary[R, Unit](_ ?=> body) match
+      case Left(value) => ci.setReturnValue(value)
+      case Right(value) =>
+  def pickaxe(using Label[ActionResult])(ctx: ItemUsageContext): Unit =
     val p = ctx.getHitPos
     val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
     val b = BlockPos.Mutable(p.x, p.y, p.z)
@@ -1288,8 +1317,8 @@ private[mica] object JackBlack:
         ent.addVelocity(h.facing.getDoubleVector.multiply(0.1))
         given_World.spawnEntity(ent)
       ref.rune = EmptyRune
-      ci.setReturnValue(ActionResult.SUCCESS)
-  def flintAndSTEEL_!!(using ci: CallbackInfoReturnable[ActionResult])(ctx: ItemUsageContext): Unit =
+      boundary.break(ActionResult.SUCCESS)
+  def flintAndSTEEL_!!(using Label[ActionResult])(ctx: ItemUsageContext): Unit =
     val p = ctx.getHitPos
     val q = BlockPos.Mutable((p.x * 4).round.toInt, (p.y * 8).round.toInt, (p.z * 4).round.toInt)
     val b = BlockPos.Mutable(p.x, p.y, p.z)
@@ -1309,11 +1338,9 @@ private[mica] object JackBlack:
       case RuneBeStartinShit(d) =>
         boundary:
           val runes = findRunes(ref).getOrElse:
-            ci.setReturnValue(ActionResult.FAIL)
             given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS)
             ctx.getPlayer.sendMessage(Text.literal("The spark fizzles out."), true)
-            boundary.break()
-          ci.setReturnValue(ActionResult.SUCCESS)
+            boundary.break(ActionResult.FAIL)
           try
             given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.ITEM_FLINTANDSTEEL_USE, SoundCategory.PLAYERS)
             val boxedRunes = parseRunes(runes)
@@ -1341,11 +1368,15 @@ private[mica] object JackBlack:
               ctx.getPlayer.addStatusEffect(StatusEffectInstance(StatusEffects.BLINDNESS, 15*20))
               given_World.playSound(ctx.getPlayer, p.x, p.y, p.z, SoundEvents.BLOCK_FIRE_EXTINGUISH, SoundCategory.PLAYERS)
               ctx.getPlayer.sendMessage(Text.literal("The world is falling apart at the seams..."), true)
+          boundary.break(ActionResult.SUCCESS)
       case _ =>
 
 lazy val runeProbe: Registrar[Item] =
   cursedRegister(Identifier.of("mica", "rune_probe"), Item.Settings()):
     new Item(_):
+      override def use(world: World, user: PlayerEntity, hand: Hand): ActionResult =
+        Exception("Use tracer").printStackTrace()
+        super.use(world, user, hand)
       override def useOnBlock(ctx: ItemUsageContext): ActionResult =
         Exception("Rune stuff #1").printStackTrace()
         ctx.getPlayer match
@@ -1568,7 +1599,7 @@ object TwiceRune extends SimpleRune:
   register { item.register() }
 
 @register("nyaboom")
-object ExplosionRune extends BinaryRune:
+object ExplosionRune extends BinaryRune with ConditionallyRegistered(!FabricLoader.getInstance().isModLoaded("fireblanket")):
   override type Arg0 = Vec3d
   override type Arg1 = Double
   override type Return = BoxedSideEffect
@@ -1649,10 +1680,10 @@ def init(): Unit =
   try
     val config = Path.of("config/mica:extra_classes.txt")
     if Files.exists(config) then
-      logger.warn("Ignoring config/mica:extra_classes.txt as it is deprecated. Remove the file to silence this warning.")
+      println("Ignoring config/mica:extra_classes.txt as it is deprecated. Remove the file to silence this warning.")
   catch case e => ()
   PayloadTypeRegistry.playC2S.register(SidedExecutePacket.id, SidedExecutePacket.codec)
   PayloadTypeRegistry.playS2C.register(SidedExecutePacket.id, SidedExecutePacket.codec)
   ServerPlayNetworking.registerGlobalReceiver[SidedExecutePacket[ClientExecutor]](SidedExecutePacket.id, (p, ctx) => p.payload(ClientExecutor(ctx.player)))
 
-def println(msg: Any): Unit = logger.info(msg.toString)
+def println(msg: Any)(using m: ModID): Unit = Bootstrap.SYSOUT.println(s"${m.name} → $msg")
