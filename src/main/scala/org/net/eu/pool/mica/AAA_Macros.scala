@@ -146,11 +146,7 @@ class register(key: String) extends MacroAnnotation:
                 val actualThis = Ref(cl.symbol.companionModule).asExprOf[t]
                 l += '{
                   if !${actualThis}.isInstanceOf[ConditionallyRegistered] || ${actualThis}.asInstanceOf[ConditionallyRegistered].shouldRegister then
-                    Registry.register(
-                      compiletime.summonFrom:
-                        case r: Registry[? >: t] => r.asInstanceOf[Registry[t]]
-                        case _ => errorDeferred(${val s: String = s"Cannot find a registry for ${TypeRepr.of[t].show(using Printer.TypeReprShortCode)}"; Expr(s)})
-                    , Identifier.of(${modid}.name, ${Expr(key)}), ${actualThis}.asInstanceOf[t])
+                    Registry.register(summonInline[Registry[? >: t]].asInstanceOf[Registry[t]], Identifier.of(${modid}.name, ${Expr(key)}), ${actualThis}.asInstanceOf[t])
                   ()
                 }
                 List(ClassDef.copy(cl)(cl.symbol.name, cl.constructor, cl.parents, cl.self, cl.body)) :++ companion

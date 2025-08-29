@@ -36,6 +36,7 @@ import net.minecraft.util.{Hand, Rarity, Uuids}
 import net.minecraft.util.shape.VoxelShapes
 import net.minecraft.world.World.ExplosionSourceType
 import org.net.eu.pool.mica
+import org.net.eu.pool.mica.DropRune.item
 import org.net.eu.pool.mica.VoidRune.Frame
 import org.slf4j.{Logger, LoggerFactory}
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
@@ -324,7 +325,6 @@ given unitCodec: Codec[Unit] = Codec.unit(())
 given nothingCodec: Codec[Nothing] = Codec.of(new Encoder[Nothing]:
   override def encode[T](input: Nothing, ops: DynamicOps[T], prefix: T): DataResult[T] = input, Decoder.error("Nothing codec"))
 
-@register("noop")
 object NoopEffect extends SideEffect:
   override type Data = Unit
   override type Return = Unit
@@ -345,6 +345,7 @@ object DropRune extends SimpleRune:
   object Frame extends ThunkFrame:
     type Data = BoxedThunk
     override def accept[T: ValueType](data: BoxedThunk, value: T): BoxedThunk = data
+  register { item.register() }
 
 @register("copy")
 object CopyRune extends SimpleRune:
@@ -353,6 +354,7 @@ object CopyRune extends SimpleRune:
   object Frame extends ThunkFrame:
     type Data = BoxedThunk
     override def accept[T: ValueType](data: BoxedThunk, value: T): BoxedThunk = data accept value accept value
+  register { item.register() }
 
 extension [T: Registry as r] (x: T) def registryId: Identifier = r.getId(x)
 
@@ -376,6 +378,7 @@ object JoinRune extends Rune:
           case (rune2, given RuneRef)::next =>
             val (boxed2, rhs) = rune2.read(next)
             ((BoxedRune(rune, boxed), BoxedRune(rune2, boxed2)), rhs)
+  register { item.register() }
 
   override def execute(data: (BoxedRune, BoxedRune), frame: BoxedThunk): BoxedThunk =
     val frame2 = data._1.rune.execute(data._1.data, frame)
@@ -391,6 +394,18 @@ object BoxRune extends Rune:
         val (data, rhs) = head.read(next)
         (BoxedRune(head, data), rhs)
   override def execute(data: BoxedRune, frame: BoxedThunk): BoxedThunk = frame accept data
+  register { item.register() }
+
+@register("unbox")
+object UnboxRune extends SimpleRune:
+  @register("unbox/0")
+  object Frame extends ThunkFrame:
+    override type Data = BoxedThunk
+    override def accept[T: ValueType](data: BoxedThunk, value: T): BoxedThunk =
+      val rune = value.castValue[BoxedRune].get
+      rune.rune.execute(rune.data, data)
+  override def execute(frame: BoxedThunk): BoxedThunk = BoxedThunk(Frame, frame)
+  register { item.register() }
 
 class unsafe extends Annotation
 
@@ -421,6 +436,7 @@ def runOnClient(body: ServerExecutor ?=> Unit)(using e: ClientExecutor): Unit = 
 def runOn(player: ServerPlayerEntity)(body: ServerExecutor ?=> Unit): Unit =
   given ClientExecutor = ClientExecutor(player)
   runOnClient(_ ?=> body)
+def relevantPlayer(using e: ClientExecutor) = e.player
 
 // divert(-1)
 trait ByteCodec[T]:
@@ -912,7 +928,7 @@ given ValueType[Seq[BoxedValue]]:
 given ValueType[(Rune, RuneRef)]:
   val color = TextColor.fromRgb(0xffe46e)
   override def eq[U: ValueType as v](x: (Rune, RuneRef), y: U): Boolean = v.cast[(Rune, RuneRef)](y).exists(y => x._1 eq y._1)
-  override def show(x: (Rune, RuneRef)): Text = Text.literal(registryFor[Rune].getId(x._1).toTranslationKey("mica.runes"))
+  override def show(x: (Rune, RuneRef)): Text = Text.translatable(registryFor[Rune].getId(x._1).toTranslationKey("mica.rune"))
 
 @register("tone_indicator")
 object PosLiteral extends Rune:
@@ -1670,6 +1686,7 @@ private[mica] class ComponentInitializer extends WorldComponentInitializer:
 def init(): Unit =
   runeProbe.register()
   Registry.register(Registries.DATA_COMPONENT_TYPE, Identifier.of(modid, "effect"), sideEffectComponent)
+  Registry.register(registryFor[SideEffect], Identifier.of(modid, "noop"), NoopEffect)
   register()
   println(s"Rune registry contains ${registryFor[Rune].size} runes")
   val klsContainer = FabricLoader.getInstance().getModContainer("krysztal-language-scala").orElseGet(() => panic("no such mod 'krysztal-language-scala'"))

@@ -6,7 +6,7 @@ import it.unimi.dsi.fastutil.longs.{Long2IntMap, Long2ObjectMap}
 import net.minecraft.block.{AbstractBlock, Block}
 import net.minecraft.component.DataComponentTypes
 import net.minecraft.entity.player.PlayerEntity
-import net.minecraft.item.{Item, ItemUsageContext}
+import net.minecraft.item.{Item, ItemStack, ItemUsageContext}
 import net.minecraft.registry.{Registries, Registry, RegistryKey, RegistryKeys}
 import net.minecraft.text.Text
 import net.minecraft.util.math.Direction.{Axis, AxisDirection}
@@ -272,6 +272,7 @@ trait Rune derives HasRegistry:
       throw IllegalStateException("Rune.item may not be referenced before the rune is registered")
     cursedRegister(identifier, Item.Settings()):
       new Item(_):
+        override def getName(stack: ItemStack): Text = Text.translatable(identifier.toTranslationKey("mica.rune")).withColor(0xffe46e)
         override def useOnBlock(using context: ItemUsageContext): ActionResult =
           println("GOT HERE 2")
           val p = context.getHitPos

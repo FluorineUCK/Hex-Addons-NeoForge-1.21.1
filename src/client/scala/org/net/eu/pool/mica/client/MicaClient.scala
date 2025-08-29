@@ -2,6 +2,9 @@ package org.net.eu.pool.mica.client
 
 import com.google.gson.{JsonArray, JsonElement, JsonObject}
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.vertex.VertexFormat
+import com.mojang.brigadier.builder.{ArgumentBuilder, LiteralArgumentBuilder}
+import net.fabricmc.fabric.api.client.command.v2.{ClientCommandManager, ClientCommandRegistrationCallback, FabricClientCommandSource}
 import net.fabricmc.fabric.api.client.datagen.v1.provider.FabricModelProvider
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.{WorldRenderContext, WorldRenderEvents}
@@ -13,24 +16,25 @@ import net.minecraft.advancement.criterion.{Criteria, ImpossibleCriterion}
 import net.minecraft.advancement.{Advancement, AdvancementCriterion, AdvancementDisplay, AdvancementDisplays, AdvancementEntry, AdvancementFrame, AdvancementRequirements, AdvancementRewards}
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.gl.RenderPipelines
-import net.minecraft.client.render.{BlockRenderLayer, OverlayTexture, RenderLayer, RenderLayers, TexturedRenderLayers, VertexConsumer, VertexConsumerProvider}
+import net.minecraft.client.render.{BlockRenderLayer, OverlayTexture, RenderLayer, RenderLayers, Tessellator, TexturedRenderLayers, VertexConsumer, VertexConsumerProvider, VertexFormats}
 import net.minecraft.client.texture.{Sprite, SpriteAtlasTexture, SpriteLoader}
 import net.minecraft.client.util.math.MatrixStack
-import net.minecraft.util.{ActionResult, AssetInfo, Hand, Identifier}
+import net.minecraft.util.{ActionResult, AssetInfo, Formatting, Hand, Identifier}
 import net.minecraft.util.math.{BlockPos, Direction, MathHelper}
-import org.net.eu.pool.mica.{AbstractRuneStorage, ClientExecutor, EmptyRune, EndQuoteRune, HasRegistry, QuoteRune, Rune, RuneShift, ServerExecutor, SidedExecutePacket, registryFor, given}
+import org.net.eu.pool.mica.{*, given}
 import net.minecraft.client.data.{BlockStateModelGenerator, ItemModelGenerator, ItemModels, Model, ModelIds, ModelSupplier}
 import net.minecraft.client.render.item.model.ItemModel
 import net.minecraft.data.DataWriter
 import net.minecraft.item.{Item, ItemStack, Items}
 import net.minecraft.loot.{LootPool, LootTable}
 import net.minecraft.network.packet.CustomPayload
-import net.minecraft.registry.{RegistryKey, RegistryKeys, RegistryWrapper}
+import net.minecraft.registry.{Registries, RegistryKey, RegistryKeys, RegistryWrapper}
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.text.Text
 import net.minecraft.util.hit.BlockHitResult
 import net.minecraft.util.math.Direction.Axis
 import net.minecraft.world.World
+import org.joml.{Matrix3f, Quaternionf, Quaternionfc}
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable
 
 import java.nio.file.{Files, Path}
@@ -147,12 +151,36 @@ def renderRunes(ctx: WorldRenderContext): Unit =
               normal = (0, 1, 0),
             )
             r.quad(
-              Vertex(pos = (-0.25f, 0f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
-              Vertex(pos = (-0.25f, 0.125f, -0.25f), uv = (1, 0), color = color, light = light, overlay = overlay),
-              Vertex(pos = (0.25f, 0.125f, -0.25f), uv = (1, 1), color = color, light = light, overlay = overlay),
-              Vertex(pos = (0.25f, 0f, -0.25f), uv = (0, 1), color = color, light = light, overlay = overlay),
+              Vertex(pos = (-0.249f, 0f, -0.249f), uv = (0.5f, 0), color = color, light = light, overlay = overlay),
+              Vertex(pos = (-0.249f, 0.125f, -0.249f), uv = (0.25f, 0), color = color, light = light, overlay = overlay),
+              Vertex(pos = (0.249f, 0.125f, -0.249f), uv = (0.25f, 1), color = color, light = light, overlay = overlay),
+              Vertex(pos = (0.249f, 0f, -0.249f), uv = (0.5f, 1), color = color, light = light, overlay = overlay),
               normal = (0, 0, -1)
             )
+            r.quad(
+              Vertex(pos = (0.249f, 0f, 0.249f), uv = (0.25f, 0), color = color, light = light, overlay = overlay),
+              Vertex(pos = (0.249f, 0.125f, 0.249f), uv = (0.5f, 0), color = color, light = light, overlay = overlay),
+              Vertex(pos = (-0.249f, 0.125f, 0.249f), uv = (0.5f, 1), color = color, light = light, overlay = overlay),
+              Vertex(pos = (-0.249f, 0f, 0.249f), uv = (0.25f, 1), color = color, light = light, overlay = overlay),
+              normal = (0, 0, 1)
+            )
+            withMatrices:
+              matrices.peek.getPositionMatrix.mul(0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)
+              matrices.peek.getNormalMatrix.mul(Matrix3f(0, 0, -1, 0, 1, 0, 1, 0, 0))
+              r.quad(
+                Vertex(pos = (-0.249f, 0f, -0.249f), uv = (0.5f, 0), color = color, light = light, overlay = overlay),
+                Vertex(pos = (0.249f, 0f, -0.249f), uv = (0.5f, 1), color = color, light = light, overlay = overlay),
+                Vertex(pos = (0.249f, 0.125f, -0.249f), uv = (0.25f, 1), color = color, light = light, overlay = overlay),
+                Vertex(pos = (-0.249f, 0.125f, -0.249f), uv = (0.25f, 0), color = color, light = light, overlay = overlay),
+                normal = (0, 0, -1)
+              )
+              r.quad(
+                Vertex(pos = (0.249f, 0f, 0.249f), uv = (0.25f, 0), color = color, light = light, overlay = overlay),
+                Vertex(pos = (-0.249f, 0f, 0.249f), uv = (0.25f, 1), color = color, light = light, overlay = overlay),
+                Vertex(pos = (-0.249f, 0.125f, 0.249f), uv = (0.5f, 1), color = color, light = light, overlay = overlay),
+                Vertex(pos = (0.249f, 0.125f, 0.249f), uv = (0.5f, 0), color = color, light = light, overlay = overlay),
+                normal = (0, 0, 1)
+              )
             r.sprite = Some(rune.sprite)
             r.quad(
               Vertex(pos = (-0.25f, 0.126f, -0.25f), uv = (0, 0), color = color, light = light, overlay = overlay),
@@ -162,6 +190,17 @@ def renderRunes(ctx: WorldRenderContext): Unit =
               normal = (0, 1, 0),
             )
   ()
+
+def debugAxes(using matrices: MatrixStack, consumers: VertexConsumerProvider)(): Unit =
+  val buf = consumers.getBuffer(RenderLayer.LINES)
+  RenderSystem.lineWidth(2.0f)
+  val matrix = matrices.peek
+  def axis(x: Float, y: Float, z: Float) =
+    buf.vertex(matrix, 0.0f, 0.0f, 0.0f).color(x, y, z, 1f).overlay(0, 15).normal(0, 0, 0)
+    buf.vertex(matrix, x, y, z).color(x, y, z, 1f).overlay(0, 15).normal(0, 0, 0)
+  axis(1, 0, 0)
+  axis(0, 1, 0)
+  axis(0, 0, 1)
 
 class ModelBuilder extends ModelSupplier:
   private var parent: Option[Identifier] = None
@@ -305,3 +344,19 @@ def datagen(using gen: FabricDataGenerator): Unit =
 
 def init() =
   ClientPlayNetworking.registerGlobalReceiver[SidedExecutePacket[ServerExecutor]](SidedExecutePacket.id, (p, ctx) => p.payload(summon))
+  ClientCommandRegistrationCallback.EVENT.register: (d, reg) =>
+    d.register:
+      val p = LiteralArgumentBuilder.literal[FabricClientCommandSource]("mica")
+      p.`then`:
+        val p = LiteralArgumentBuilder.literal[FabricClientCommandSource]("youLikeRunes")
+        p.requires(_.getPlayer hasPermissionLevel 2)
+        p.executes: ctx =>
+          registryFor[Rune].forEach: r =>
+            try
+              val id = Registries.ITEM.getId(r.item.value)
+              runOnServer:
+                relevantPlayer.getInventory.offerOrDrop(ItemStack(Registries.ITEM.get(id)))
+            catch case e: Exception =>
+              ctx.getSource.sendFeedback(Text literal e.getMessage styled (_ withColor Formatting.RED))
+          0
+        p.build()
