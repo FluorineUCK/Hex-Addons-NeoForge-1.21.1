@@ -32,7 +32,7 @@ class Plugin: Plugin<Project> {
     override fun apply(project: Project) {
         val minecraft_version: String by project.properties
         val serialVersion = minecraft_version.let {
-            val (maj, min, pat) = it.toString().split('.')
+            val (maj, min, pat) = it.toString().split('.') + ".0"
             min.toInt() * 100 + pat.toInt()
         }
         project.buildDir = project.file("build$serialVersion")

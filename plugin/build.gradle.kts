@@ -29,7 +29,7 @@ tasks.withType<KotlinCompile> {
 }
 
 group = "org.eu.net.pool"
-version = "0.1.0"
+version = "0.1.1"
 gradlePlugin {
     val plugin by plugins.creating {
         id = "org.eu.net.pool.mc-plugin"
