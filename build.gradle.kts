@@ -1,3 +1,5 @@
+import java.io.Writer
+import java.io.PrintStream
 import de.undercouch.gradle.tasks.download.Download
 import net.fabricmc.loom.task.prod.ClientProductionRunTask
 import org.eu.net.pool.mc_plugin.Environment
@@ -25,6 +27,22 @@ run {
     val row = versions.toMap()[project.properties["minecraft_version"].toString()]
     val map = headers.second.zip(row!!).filter { it.second != "" }.toMap()
     map.forEach(project.ext::set)
+}
+
+if (properties["dumpTaskGraph"] != null) {
+    gradle.taskGraph.whenReady {
+        PrintStream(file(properties["dumpTaskGraph"]!!).outputStream()).use { w ->
+            w.println("flowchart TD")
+            allTasks.forEach {
+                w.println("    ${it.name}")
+            }
+            allTasks.forEach {
+                getDependencies(it).forEach { d ->
+                    w.println("    ${it.name} --> ${d.name}")
+                }
+            }
+        }
+    }
 }
 
 val assetsArchive by tasks.register<Download>("assetsArchive") {
