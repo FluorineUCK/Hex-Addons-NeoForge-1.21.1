@@ -2,7 +2,6 @@ package org.eu.net.pool.hexic.mixin;
 
 import at.petrak.hexcasting.api.casting.iota.Iota;
 import at.petrak.hexcasting.api.casting.iota.IotaType;
-import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.util.Identifier;
 import org.eu.net.pool.hexic.IotaDuck;

@@ -2,13 +2,12 @@ package org.eu.net.pool.hexic.mixin;
 
 import net.minecraft.block.*;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.noise.SimplexNoiseSampler;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.BlockView;
 import net.minecraft.world.World;
-import org.eu.net.pool.hexic.WarCrime;
+import org.eu.net.pool.hexic.Interop;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -22,7 +21,7 @@ public class AirBlockMixin {
 
     @Unique
     private boolean hexic$isWorld(BlockView view) {
-        return view instanceof World world && world.getRegistryKey().equals(WarCrime.thoughtWorld);
+        return view instanceof World world && world.getRegistryKey().equals(Interop.thoughtWorld);
     }
 
     @Unique
