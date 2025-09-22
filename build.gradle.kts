@@ -137,6 +137,19 @@ for (addon in listOf(
     }
 }
 
+fun download(url: String): Download {
+    val hash = url.hashCode().toUInt().toString(16)
+    val ext = file(url).extension
+    val outPath = file("$buildDir/$hash.$ext")
+    return tasks.register<Download>("download_$hash") {
+        src(url)
+        dest(outPath)
+        overwrite(true)
+    }.get()
+}
+
+val cloth = download("https://raw.githubusercontent.com/malcolmriley/unused-textures/master/items/part_textile_cloth.png")
+
 run {
     val buildKubo by tasks.register("kubo")
     val outRoot = file("$buildDir/kubo")
@@ -227,6 +240,7 @@ dependencies {
     modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") }
     modImplementation("maven.modrinth:hexcellular:1.0.4")
     modImplementation("miyucomics.hexpose:hexpose:1.0.0")
+    modImplementation("com.github.ramixin:mixson-fabric:v1.4.0")
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     val cardinal_version = "5.2.3"
@@ -249,6 +263,35 @@ tasks.processResources {
 
     filesMatching("fabric.mod.json") {
         expand(project.properties)
+    }
+
+    dependsOn(cloth)
+    doLast {
+        for ((name, color) in listOf(
+            "white" to 16383998,
+            "orange" to 16351261,
+            "magenta" to 13061821,
+            "light_blue" to 3847130,
+            "yellow" to 16701501,
+            "lime" to 8439583,
+            "pink" to 15961002,
+            "gray" to 4673362,
+            "light_gray" to 10329495,
+            "cyan" to 1481884,
+            "purple" to 8991416,
+            "blue" to 3949738,
+            "brown" to 8606770,
+            "green" to 6192150,
+            "red" to 11546150,
+            "black" to 1908001,
+        )) {
+            exec {
+                commandLine("magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$destinationDir/assets/hexic/textures/item/${name}_mediaweave.png")
+            }
+        }
+        exec {
+            commandLine("magick", "wizard:", "$destinationDir/assets/hexic/textures/item/wizard.png")
+        }
     }
 }
 
