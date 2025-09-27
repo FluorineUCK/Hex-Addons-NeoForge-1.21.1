@@ -18,7 +18,7 @@ import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
 import at.petrak.hexcasting.xplat.IXplatAbstractions
 import com.chocohead.mm.api.ClassTinkerers
-import com.google.gson.JsonElement
+import com.google.gson.{JsonElement, JsonObject}
 import com.ibm.icu.util.MeasureUnit
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.arguments.{ArgumentType, StringArgumentType}
@@ -110,6 +110,8 @@ import java.util as ju
 import scala.math.Ordered.orderingToOrdered
 import scala.util.CommandLineParser.FromString
 import scala.util.boundary.Label
+import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
+import at.petrak.hexcasting.api.item.IotaHolderItem
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -406,12 +408,32 @@ trait ServerAware[T <: IotaType[?]]:
 given [T <: java.lang.Enum[T]: ClassTag as ct] => FromString[T]:
   override def fromString(s: String): T = Enum.valueOf[T](ct.runtimeClass.asInstanceOf[Class[T]], s)
 
-case class Mediaweave(color: DyeColor) extends Item(Item.Settings())
+extension [T] (x: T | Null)
+  inline def ?[R](f: T => R): R | Null = x match
+    case null => null
+    case x: T => f(x)
+
+case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHolderItem:
+  override def readIotaTag(stack: ItemStack): NbtCompound | Null =
+    stack.getNbt match
+      case null => null
+      case c => c.get("Hex") match
+        case c: NbtCompound => c
+        case _ => null
+  override def writeable(stack: ItemStack): Boolean = readIotaTag(stack) == null
+  override def canWrite(stack: ItemStack, iota: Iota): Boolean = writeable(stack) && iota.executable
+  override def writeDatum(stack: ItemStack, iota: Iota): Unit =
+    assume(canWrite(stack, iota))
+    stack.getOrCreateNbt.put("Hex", IotaType.serialize(iota))
 object Mediaweave:
   val colors: DyeColor :> Mediaweave = DyeColor.values().map(c => c -> Mediaweave(c)).toMap
   val tag: TagKey[Item] = TagKey.of(Registries.ITEM, "mediaweaves")
 
 val wizard = Item(Item.Settings().rarity(Rarity.EPIC).maxCount(1))
+
+trait HasCodec:
+  def getCodec: Codec[? <: this.type]
+given [T <: Mishap] => Conversion[T, HasCodec] = _.asInstanceOf
 
 def init(): Unit =
   Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
@@ -428,6 +450,7 @@ def init(): Unit =
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do HexRegistries.IOTA_TYPE(s"meta/$i") = c
   HexRegistries.IOTA_TYPE("jvm/class") = ClassIota
   HexRegistries.IOTA_TYPE("jvm/pointer") = PointerIota
+  HexRegistries.CONTINUATION_TYPE("tripwire") = TripwireIota.Frame
   for (color, item) <- Mediaweave.colors do
     Registries.ITEM(s"${color.asString}_mediaweave") = item
   Registries.ITEM("wizard") = wizard
@@ -461,7 +484,7 @@ def init(): Unit =
     mkNbtLiftArrayAction[Long](NbtLong.of, (b: Array[Long]) => NbtLongArray(b), "long")
   Patterns.register("nbt/liftf", (HexDir.NORTH_WEST, "edwaqwaa")):
     mkNbtLiftAction[Float](NbtFloat.of, "float")
-  Patterns.register("nbt/liftd", (HexDir.NORTH_WEST, "edwaqwwww")):
+  Patterns.register("nbt/liftd", (HexDir.NORTH_WEST, "edwaqwaawaa")):
     mkNbtLiftAction[Double](NbtDouble.of, "double")
   Patterns.register("nbt/literal/collection", (HexDir.EAST, "qqddqdewqaeaaee")):
     Patterns.mkLiteral(NbtIota(NbtCompound()))
@@ -481,6 +504,10 @@ def init(): Unit =
         case Seq(x: Iota) => Seq(IotaType.serialize(x))
     Patterns.register("tripwire", w"edewqwaqede"):
       Patterns.mkLiteral(TripwireIota)
+    //Patterns.register("spellmind/save", e"aqqqqqeawqwqwqwqwqweawwqwwqwwqwwqwwqwweawwwqwwwqwwwqwwwqwwwqwww"):
+    //  ???
+    //Patterns.register("spellmind/restore", e"deeeeeqdwewewewewewqdwwewwewwewwewwewwqdwwwewwwewwwewwwewwwewww"):
+    //  ???
   }"
   Patterns.register("nbt/deserialize", (HexDir.NORTH_WEST, "edwaqa")):
     Patterns.mkConstAction(1):
@@ -1221,11 +1248,27 @@ object MetatableIotaType:
 object TripwireIota extends Iota(new IotaType[TripwireIota.type]:
   override def deserialize(tag: NbtElement, world: ServerWorld): TripwireIota.type = TripwireIota
   override def color: Int = 0xba4216
-  override def display(tag: NbtElement): Text = Text.translatable("hexic.tripwire")
+  override def display(tag: NbtElement): Text = typeName
 , Object()):
   override def isTruthy: Boolean = true
   override def toleratesOther(that: Iota): Boolean = eq(that)
-  override def serialize(): NbtElement = NbtEnd.INSTANCE
+  override def serialize(): NbtElement = NbtCompound()
+  class Frame(mishap: Mishap) extends ContinuationFrame:
+    override def breakDownwards(x: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = ???
+    override def evaluate(cont: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult = throw mishap
+    override def getType: Type[?] = Frame
+    override def serializeToNBT(): NbtCompound =
+      val c = NbtCompound()
+      val codec = mishap.getCodec
+      c.putString("Class", mishap.getClass.getName)
+      c.put("Data", codec.encodeStart(NbtOps.INSTANCE, mishap.asInstanceOf).getOrThrow(false, _ => {}))
+      c
+    override def size: Int = 1
+  object Frame extends ContinuationFrame.Type[Frame]:
+    override def deserializeFromNBT(c: NbtCompound, world: ServerWorld): Frame =
+      val klass = classNamed(c.getString("Class"))
+      val codec = klass.get.runtimeClass.getMethod("getCodec").invoke(null).asInstanceOf[Codec[? <: Mishap]]
+      Frame(codec.decode(NbtOps.INSTANCE, c.get("Data")).getOrThrow(false, _ => {}).getFirst)
 
 case class LocationIota(vec: Vec3d, dim: Option[RegistryKey[World]]) extends Vec3Iota(vec), IotaTypeHint:
   override def serialize: NbtElement = NbtCompound().tap(_.put("vec", super.serialize())).tap(n => dim.map(v => n.putString("dim", v.getValue.toString)))
