@@ -27,7 +27,6 @@ java {
 
 scala {
     scalaVersion = "3.7.1"
-
 }
 
 loom {

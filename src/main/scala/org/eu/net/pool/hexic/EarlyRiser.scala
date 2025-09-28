@@ -5,6 +5,8 @@ import com.google.common.base.Charsets
 
 import java.lang.instrument.Instrumentation
 import net.bytebuddy.agent.ByteBuddyAgent
+import net.bytebuddy.agent.ByteBuddyAgent.AttachmentProvider
+import net.bytebuddy.agent.ByteBuddyAgent.AttachmentProvider.Accessor
 import net.minecraft.Bootstrap
 import net.minecraft.item.Item
 import org.objectweb.asm.tree.{ClassNode, FieldInsnNode, InsnList, InsnNode, InvokeDynamicInsnNode, LdcInsnNode, MethodInsnNode, MethodNode, MultiANewArrayInsnNode, TypeInsnNode}
@@ -12,17 +14,61 @@ import org.objectweb.asm.tree.{ClassNode, FieldInsnNode, InsnList, InsnNode, Inv
 import java.lang.instrument.ClassFileTransformer
 import java.security.ProtectionDomain
 import org.objectweb.asm.{Attribute, ClassReader, ClassWriter, Handle, Opcodes, Type}
+import sun.instrument.InstrumentationImpl
+import sun.misc.Unsafe
 
+import java.io.File
+import java.lang.invoke.{MethodHandles, MethodType}
+import java.lang.reflect.Field
 import java.nio.file.{Files, Path}
 import scala.annotation.{showAsInfix, tailrec}
 import scala.collection.mutable
 import scala.jdk.CollectionConverters.given
 import scala.quoted
 import scala.quoted.{Expr, Quotes}
+import scala.reflect.ClassTag
 import scala.util.NotGiven
 import scala.util.chaining.given
 
-given instrumentation: Instrumentation = ByteBuddyAgent.install()
+def classNamed(name: String): Option[ClassTag[?]] =
+  try
+    Some(ClassTag(Class.forName(name)))
+  catch
+    case _: ClassNotFoundException => None
+
+class Dummy:
+  type T <: Enum[T]
+
+given Unsafe =
+  val klass = classNamed("sun.misc.Unsafe").get.runtimeClass
+  val field = klass.getDeclaredField("theUnsafe")
+  field.setAccessible(true)
+  field.get(null).asInstanceOf[Unsafe]
+
+extension (f: Field)
+  inline def staticBase(using u: Unsafe) = u.staticFieldBase(f)
+  inline def staticOffset(using u: Unsafe) = u.staticFieldOffset(f)
+
+val godLookup: MethodHandles.Lookup =
+  val c = classOf[MethodHandles.Lookup]
+  val f = c.getDeclaredField("IMPL_LOOKUP")
+  unsafe.getObject(f.staticBase, f.staticOffset)
+    .asInstanceOf[MethodHandles.Lookup]
+
+given instrumentation: Instrumentation =
+  try
+    val d = Dummy()
+    val byteBuddy = classNamed("net.bytebuddy.agent.ByteBuddyAgent$AgentProvider$ForByteBuddyAgent").get.runtimeClass.asInstanceOf[Class[d.T]]
+    val mth = byteBuddy.getMethod("resolve")
+    val inst = Enum.valueOf(byteBuddy, "INSTANCE")
+    val path = mth.invoke(inst).asInstanceOf[File]
+    val instr = classNamed("sun.instrument.InstrumentationImpl").get.runtimeClass
+    val h = godLookup.findStatic(instr, "loadAgent", MethodType.methodType(Void.TYPE, classOf[String]))
+    h.invoke(path.getAbsolutePath)
+    ByteBuddyAgent.getInstrumentation
+  catch case e: Throwable =>
+    e.printStackTrace()
+    ByteBuddyAgent.install()
 class ChangesFlag private[hexic]():
   private[hexic] var value = false
 
