@@ -99,7 +99,7 @@ import scala.language.experimental.{macros, saferExceptions}
 import scala.language.{dynamics, existentials, implicitConversions, postfixOps, reflectiveCalls}
 import scala.reflect.{ClassTag, classTag}
 import scala.tools.asm.tree.MethodNode
-import scala.util.{NotGiven, TupledFunction, boundary}
+import scala.util.{NotGiven, Random, TupledFunction, boundary}
 import scala.util.chaining.given
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.PlayChannelHandler
@@ -471,6 +471,22 @@ trait HasCodec:
 given [T <: Mishap] => Conversion[T, HasCodec] = _.asInstanceOf
 
 def init(): Unit =
+  given_Logger.info:
+    val possible = Seq(
+      "Performing unnecessary JVM war crimes...",
+      "ough or something idk",
+      "i'm sorry",
+      "don't look at the networking too hard",
+      "and the ASM stared back.",
+      "'put everything in one file', they said",
+      "hey did I tell you about the two secret slots in the player preview?",
+      "see line 1000 for more information",
+      "no, you cannot flay sheep.",
+      "filled with undocumented features! no do not open the bug tracker that's supposed to do that",
+      "i bet your game is about to crash",
+      "a" + "wa".repeat(Random.nextInt(20) + 10),
+    )
+    possible(Random.nextInt(possible.size))
   Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
   try System.getProperties.load(Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8))
   catch

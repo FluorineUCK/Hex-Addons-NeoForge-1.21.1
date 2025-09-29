@@ -14,6 +14,8 @@
 * [ ] document metatables
 * [ ] document NBT
 * [ ] document lani's gambits
+* [ ] document mediaweave chat interception
+* [ ] document greater reveal
 
 
 * [ ] find my undocumented features
