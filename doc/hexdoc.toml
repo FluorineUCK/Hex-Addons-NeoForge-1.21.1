@@ -1,0 +1,38 @@
+modid = "hexic"
+book = "hexcasting:thehexbook"
+default_lang = "en_us"
+default_branch = "main"
+
+resource_dirs = [
+    #"resources",
+    "../build/resources/main",
+    { modid="hexcasting" },
+    { modid="minecraft" },
+    { modid="hexdoc" },
+]
+
+[extra.hexcasting]
+# NOTE: "!Raw" means "don't apply variable interpolation to this value"
+_pattern_regex = { "!Raw"='hexic:(?P<name>.+),(?P<startdir>\w+),(?P<signature>\w+)' }
+
+[[extra.hexcasting.pattern_stubs]]
+path = "../build/patterns.csv"
+regex = "{^_pattern_regex}"
+
+[textures]
+missing = ["hexic:preferred_mediaweave"]
+
+[template]
+include = ["hexic", "hexcasting", "hexdoc"]
+
+[template.args]
+mod_name = "Hexic"
+author = "PoolloverNathan"
+show_landing_text = false
+
+[[template.args.navbar.center]]
+text = "Source"
+href = "https://codeberg.org/poollovernathan/hexic"
+
+[textures.override]
+"hexic:preferred_mediaweave" = { texture = "hexic:textures/item/magenta_mediaweave.png" }
