@@ -18,6 +18,7 @@ import net.minecraft.item.{Item, ItemStack}
 import net.minecraft.registry.{MutableRegistry, Registries, RegistryKeys, RegistryWrapper}
 import net.minecraft.screen.slot.Slot
 import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
+import net.minecraft.util.DyeColor
 import net.minecraft.util.collection.DefaultedList
 import org.eu.net.pool.common_curses.{HotbarRendering, SlotAccess, TextManipulator}
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
@@ -91,6 +92,8 @@ def init(): Unit =
     foldLocalPlayer(HotbarRendering.ALL):
       _.getComponent(PlayerInfoComponent.key).wispMedia.fold(HotbarRendering.ALL)(_ => HotbarRendering.NONE)
 
+extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
+
 def datagen(gen: FabricDataGenerator): Unit =
   val pack = gen.createPack()
   pack.addProvider:
@@ -99,6 +102,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         ;
       override def generateItemModels(gen: ItemModelGenerator): Unit =
         for (_, item) <- Mediaweave.colors do gen.register(item, Models.GENERATED)
+        for item <- MediaBundle.items do gen.register(item, Models.GENERATED)
         gen.register(wizard, Models.GENERATED)
   pack.addProvider:
     new FabricLanguageProvider(_):
@@ -143,8 +147,18 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
 
         for (color, item) <- Mediaweave.colors do
-          gen.add(item, s"${color.getName.split('_').map(_.capitalize).mkString(" ")} Mediaweave")
+          gen.add(item, s"${color.humanName} Mediaweave")
+        for item <- MediaBundle.items do
+          gen.add(item, item.size match
+            case 6 => s"${item.color.humanName} Media Pouch"
+            case 12 => s"Large ${item.color.humanName} Media Pouch"
+            case _ => s"How Did You Get This ${item.color.humanName} Media Pouch")
         gen.add("tag.item.hexic.mediaweaves", "Mediaweave")
+        gen.add("hexic.media_bundle.items", "%s/%s")
+        gen.add("hexic.media.infinite", "%s: %s")
+        gen.add("hexic.media.finite", "%s: %s/%s (%s)")
+        gen.add("hexic.media.external", "Media")
+        gen.add("hexic.media.internal", "Trinkets")
         gen.add(wizard, "Wizard")
   pack.addProvider:
     new FabricRecipeProvider(_):
