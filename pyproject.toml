@@ -1,10 +1,47 @@
 [project]
 name = "hexdoc_hexic"
-version = "0.0.0"
+dynamic = ["version"]
+dependencies = [
+    "hexdoc",
+    "hexdoc-hexcasting",
+    "hexdoc-minecraft==1.20.1.*",
+    "hexdoc-hexal @ https://github.com/FallingColors/Hexal/raw/a5d1dbc6528e4a6c7c8f67ba3adc4c143dafb6e5/docs/v/latest/main/dist/hexdoc_hexal-0.3.0.1.0rc4.dev0-py3-none-any.whl",
+]
+requires-python = ">=3.12"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[[project.authors]]
+name = "PoolloverNathan"
 
 [project.entry-points.hexdoc]
 hexic = "hexdoc_hexic._hooks:HexicPlugin"
 
-[tool.setuptools.packages.find]
-where = ["doc/src"]
-include = ["hexdoc_hexic"]
+[build-system]
+requires = [
+    "hatchling",
+    "hatch-gradle-version>=0.8.0",
+]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+scheme = "gradle"
+source = "gradle-properties"
+py-path = "doc/src/hexdoc_hexic/__version__.py"
+key = "mod_version"
+
+# directory inclusion
+
+[tool.hatch.build]
+only-include = [
+    "doc/src",
+    "gradle.properties",
+]
+artifacts = [
+    "/doc/src/_export/generated",
+    "/doc/src/__gradle_version__.py",
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["doc/src"]
