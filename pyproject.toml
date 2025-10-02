@@ -5,10 +5,13 @@ dependencies = [
     "hexdoc",
     "hexdoc-hexcasting",
     "hexdoc-minecraft==1.20.1.*",
-    "hexdoc-moreiotas @ https://github.com/FallingColors/MoreIotas/raw/e941c465c1b77b1e425f57958f913b7c050a5c48/docs/v/0.1.1/1.0.dev0/dist/hexdoc_moreiotas-0.1.1.1.0.dev0-py3-none-any.whl",
-    "hexdoc-hexal @ https://github.com/FallingColors/Hexal/raw/a5d1dbc6528e4a6c7c8f67ba3adc4c143dafb6e5/docs/v/latest/main/dist/hexdoc_hexal-0.3.0.1.0rc4.dev0-py3-none-any.whl",
+    "hexdoc-moreiotas==0.1.1.*",
+    "hexdoc-hexal",
 ]
 requires-python = ">=3.12"
+
+[tool.uv.sources]
+hexdoc-hexal = { url = "https://github.com/FallingColors/Hexal/raw/a5d1dbc6528e4a6c7c8f67ba3adc4c143dafb6e5/docs/v/latest/main/dist/hexdoc_hexal-0.3.0.1.0rc4.dev0-py3-none-any.whl" }
 
 [tool.hatch.metadata]
 allow-direct-references = true

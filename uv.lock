@@ -416,7 +416,7 @@ requires-dist = [
     { name = "hexdoc-hexal", url = "https://github.com/FallingColors/Hexal/raw/a5d1dbc6528e4a6c7c8f67ba3adc4c143dafb6e5/docs/v/latest/main/dist/hexdoc_hexal-0.3.0.1.0rc4.dev0-py3-none-any.whl" },
     { name = "hexdoc-hexcasting" },
     { name = "hexdoc-minecraft", specifier = "==1.20.1.*" },
-    { name = "hexdoc-moreiotas", url = "https://github.com/FallingColors/MoreIotas/raw/e941c465c1b77b1e425f57958f913b7c050a5c48/docs/v/0.1.1/1.0.dev0/dist/hexdoc_moreiotas-0.1.1.1.0.dev0-py3-none-any.whl" },
+    { name = "hexdoc-moreiotas", specifier = "==0.1.1.*" },
 ]
 
 [[package]]
@@ -434,20 +434,14 @@ wheels = [
 [[package]]
 name = "hexdoc-moreiotas"
 version = "0.1.1.1.0.dev0"
-source = { url = "https://github.com/FallingColors/MoreIotas/raw/e941c465c1b77b1e425f57958f913b7c050a5c48/docs/v/0.1.1/1.0.dev0/dist/hexdoc_moreiotas-0.1.1.1.0.dev0-py3-none-any.whl" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "hexdoc-hexcasting" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/ca/3d/a23ad0137f9a7f25ad40c04a5fa631ea335631d525a06dc41ac612994f82/hexdoc_moreiotas-0.1.1.1.0.dev0.tar.gz", hash = "sha256:e9e64326d6371193383c6a29f4a6a4dd825c1b53b1bf1b616af1de2a2be68430", size = 16328, upload-time = "2025-09-24T01:42:45.218Z" }
 wheels = [
-    { url = "https://github.com/FallingColors/MoreIotas/raw/e941c465c1b77b1e425f57958f913b7c050a5c48/docs/v/0.1.1/1.0.dev0/dist/hexdoc_moreiotas-0.1.1.1.0.dev0-py3-none-any.whl", hash = "sha256:f9ce44d99c0f19cf853f2359ee8e57cb8f9692360a7245d1dc859387f04fb2d0" },
+    { url = "https://files.pythonhosted.org/packages/6a/69/d1d694958462eded0f8f114ff6af7e3379c4d688bf9fcfda4f51aea87153/hexdoc_moreiotas-0.1.1.1.0.dev0-py3-none-any.whl", hash = "sha256:f9ce44d99c0f19cf853f2359ee8e57cb8f9692360a7245d1dc859387f04fb2d0", size = 20709, upload-time = "2025-09-24T01:42:43.518Z" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "hexdoc-hexcasting", specifier = "~=0.11.2.1.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "~=0.11.2" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "httpcore"
