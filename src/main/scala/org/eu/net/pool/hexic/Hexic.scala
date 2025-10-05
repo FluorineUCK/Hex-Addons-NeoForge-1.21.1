@@ -478,6 +478,9 @@ extension (x: Iterable[Boolean])
   def any: Boolean = x.exists(identity)
   def all: Boolean = x.forall(identity)
 
+object ItemStackAccess:
+  def unapply(s: ItemStack): Some[(Item, Int, Option[NbtCompound])] = Some((s.getItem, s.getCount, Option(s.getNbt)))
+
 case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().maxCount(1)) with MediaHolderItem:
   extension (stack: ItemStack)
     private def heldItems: Seq[ItemStack] =
@@ -540,12 +543,17 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
           player.playSound(SoundEvents.ITEM_BUNDLE_REMOVE_ONE, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       else if HexCardinalComponents.MEDIA_HOLDER.getNullable(otherStack) != null then
         val held = stack.heldItems
-        if held.length < size then
+        if fits(held, otherStack.getItem) then
           stack.heldItems = held :+ otherStack.copyAndEmpty()
           player.playSound(SoundEvents.ITEM_BUNDLE_INSERT, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       true
     else
       false
+  private def fits(held: Seq[ItemStack], subj: Item): Boolean =
+    val cur = held.map(_.getItem match { case b: MediaBundle => b.size/2; case _ => 1 }).sum
+    subj match
+      case MediaBundle(_, subjSize) => subjSize <= size && cur + subjSize/2 <= size
+      case _ => cur < size
   override def onStackClicked(stack: ItemStack, slot: Slot, clickType: ClickType, player: PlayerEntity): Boolean =
     if clickType == ClickType.RIGHT then
       if slot.getStack.isEmpty then
@@ -556,28 +564,47 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
           player.playSound(SoundEvents.ITEM_BUNDLE_REMOVE_ONE, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       else if HexCardinalComponents.MEDIA_HOLDER.getNullable(slot.getStack) != null then
         val held = stack.heldItems
-        if held.length < size then
+        if fits(held, slot.getStack.getItem) then
           stack.heldItems = held :+ slot.getStack.copyAndEmpty()
           player.playSound(SoundEvents.ITEM_BUNDLE_INSERT, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       true
     else
       false
   override def getTooltipData(stack: ItemStack): Optional[TooltipData] = Optional.of(BundleTooltipData(DefaultedList.copyOf(ItemStack.EMPTY, stack.heldItems*), stack.heldItems.size))
+  private type M = (Option[Long], Option[(Long, Long)], Option[(Long, Long)])
+  protected def getMediaInfo(stack: ItemStack): M =
+    val (recursive, nonrecursive) = stack.heldItems.partitionMap:
+      case s@ItemStackAccess(b: MediaBundle, _, _) => Left(b.getMediaInfo(s))
+      case s => Right(Option(hexXplat.findMediaHolder(s)))
+    val (canProvide, cantProvide) = nonrecursive.flatten.partition(_.canProvide)
+    val (canRecharge, consumables) = canProvide.partition(_.canRecharge)
+    val mine: M = (Option.when(consumables.nonEmpty)(consumables.map(_.getMedia).sum), Option.when(canRecharge.nonEmpty)((canRecharge.map(_.getMedia).sum, canRecharge.map(_.getMaxMedia).sum)), Option.when(cantProvide.nonEmpty)((cantProvide.map(_.getMedia).sum, cantProvide.map(_.getMaxMedia).sum)))
+    recursive.foldLeft(mine)((p: M, q: M) => (
+      (p._1, q._1) match
+        case (None, None) => None
+        case (Some(x), None) => Some(x)
+        case (None, Some(x)) => Some(x)
+        case (Some(x), Some(y)) => Some(x + y),
+      (p._2, q._2) match
+        case (None, None) => None
+        case (Some(x), None) => Some(x)
+        case (None, Some(x)) => Some(x)
+        case (Some(x), Some(y)) => Some((x._1 + y._1, x._2 + y._2)),
+      (p._3, q._3) match
+        case (None, None) => None
+        case (Some(x), None) => Some(x)
+        case (None, Some(x)) => Some(x)
+        case (Some(x), Some(y)) => Some((x._1 + y._1, x._2 + y._2)),
+    ))
   override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
     tooltip.add(Text.translatable("hexic.media_bundle.items", stack.heldItems.size, size).styled(_.withColor(Formatting.GRAY)))
-    val (canProvide, cantProvide) = stack.mediaHolders.partition(_.canProvide)
-    val (canRecharge, consumables) = canProvide.partition(_.canRecharge)
-    val consumableTotal = consumables.map(_.getMedia).sum
-    val batteryTotal = canRecharge.map(_.getMedia).sum
-    val trinketTotal = cantProvide.map(_.getMedia).sum
-    val batteryMax = canRecharge.map(_.getMaxMedia).sum
-    val trinketMax = cantProvide.map(_.getMaxMedia).sum
-    if canRecharge.nonEmpty then
-      tooltip.add(showMedia("external", batteryTotal + consumableTotal, batteryMax))
-    else if consumables.nonEmpty then
-      tooltip.add(showMedia("external", consumableTotal))
-    if cantProvide.nonEmpty then
-      tooltip.add(showMedia("internal", trinketTotal, trinketMax))
+    val (consumables, batteries, trinkets) = getMediaInfo(stack)
+    batteries match
+      case Some((total, max)) => tooltip.add(showMedia("external", total + consumables.getOrElse(0L), max))
+      case None => for value <- consumables do
+        tooltip.add(showMedia("external", value))
+    for (total, max) <- trinkets do
+      tooltip.add(showMedia("internal", total, max))
   private def showMedia(tag: String, media: Long) = Text.translatable("hexic.media.infinite", Text.translatable(s"hexic.media.$tag"), Text.translatable("hexcasting.tooltip.media", dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR))))
   private def showMedia(tag: String, media: Long, maxMedia: Long) = Text.translatable("hexic.media.finite", Text.translatable(s"hexic.media.$tag"), dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.translatable("hexcasting.tooltip.media", dustAmount(maxMedia)).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.literal(PERCENTAGE.format(100.0 * media / maxMedia)+"%").styled(_.withColor(MediaHelper.mediaBarColor(media, maxMedia))))
   private def dustAmount(media: Long) = Text.literal(DUST_AMOUNT.format(media / MediaConstants.DUST_UNIT.toDouble))

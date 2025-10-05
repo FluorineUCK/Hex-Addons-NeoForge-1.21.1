@@ -361,16 +361,21 @@ tasks.register<Exec>("wheel") {
     outputs.file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
 }
 
+tasks.register<Exec>("publishToPypi") {
+    dependsOn("wheel")
+    commandLine("uv", "publish")
+}
+tasks.named("publish") {
+    dependsOn("publishToPypi")
+}
+
 // configure the maven publication
 publishing {
     publications {
         create<MavenPublication>("mavenJava") {
             artifactId = project.property("archives_base_name") as String
             from(components["java"])
-            artifact(file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")) {
-                classifier = "hexdoc"
-                extension = "whl"
-            }
+            artifact(file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl"))
         }
     }
 
