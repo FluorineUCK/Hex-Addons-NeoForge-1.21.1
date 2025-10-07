@@ -631,7 +631,7 @@ def init(): Unit =
       "and the ASM stared back.",
       "'put everything in one file', they said",
       "hey did I tell you about the two secret slots in the player preview?",
-      "see line 548 for more information",
+      "see line 627 for more information",
       "no, you cannot flay sheep.",
       "filled with undocumented features! no do not open the bug tracker that's supposed to do that",
       "i bet your game is about to crash",

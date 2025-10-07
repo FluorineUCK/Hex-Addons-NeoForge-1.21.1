@@ -10,6 +10,10 @@ out/
 # mpeltonen/sbt-idea plugin
 .idea_modules/
 
+# Metals
+.bloop/
+.metals/
+
 # JIRA plugin
 atlassian-ide-plugin.xml
 
@@ -102,6 +106,7 @@ $RECYCLE.BIN/
 
 .gradle
 build/
+/src/main/generated
 
 # Ignore Gradle GUI config
 gradle-app.setting
@@ -117,9 +122,10 @@ runs/
 
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
-.bloop/
-.metals/
+
+# Hexdoc
 *.egg-info
-/src/main/generated
 __pycache__/
 _site/
+.vscode/
+doc/src/hexdoc_hexic/__gradle_version__.py
