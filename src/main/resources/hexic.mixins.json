@@ -16,6 +16,7 @@
     "PacketByteBufMixin",
     "PatternIotaMixin",
     "PhantomEntityMixin",
+    "PlayerInventoryMixin",
     "SimpleRegistryMixin",
     "StaffCastEnvMixin",
     "hexent.OpTickMixin",
