@@ -609,9 +609,17 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
   private def showMedia(tag: String, media: Long, maxMedia: Long) = Text.translatable("hexic.media.finite", Text.translatable(s"hexic.media.$tag"), dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.translatable("hexcasting.tooltip.media", dustAmount(maxMedia)).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.literal(PERCENTAGE.format(100.0 * media / maxMedia)+"%").styled(_.withColor(MediaHelper.mediaBarColor(media, maxMedia))))
   private def dustAmount(media: Long) = Text.literal(DUST_AMOUNT.format(media / MediaConstants.DUST_UNIT.toDouble))
 
+val stringworms =
+  val settings = Item.Settings().maxCount(16)
+  Seq("action", "hex", "media", "thing").map(_ -> Item(settings))
+
+object Extern:
+  def getStringworm(idx: Int) = stringworms(idx)._2
+
 type Media = Long
 object MediaBundle:
-  val items: Seq[MediaBundle] = for i <- Seq(6, 12); c <- DyeColor.values yield MediaBundle(c, i)
+  val items: Seq[MediaBundle] = for i <- Seq(6, 12); c <- DyeColor.values yield new MediaBundle(c, i)
+  def apply(c: DyeColor, s: Int) = items.find(b => b.color == c && b.size == s).get
   private val PERCENTAGE = new DecimalFormat("####")
   PERCENTAGE.setRoundingMode(RoundingMode.DOWN)
   private val DUST_AMOUNT = new DecimalFormat("###,###.##")
@@ -631,7 +639,7 @@ def init(): Unit =
       "and the ASM stared back.",
       "'put everything in one file', they said",
       "hey did I tell you about the two secret slots in the player preview?",
-      "see line 627 for more information",
+      "see line 631 for more information",
       "no, you cannot flay sheep.",
       "filled with undocumented features! no do not open the bug tracker that's supposed to do that",
       "i bet your game is about to crash",
@@ -659,6 +667,8 @@ def init(): Unit =
     Registries.ITEM(item.size match
       case 6 => s"small_${item.color.asString}_bundle"
       case 12 => s"large_${item.color.asString}_bundle") = item
+  for (flavor, item) <- stringworms do
+    Registries.ITEM(s"stringworm_$flavor") = item
   Registries.ITEM("wizard") = wizard
   //Registries.ITEM("echo") = EchoItem
   ifModLoaded"hexent${
