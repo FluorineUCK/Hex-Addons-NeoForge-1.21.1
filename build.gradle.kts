@@ -333,28 +333,28 @@ tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+val change_id by lazy {
+    val stdout = `java.io`.ByteArrayOutputStream()
+    exec {
+        commandLine("jj", "log", "-r", "@", "--template", "change_id", "--no-graph")
+        standardOutput = stdout;
+    }
+    stdout.toString()
+}
+
 tasks.register<Exec>("hexdoc") {
     dependsOn("processResources")
     environment["GITHUB_PAGES_URL"] = ""
     environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
-    val stdout = `java.io`.ByteArrayOutputStream()
-    exec {
-        commandLine("git", "rev-parse", "HEAD")
-        standardOutput = stdout;
-    }
-    environment["GITHUB_SHA"] = stdout.toString()
-    commandLine("env", "hexdoc", "build")
+    println(change_id)
+    environment["GITHUB_SHA"] = change_id
+    commandLine("env", "hexdoc", "build", "--branch", change_id)
 }
 tasks.register<Exec>("mergeHexdoc") {
     dependsOn("hexdoc")
     environment["GITHUB_PAGES_URL"] = ""
     environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
-    val stdout = `java.io`.ByteArrayOutputStream()
-    exec {
-        commandLine("git", "rev-parse", "HEAD")
-        standardOutput = stdout;
-    }
-    environment["GITHUB_SHA"] = stdout.toString()
+    environment["GITHUB_SHA"] = change_id
     commandLine("env", "hexdoc", "merge")
 }
 val wheel by tasks.register<Exec>("wheel") {
