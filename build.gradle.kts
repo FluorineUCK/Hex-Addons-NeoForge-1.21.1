@@ -385,6 +385,11 @@ publishing {
         create<MavenPublication>("mavenJava") {
             artifactId = project.property("archives_base_name") as String
             from(components["java"])
+            artifact(file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")) {
+                builtBy(wheel)
+                classifier = "hexdoc"
+                extension = "whl"
+            }
         }
     }
 
