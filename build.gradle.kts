@@ -417,7 +417,7 @@ fun Hexdoc.cleanPrefix() {
 fun Hexdoc.processOutput() {
     doLast {
         for (f in docsRoot.walk()) {
-            if (f.isFile) {
+            if (f.isFile && !f.name.endsWith(".png")) {
                 f.writeText(includeContent(f.readText()))
             }
         }
