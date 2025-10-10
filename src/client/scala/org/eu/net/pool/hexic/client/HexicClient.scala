@@ -140,8 +140,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
           // hexent
-          "variant" -> "Object Variant",
-          "stack" -> "Object Stack",
+          "variant" -> "Concept",
           // infinite hexxy
           "jvm/class" -> "Class",
           "jvm/pointer" -> "Address",
