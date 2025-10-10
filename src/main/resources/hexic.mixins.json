@@ -6,7 +6,6 @@
   "mixins": [
     "ActionRegistryEntryMixin",
     "AirBlockMixin",
-    "CastingVMMixin",
     "EntityMixin",
     "HopperEndpointRegistryMixin",
     "ItemMixin",
@@ -18,6 +17,7 @@
     "PatternIotaMixin",
     "PhantomEntityMixin",
     "SimpleRegistryMixin",
+    "StaffCastEnvMixin",
     "hexent.OpTickMixin",
     "hexent.OpTickMixin$SpellMixin"
   ],

@@ -133,7 +133,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           "staffcast_factory" -> "Lani's Lesser Gambit",
           "staffcast_factory/lazy" -> "Lani's Greater Gambit",
           "metatable" -> "Metatable Exaltation",
-          "murmur" -> "Murmur Reflection"
+          "murmur" -> "Murmur Reflection",
+          "reveal" -> "Greater Reveal",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
