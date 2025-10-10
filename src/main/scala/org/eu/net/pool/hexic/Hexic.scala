@@ -671,15 +671,13 @@ def init(): Unit =
     Registries.ITEM(s"stringworm_$flavor") = item
   Registries.ITEM("wizard") = wizard
   //Registries.ITEM("echo") = EchoItem
-  ifModLoaded"hexent${
-    ifModLoaded"hexical${
-      for
-        HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
-        ConduitIota <- classNamed("dev.kineticcat.hexportation.fabric.api.casting.iota.ConduitIota")
-        registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint").asInstanceOf[Option[ClassTag[? <: (() => Unit)]]]
-      do
-        registerHopperEndpoint.runtimeClass.newInstance().asInstanceOf[() => Unit]()
-    }"
+  ifModLoaded"hexical${
+    for
+      HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
+      ConduitIota <- classNamed("dev.kineticcat.hexportation.fabric.api.casting.iota.ConduitIota")
+      registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint").asInstanceOf[Option[ClassTag[? <: (() => Unit)]]]
+    do
+      registerHopperEndpoint.runtimeClass.newInstance().asInstanceOf[() => Unit]()
   }"
   def mkNbtLiftAction[T: FromIota](lift: T => NbtElement, expected: Identifier) =
     Patterns.mkConstAction(1):
@@ -712,19 +710,17 @@ def init(): Unit =
     Patterns.mkLiteral(NbtIota(NbtIntArray(Array[Int]())))
   Patterns.register("nbt/literal/array4", (HexDir.EAST, "eedwaqqewww")):
     Patterns.mkLiteral(NbtIota(NbtLongArray(Array[Long]())))
-  ifModLoaded"hexa${
-    Patterns.register("empty_map", (HexDir.EAST, "dqdwdqd")):
-      Patterns.mkLiteral(MapIota())
-    Patterns.register("nbt/serialize", nw"edwaq"):
-      Patterns.mkConstAction(1):
-        case Seq(x: Iota) => Seq(IotaType.serialize(x))
-    Patterns.register("tripwire", w"edewqwaqede"):
-      Patterns.mkLiteral(TripwireIota)
-    //Patterns.register("spellmind/save", e"aqqqqqeawqwqwqwqwqweawwqwwqwwqwwqwwqwweawwwqwwwqwwwqwwwqwwwqwww"):
-    //  ???
-    //Patterns.register("spellmind/restore", e"deeeeeqdwewewewewewqdwwewwewwewwewwewwqdwwwewwwewwwewwwewwwewww"):
-    //  ???
-  }"
+  Patterns.register("empty_map", (HexDir.EAST, "dqdwdqd")):
+    Patterns.mkLiteral(MapIota())
+  Patterns.register("nbt/serialize", nw"edwaq"):
+    Patterns.mkConstAction(1):
+      case Seq(x: Iota) => Seq(IotaType.serialize(x))
+  Patterns.register("tripwire", w"edewqwaqede"):
+    Patterns.mkLiteral(TripwireIota)
+  //Patterns.register("spellmind/save", e"aqqqqqeawqwqwqwqwqweawwqwwqwwqwwqwwqwweawwwqwwwqwwwqwwwqwwwqwww"):
+  //  ???
+  //Patterns.register("spellmind/restore", e"deeeeeqdwewewewewewqdwwewwewwewwewwewwqdwwwewwwewwwewwwewwwewww"):
+  //  ???
   Patterns.register("nbt/deserialize", (HexDir.NORTH_WEST, "edwaqa")):
     Patterns.mkConstAction(1):
       case Seq(data: NbtIota) =>
@@ -1070,65 +1066,63 @@ def init(): Unit =
           p.free()
           Seq()
   }"
-  ifModLoaded"hexa${
-    Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
-      Patterns.mkAction: (img, cont) =>
-        summon[CastingEnvironment].getCastingEntity match
-          case caster: ServerPlayerEntity =>
-            val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
-            val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
-            staffcast.setImage(img)
-            val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
-            try
-              vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
-            finally
-              staffcast.setImage(oldImage)
-              HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
-            (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
-          case _ => throw MishapBadCaster()
-    Patterns.register("staffcast_factory/lazy", ne"waqqqqqeaqeaeaeaeaeq"):
-      Patterns.mkAction: (img, cont) =>
-        summon[CastingEnvironment].getCastingEntity match
-          case caster: ServerPlayerEntity =>
-            val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
-            val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
-            staffcast.setImage(img)
-            HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
-            val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
+  Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
+    Patterns.mkAction: (img, cont) =>
+      summon[CastingEnvironment].getCastingEntity match
+        case caster: ServerPlayerEntity =>
+          val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
+          val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
+          staffcast.setImage(img)
+          val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
+          try
             vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
-            (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
-          case _ => throw MishapBadCaster()
-    Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
-      Patterns.mkConstAction(4):
-        case Seq(userdata, display, isIota[Vec3Iota, 1](color), isIota[PropertyIota, 0](metatable)) =>
-          val r = clamp(color.getVec3.x)(0.0, 1.0).*(5).round.toInt
-          assume(0 until 6 contains r)
-          val g = clamp(color.getVec3.y)(0.0, 1.0).*(5).round.toInt
-          assume(0 until 6 contains g)
-          val b = clamp(color.getVec3.z)(0.0, 1.0).*(5).round.toInt
-          assume(0 until 6 contains b)
-          Seq:
-            val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
-            ty.Instance(userdata, display.display, metatable.getName)
-    Patterns.register("murmur", e"wwaqwa"):
-      Patterns.mkLiteral:
+          finally
+            staffcast.setImage(oldImage)
+            HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
+          (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
+        case _ => throw MishapBadCaster()
+  Patterns.register("staffcast_factory/lazy", ne"waqqqqqeaqeaeaeaeaeq"):
+    Patterns.mkAction: (img, cont) =>
+      summon[CastingEnvironment].getCastingEntity match
+        case caster: ServerPlayerEntity =>
+          val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
+          val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
+          staffcast.setImage(img)
+          HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
+          val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
+          vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
+          (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
+        case _ => throw MishapBadCaster()
+  Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
+    Patterns.mkConstAction(4):
+      case Seq(userdata, display, isIota[Vec3Iota, 1](color), isIota[PropertyIota, 0](metatable)) =>
+        val r = clamp(color.getVec3.x)(0.0, 1.0).*(5).round.toInt
+        assume(0 until 6 contains r)
+        val g = clamp(color.getVec3.y)(0.0, 1.0).*(5).round.toInt
+        assume(0 until 6 contains g)
+        val b = clamp(color.getVec3.z)(0.0, 1.0).*(5).round.toInt
+        assume(0 until 6 contains b)
+        Seq:
+          val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
+          ty.Instance(userdata, display.display, metatable.getName)
+  Patterns.register("murmur", e"wwaqwa"):
+    Patterns.mkLiteral:
+      locally(summon[CastingEnvironment]).getCastingEntity match
+        case null => throw MishapBadCaster()
+        case p: ServerPlayerEntity => p.getComponent(PlayerInfoComponent.key).murmur.fold(NullIota())(StringIota.make)
+        case _ => throw MishapBadCaster()
+  Patterns.register("reveal", ne"deqed"):
+    Patterns.mkConstAction(1, 0):
+      case Seq(iota: Iota) =>
         locally(summon[CastingEnvironment]).getCastingEntity match
           case null => throw MishapBadCaster()
-          case p: ServerPlayerEntity => p.getComponent(PlayerInfoComponent.key).murmur.fold(NullIota())(StringIota.make)
+          case p: ServerPlayerEntity =>
+            p.getComponent(PlayerInfoComponent.key).chatLines = iota match
+              case s: ListIota => s.getList.map(_.display).toSeq
+              case _ => Seq(iota.display)
+            p.syncComponent(PlayerInfoComponent.key)
+            Seq()
           case _ => throw MishapBadCaster()
-    Patterns.register("reveal", ne"deqed"):
-      Patterns.mkConstAction(1, 0):
-        case Seq(iota: Iota) =>
-          locally(summon[CastingEnvironment]).getCastingEntity match
-            case null => throw MishapBadCaster()
-            case p: ServerPlayerEntity =>
-              p.getComponent(PlayerInfoComponent.key).chatLines = iota match
-                case s: ListIota => s.getList.map(_.display).toSeq
-                case _ => Seq(iota.display)
-              p.syncComponent(PlayerInfoComponent.key)
-              Seq()
-            case _ => throw MishapBadCaster()
-  }"
   SlotAccess.playerInventory.register: (player, slot, stack) =>
     player.getComponent(PlayerInfoComponent.key).wispMedia match
       case Some(_) => SlotAccess.LOCK_AND_DROP
@@ -1289,7 +1283,7 @@ object elementTag:
 private[hexic] object cfg:
   def apply[T: FromString as t](key: String): Option[T] =
     sys.props.get(key).map(t.fromString)
-  def modFlag(mod: String, key: String): Boolean = fabric.isModLoaded(mod) && cfg[Boolean](s"$mod.$key").contains(true)
+  def flag(key: String): Boolean = cfg[Boolean](s"hexic.$key").contains(true)
   def update[T](key: String, value: T): Unit =
     sys.props(key) = value.toString
 
