@@ -131,6 +131,9 @@ import java.util.function.Predicate
 import scala.quoted.Quotes
 import java.io.Writer
 import java.io.OutputStreamWriter
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
+import net.minecraft.block.AbstractBlock
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -615,6 +618,16 @@ val stringworms =
 
 object Extern:
   def getStringworm(idx: Int) = stringworms(idx)._2
+
+val _ =
+  Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
+    val c = p.getComponent(PlayerInfoComponent.key)
+    if !c.rightWeave.isEmpty then
+      out.add(c.rightWeave)
+      c.rightWeave = ItemStack.EMPTY
+    if !c.leftWeave.isEmpty then
+      out.add(c.leftWeave)
+      c.leftWeave = ItemStack.EMPTY
 
 type Media = Long
 object MediaBundle:

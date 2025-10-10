@@ -8,6 +8,8 @@ import net.minecraft.block.Block;
 import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.command.argument.RegistryEntryArgumentType;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.entry.RegistryEntry;
@@ -20,12 +22,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import scala.runtime.BoxedUnit;
 import scala.util.boundary;
 
+import java.util.List;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public class Interop extends BlockPos {
     public final @NotNull Entity e;
     public static @NotNull RegistryKey<World> thoughtWorld;
     public static final @NotNull Block VOID_AIR = new Block(FabricBlockSettings.create().noCollision());
+    public static @NotNull BiConsumer<PlayerEntity, List<ItemStack>> playerDeathHook;
     
     public Interop(Entity e) {
         super(e.getBlockPos());
