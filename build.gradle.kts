@@ -331,6 +331,9 @@ tasks.processResources {
             }
         }
         file("$itemsRoot/stringworm.miff").delete()
+        exec {
+            commandLine("magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
+        }
     }
 }
 
@@ -358,6 +361,8 @@ tasks.jar {
     }
     duplicatesStrategy = DuplicatesStrategy.WARN
 }
+
+val py_version: String by project.properties
 
 class P(project: Project) {
     val commit_id by lazy {
@@ -405,7 +410,7 @@ open class Hexdoc: Exec() {
     @Internal
     var docsPrefix = project.file(".")
 }
-val Hexdoc.docsRoot get() = file("$docsPrefix/v/${if (release) "$version/1.1" else "latest/${p.change_id}"}")
+val Hexdoc.docsRoot get() = file("$docsPrefix/v/${if (release) "$version/$py_version" else "latest/${p.change_id}"}")
 fun Hexdoc.cleanPrefix() {
     doFirst {
         docsPrefix.deleteRecursively()
@@ -428,24 +433,32 @@ fun includeContent(text: String) =
         "data:image/png;base64,$b64"
     }
 
-val wheelPath = file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
-tasks.register<Hexdoc>("hexdoc") {
-    dependsOn("processResources")
-    cleanPrefix()
+val wheelPath = file("dist/hexdoc_hexic-$version.$py_version-py3-none-any.whl")
+val syncPip by tasks.register<Exec>("syncPip") {
+    doFirst {
+        file("doc/src/hexdoc_hexic/__version__.py").writeText("""
+            PY_VERSION = "$py_version"
+        """.trimIndent())
+    }
+    commandLine("env", "pip", "install", "-e", ".")
+}
+val hexdoc by tasks.register<Hexdoc>("hexdoc") {
+    dependsOn(syncPip, tasks.processResources, "runDatagen")
     docsPrefix = file("_site/src/docs")
+    cleanPrefix()
     hexdocArgs = listOf("build", "--branch", p.change_id)
     if (release) hexdocArgs += "--release"
     processOutput()
 }
 val mergeHexdoc by tasks.register<Hexdoc>("mergeHexdoc") {
-    dependsOn("hexdoc")
+    dependsOn(hexdoc)
     docsPrefix = file("_site/dst/docs")
     hexdocArgs = listOf("merge")
     if (release) hexdocArgs += "--release"
     processOutput()
 }
 val wheel by tasks.register<Exec>("wheel") {
-    dependsOn("hexdoc")
+    dependsOn(hexdoc)
     commandLine("env", "uv", "build")
     outputs.file(wheelPath)
 }
@@ -463,11 +476,18 @@ val processWheel by tasks.register<Zip>("processWheel") {
     eachFile {
         if (!name.endsWith(".png")) {
             filter(::includeContent)
-            filter { it.replace(contentRoot, "https://example.com/PoolloverNathan/hexic/${p.commit_id}") }
+            filter { it.replace(contentRoot, "https://codeberg.org/PoolloverNathan/hexic/raw/commit/${p.commit_id}") }
         }
     }
     destinationDirectory = mergeHexdoc.docsRoot
-    archiveFileName = wheelPath.name
+    if (release) {
+        archiveFileName = wheelPath.name
+    } else {
+        archiveFileName = "hexdoc_hexic-$version.$py_version-${p.commit_id}-py3-none-any.whl"
+    }
+    doLast {
+        println(archivePath)
+    }
 }
 
 tasks.register("docs") {

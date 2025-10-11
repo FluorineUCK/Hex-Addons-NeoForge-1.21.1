@@ -129,5 +129,6 @@ runs/
 .vscode/
 __pycache__/
 _site/
+doc/src/hexdoc_hexic/__version__.py
 doc/src/hexdoc_hexic/__gradle_version__.py
 doc/src/hexdoc_hexic/_export/generated/

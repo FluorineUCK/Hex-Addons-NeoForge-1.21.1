@@ -118,7 +118,7 @@ import at.petrak.hexcasting.common.msgs.MsgNewSpiralPatternsS2C
 import at.petrak.hexcasting.fabric.cc.adimpl.CCMediaHolder
 import kotlin.jvm.internal.DefaultConstructorMarker
 import net.minecraft.client.item.{BundleTooltipData, TooltipContext, TooltipData}
-import net.minecraft.entity.LivingEntity
+import net.minecraft.entity.{Entity, LivingEntity}
 import net.minecraft.screen.slot.Slot
 import net.minecraft.sound.{SoundCategory, SoundEvents}
 import net.minecraft.util.collection.DefaultedList
@@ -628,6 +628,25 @@ val _ =
       out.add(c.leftWeave)
       c.leftWeave = ItemStack.EMPTY
 
+trait Default[T]:
+  def default: T
+given Default[Int]:
+  def default = 0
+
+implicit class EntityExt(e: Entity) extends AnyVal, Dynamic
+
+extension (e: EntityExt)
+  def selectDynamic[T: {Codec, Default}](key: String): T = ???
+  def updateDynamic[T: Codec](key: String)(value: T): Unit = ???
+
+given Codec[Int] = Codec.INT.xmap(p => p, p => p)
+
+def test =
+  val p: ServerPlayerEntity = ???
+  val ext: EntityExt = p
+  ext.foo = 2
+  println(ext.foo: Int)
+
 type Media = Long
 object MediaBundle:
   val items: Seq[MediaBundle] = for i <- Seq(6, 12); c <- DyeColor.values yield new MediaBundle(c, i)
@@ -670,8 +689,10 @@ def init(): Unit =
   iotaTypeRegistry("map") = MapIota
   iotaTypeRegistry("tripwire") = TripwireIota.getType
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
-  iotaTypeRegistry("jvm/class") = ClassIota
-  iotaTypeRegistry("jvm/pointer") = PointerIota
+  ifModLoaded"infinite-hexxy${
+    iotaTypeRegistry("jvm/class") = ClassIota
+    iotaTypeRegistry("jvm/pointer") = PointerIota
+  }"
   hexXplat.getContinuationTypeRegistry("tripwire") = TripwireIota.Frame
   for (color, item) <- Mediaweave.colors do
     Registries.ITEM(s"${color.asString}_mediaweave") = item
@@ -729,10 +750,12 @@ def init(): Unit =
       case Seq(x: Iota) => Seq(IotaType.serialize(x))
   Patterns.register("tripwire", w"edewqwaqede"):
     Patterns.mkLiteral(TripwireIota)
-  //Patterns.register("spellmind/save", e"aqqqqqeawqwqwqwqwqweawwqwwqwwqwwqwwqwweawwwqwwwqwwwqwwwqwwwqwww"):
-  //  ???
-  //Patterns.register("spellmind/restore", e"deeeeeqdwewewewewewqdwwewwewwewwewwewwqdwwwewwwewwwewwwewwwewww"):
-  //  ???
+  Patterns.register("spellmind/save", e"aqqqqqeawqwqwqwqwqweawwqwwqwwqwwqwwqwweawwwqwwwqwwwqwwwqwwwqwww"):
+    Patterns.mkAction: (img, cont) =>
+      ???
+  Patterns.register("spellmind/restore", e"deeeeeqdwewewewewewqdwwewwewwewwewwewwqdwwwewwwewwwewwwewwwewww"):
+    Patterns.mkAction: (img, cont) =>
+      ???
   Patterns.register("nbt/deserialize", (HexDir.NORTH_WEST, "edwaqa")):
     Patterns.mkConstAction(1):
       case Seq(data: NbtIota) =>
@@ -1209,16 +1232,15 @@ def init(): Unit =
             case _ =>
           case null =>
         case _ =>)
-  for path <- sys.env.get("HEXIC_DUMP_PATTERNS") do
-    val out = Files.newOutputStream(Path.of(path))
-    try
-      val o = OutputStreamWriter(out)
-      for ent <- hexXplat.getActionRegistry.getEntrySet.asScala.toSeq.sortBy(_.getKey.getValue.toString) do
-        o.write(s"${ent.getKey.getValue},${ent.getValue.prototype.getStartDir},${ent.getValue.prototype.anglesSignature}\n")
-      o.flush()
-    finally
-      out.close()
-      sys.exit(0)
+  // dump patterns
+  val out = Files.newOutputStream(Path.of("patterns.csv"))
+  try
+    val o = OutputStreamWriter(out)
+    for ent <- hexXplat.getActionRegistry.getEntrySet.asScala.toSeq.sortBy(_.getKey.getValue.toString) do
+      o.write(s"${ent.getKey.getValue},${ent.getValue.prototype.getStartDir},${ent.getValue.prototype.anglesSignature}\n")
+    o.flush()
+  finally
+    out.close()
 
 def assume(cond: Boolean, msg: => String = "assumption failed"): Unit = if !cond then panic(msg)
 
