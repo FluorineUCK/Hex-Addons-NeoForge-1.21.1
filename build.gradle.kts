@@ -331,6 +331,9 @@ tasks.processResources {
             }
         }
         file("$itemsRoot/stringworm.miff").delete()
+        exec {
+            commandLine("magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
+        }
     }
 }
 
