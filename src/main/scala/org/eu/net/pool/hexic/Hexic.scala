@@ -133,6 +133,7 @@ import java.io.OutputStreamWriter
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.minecraft.block.AbstractBlock
+import org.eu.net.pool.hexic.mixin.ItemStackAccess
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -611,15 +612,18 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
   private def showMedia(tag: String, media: Long, maxMedia: Long) = Text.translatable("hexic.media.finite", Text.translatable(s"hexic.media.$tag"), dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.translatable("hexcasting.tooltip.media", dustAmount(maxMedia)).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.literal(PERCENTAGE.format(100.0 * media / maxMedia)+"%").styled(_.withColor(MediaHelper.mediaBarColor(media, maxMedia))))
   private def dustAmount(media: Long) = Text.literal(DUST_AMOUNT.format(media / MediaConstants.DUST_UNIT.toDouble))
 
-val stringworms =
+class Stringworm extends Item(Stringworm.settings)
+object Stringworm:
   val settings = Item.Settings().maxCount(16)
-  Seq("pure", "action", "hex", "media", "thing").map(_ -> new Item(settings))
 
-object dyedStringworm extends Item(Item.Settings().maxCount(16)):
+val stringworms =
+  Seq("pure", "action", "hex", "media", "thing").map(_ -> new Stringworm)
+
+object dyedStringworm extends Stringworm:
   override def getName(stack: ItemStack): Text =
     stack.getSubNbt("pigment") match
       case null => super.getName(stack)
-      case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName)
+      case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName.getString.replace("Pigment", "Stringworm"))
 
 object Extern:
   def getStringworm(idx: Int) = stringworms(idx)._2
@@ -723,13 +727,16 @@ def init(): Unit =
         val stack = img.getStack.asScala
         stack.lastOption.getOrElse(throw MishapNotEnoughArgs(1, 0)) match
           case p: PigmentIota =>
-            val info = summon[CastingEnvironment].getHeldItemToOperateOn(_.getItem.isInstanceOf[PigmentHolderItem]).pipe(Option(_)).getOrElse(throw MishapBadOffhandItem(null, Text.translatable("text.hexic.pigment_holder_item")))
-            val item = info.stack.getItem.asInstanceOf[PigmentHolderItem]
+            val info = summon[CastingEnvironment].getHeldItemToOperateOn(!_.isEmpty).pipe(Option(_)).getOrElse(throw MishapBadOffhandItem(null, Text.translatable("text.hexic.pigment_holder_item")))
             (img.withStack(_.init), cont, HexEvalSounds.SPELL, Seq:
               OperatorSideEffect.AttemptSpell(
                 new RenderedSpell:
                   override def cast(env: CastingEnvironment): Unit =
-                    item.setPigment(info.stack)(p.getPigment)
+                    info.stack.getItem match
+                      case h: PigmentHolderItem => h.setPigment(info.stack)(p.getPigment)
+                      case _: Stringworm =>
+                        info.stack.setItem(dyedStringworm)
+                        info.stack.getOrCreateNbt().put("pigment", p.getPigment.serializeToNBT)
                   override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
                 , true, true
               ))
@@ -1498,6 +1505,7 @@ trait PigmentHolderItem:
   def getPigment(stack: ItemStack): FrozenPigment
   def setPigment(stack: ItemStack)(pigment: FrozenPigment): Unit
 given Conversion[ItemPackagedHex, PigmentHolderItem] = _.asInstanceOf // by mixin
+given Conversion[ItemStack, ItemStackAccess] = _.asInstanceOf // by mixin
 
 given Conversion[Double, DoubleIota] = DoubleIota(_)
 given Conversion[Int, DoubleIota] = DoubleIota(_)

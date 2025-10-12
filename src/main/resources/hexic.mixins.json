@@ -9,6 +9,7 @@
     "HopperEndpointRegistryMixin",
     "ItemMixin",
     "ItemPackagedHexMixin",
+    "ItemStackAccess",
     "ItemStackMixin",
     "MediafiedItemManagerIndexMixin",
     "OpEdifySaplingMixin",
