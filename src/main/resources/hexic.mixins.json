@@ -8,18 +8,19 @@
     "EntityMixin",
     "HopperEndpointRegistryMixin",
     "ItemMixin",
+    "ItemPackagedHexMixin",
     "ItemStackMixin",
     "MediafiedItemManagerIndexMixin",
     "OpEdifySaplingMixin",
     "OpEdifySaplingMixin$Spell",
+    "OpTickMixin",
+    "OpTickMixin$SpellMixin",
     "PacketByteBufMixin",
     "PatternIotaMixin",
     "PhantomEntityMixin",
     "PlayerInventoryMixin",
     "SimpleRegistryMixin",
-    "StaffCastEnvMixin",
-    "OpTickMixin",
-    "OpTickMixin$SpellMixin"
+    "StaffCastEnvMixin"
   ],
   "injectors": {
     "defaultRequire": 1

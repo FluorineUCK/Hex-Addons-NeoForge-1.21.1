@@ -1,7 +1,7 @@
 //noinspection NotImplementedCode
 package org.eu.net.pool.hexic
 
-import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, SpellList}
+import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, SpecialHandler}
@@ -11,7 +11,7 @@ import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, Contin
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapInvalidIota, MishapNotEnoughArgs, MishapOthersName}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapNotEnoughArgs, MishapOthersName}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.{HexUtils, MediaHelper}
 import at.petrak.hexcasting.common.lib.{HexItems, HexRegistries}
@@ -39,7 +39,7 @@ import miyucomics.hexical.features.dyes.DyeIota
 import miyucomics.hexical.features.hopper
 import miyucomics.hexical.features.hopper.targets.SidedInventoryEndpoint
 import miyucomics.hexical.features.hopper.{HopperDestination, HopperEndpoint, HopperEndpointRegistry, HopperEndpointResolver, HopperSource}
-import miyucomics.hexical.features.pigments.PigmentIota
+import miyucomics.hexical.features.pigments.{PigmentIota, PigmentIotaKt}
 import net.fabricmc.fabric.api.`object`.builder.v1.block.FabricBlockSettings
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings
@@ -113,7 +113,7 @@ import scala.util.boundary.Label
 import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
 import at.petrak.hexcasting.api.item.{IotaHolderItem, MediaHolderItem}
 import at.petrak.hexcasting.api.misc.MediaConstants
-import at.petrak.hexcasting.common.items.magic.ItemMediaHolder
+import at.petrak.hexcasting.common.items.magic.{ItemMediaHolder, ItemPackagedHex}
 import at.petrak.hexcasting.common.msgs.MsgNewSpiralPatternsS2C
 import at.petrak.hexcasting.fabric.cc.adimpl.CCMediaHolder
 import kotlin.jvm.internal.DefaultConstructorMarker
@@ -711,14 +711,29 @@ def init(): Unit =
   Registries.ITEM("stringworm_pigmented") = dyedStringworm
   Registries.ITEM("wizard") = wizard
   //Registries.ITEM("echo") = EchoItem
-  ifModLoaded"hexical${
+  if fabric.isModLoaded("hexical") then
     for
       HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
       ConduitIota <- classNamed("dev.kineticcat.hexportation.fabric.api.casting.iota.ConduitIota")
-      registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint").asInstanceOf[Option[ClassTag[? <: (() => Unit)]]]
+      registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint")
     do
       registerHopperEndpoint.runtimeClass.newInstance().asInstanceOf[() => Unit]()
-  }"
+    Patterns.register("dye_offhand", w"eqdeeqdweeqddqdwwdew"):
+      Patterns.mkAction: (img, cont) =>
+        val stack = img.getStack.asScala
+        stack.lastOption.getOrElse(throw MishapNotEnoughArgs(1, 0)) match
+          case p: PigmentIota =>
+            val info = summon[CastingEnvironment].getHeldItemToOperateOn(_.getItem.isInstanceOf[PigmentHolderItem]).pipe(Option(_)).getOrElse(throw MishapBadOffhandItem(null, Text.translatable("text.hexic.pigment_holder_item")))
+            val item = info.stack.getItem.asInstanceOf[PigmentHolderItem]
+            (img.withStack(_.init), cont, HexEvalSounds.SPELL, Seq:
+              OperatorSideEffect.AttemptSpell(
+                new RenderedSpell:
+                  override def cast(env: CastingEnvironment): Unit =
+                    item.setPigment(info.stack)(p.getPigment)
+                  override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+                , true, true
+              ))
+          case i => throw MishapInvalidIota.ofType(i, 0, "pigment")
   def mkNbtLiftAction[T: FromIota](lift: T => NbtElement, expected: Identifier) =
     Patterns.mkConstAction(1):
       case Seq(iotaLike[T](x)) => Seq(NbtIota(lift(x)))
@@ -1477,6 +1492,12 @@ extension [T](l: util.AbstractList[T])
 extension (c: NbtCompound)
   def apply(k: String): NbtElement | Null = c.get(k)
   def update(k: String, v: NbtElement | Null): Unit = c.put(k, v)
+
+trait PigmentHolderItem:
+  this: Item =>
+  def getPigment(stack: ItemStack): FrozenPigment
+  def setPigment(stack: ItemStack)(pigment: FrozenPigment): Unit
+given Conversion[ItemPackagedHex, PigmentHolderItem] = _.asInstanceOf // by mixin
 
 given Conversion[Double, DoubleIota] = DoubleIota(_)
 given Conversion[Int, DoubleIota] = DoubleIota(_)

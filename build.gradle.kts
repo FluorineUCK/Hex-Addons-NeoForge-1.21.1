@@ -219,6 +219,11 @@ val modDepends: Configuration by configurations.creating {
     isTransitive = false
     isCanBeResolved = true
 }
+val modSuggests: Configuration by configurations.creating {
+    isTransitive = false
+    isCanBeResolved = true
+}
+val modCompatibility: Configuration by configurations.creating
 
 dependencies {
     // To change the versions see the gradle.properties file
@@ -226,6 +231,12 @@ dependencies {
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
     modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
     modImplementation("net.fabricmc:fabric-language-kotlin:1.13.4+kotlin.2.2.0")
+
+    fun compat(with: String) {
+        modSuggests(with)
+        modCompileOnly(with)
+        modLocalRuntime(with)
+    }
 
     val minecraft_version = "1.20.1"
     modDepends(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
@@ -241,10 +252,10 @@ dependencies {
     modDepends(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
     modDepends(modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")!!)
-    modDepends(modImplementation("maven.modrinth:hexcassettes:1.1.4")!!)
+    compat("maven.modrinth:hexcassettes:1.1.4")
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
-    modCompileOnly("miyucomics.hexical:hexical:main-SNAPSHOT")
+    compat("miyucomics.hexical:hexical:main-SNAPSHOT")
     modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("maven.modrinth:hexcellular:1.0.4")!!)
