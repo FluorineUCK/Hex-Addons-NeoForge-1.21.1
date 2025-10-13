@@ -106,6 +106,7 @@ $RECYCLE.BIN/
 
 .gradle
 build/
+build*/
 /src/main/generated
 
 # Ignore Gradle GUI config
