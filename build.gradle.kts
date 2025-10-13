@@ -64,6 +64,7 @@ fabricApi {
 repositories {
     mavenLocal()
     mavenCentral()
+    flatDir { dirs("libs") }
     maven { url = uri("https://api.modrinth.com/maven") }
     maven { url = uri("https://artifacts.consensys.net/public/maven/maven/") }
     maven { url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") }

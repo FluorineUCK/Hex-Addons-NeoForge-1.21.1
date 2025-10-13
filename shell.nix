@@ -6,19 +6,20 @@
 pkgs.mkShell {
   name = "hexic";
   JAVA_HOME = pkgs.zulu21;
-  extraLibs = pkgs.symlinkJoin {
+  extraLibs = if pkgs.system == "x86_64-linux" then pkgs.symlinkJoin {
     name = "extraLibs";
     paths = [
       pkgs.apulse
       pkgs.openal
     ];
-  };
+  } else null;
   buildInputs = [
     pkgs.bashInteractive
     pkgs.go
     pkgs.gradle_8
-    pkgs.jetbrains.idea-community
     pkgs.zulu21
+  ] ++ (if pkgs.system == "x86_64-linux" then [
     nixGL.auto.nixGLDefault
-  ];
+    pkgs.jetbrains.idea-community
+  ] else []);
 }
