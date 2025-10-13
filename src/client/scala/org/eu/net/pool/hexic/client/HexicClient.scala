@@ -1,17 +1,22 @@
 package org.eu.net.pool.hexic
 package client
 
+import at.petrak.hexcasting.api.pigment.FrozenPigment
+import com.google.gson.JsonObject
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
+import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, FabricModelProvider, FabricRecipeProvider, FabricTagProvider}
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.minecraft.client.MinecraftClient
+import net.minecraft.client.color.item.ItemColorProvider
 import net.minecraft.client.gui.screen.ChatScreen
 import net.minecraft.client.gui.widget.TextFieldWidget
 import net.minecraft.client.network.{ClientPlayNetworkHandler, ClientPlayerEntity}
-import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator, Models}
+import net.minecraft.client.render.model.json
+import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator, ModelIds, Models, TextureKey, TextureMap}
 import net.minecraft.data.server.recipe.RecipeJsonProvider
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.inventory.Inventory
@@ -21,6 +26,7 @@ import net.minecraft.screen.slot.Slot
 import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
 import net.minecraft.util.DyeColor
 import net.minecraft.util.collection.DefaultedList
+import net.minecraft.util.math.Vec3d
 import org.eu.net.pool.common_curses.{HotbarRendering, SlotAccess, TextManipulator}
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.hexic.mixin.client.ChatScreenAccess
@@ -30,8 +36,10 @@ import scala.language.experimental.{macros, saferExceptions}
 import scala.util.boundary
 import scala.util.chaining.scalaUtilChainingOps
 
+given client: MinecraftClient = MinecraftClient.getInstance
+
 inline def foldLocalPlayer[R](default: => R)(ifPresent: ClientPlayerEntity => R): R =
-  MinecraftClient.getInstance().player match
+  client.player match
     case null => default
     case player => ifPresent(player)
 
@@ -39,7 +47,7 @@ var lastMurmur: Option[String] = None
 
 object Hooks:
   def clientTick(): Unit =
-    val currentMurmur = MinecraftClient.getInstance.currentScreen match
+    val currentMurmur = client.currentScreen match
       case null => None
       case c: ChatScreenAccess => Some(c.getChatField.getText)
       case _ => None
@@ -91,6 +99,11 @@ def init(): Unit =
   HotbarRendering.Companion.getEvent.register: () =>
     foldLocalPlayer(HotbarRendering.ALL):
       _.getComponent(PlayerInfoComponent.key).wispMedia.fold(HotbarRendering.ALL)(_ => HotbarRendering.NONE)
+  ColorProviderRegistry.ITEM.register((stack, idx) => FrozenPigment.fromNBT(stack.getSubNbt("pigment")).getColorProvider.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0)), dyedStringworm)
+  for i <- 0 until 32 do
+    val k = s"layer$i"
+    if !json.ItemModelGenerator.LAYERS.contains(k) then
+      json.ItemModelGenerator.LAYERS.add(k)
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
 
@@ -104,6 +117,13 @@ def datagen(gen: FabricDataGenerator): Unit =
         for (_, item) <- Mediaweave.colors do gen.register(item, Models.GENERATED)
         for (_, item) <- stringworms do gen.register(item, Models.GENERATED)
         for item <- MediaBundle.items do gen.register(item, Models.GENERATED)
+        gen.writer.accept(ModelIds.getItemModelId(dyedStringworm), () => JsonObject().tap: j =>
+          j.addProperty("parent", "minecraft:item/generated")
+          j.add("textures", JsonObject().tap: j =>
+            for i <- 0 until 32 do
+              j.addProperty(s"layer$i", s"hexic:item/stringworm_tinted_$i")
+          )
+        )
         gen.register(wizard, Models.GENERATED)
   pack.addProvider:
     new FabricLanguageProvider(_):
@@ -156,6 +176,7 @@ def datagen(gen: FabricDataGenerator): Unit =
             case 6 => s"${item.color.humanName} Media Pouch"
             case 12 => s"Large ${item.color.humanName} Media Pouch"
             case _ => s"How Did You Get This ${item.color.humanName} Media Pouch")
+        gen.add(dyedStringworm, "Shimmering %s")
         gen.add("tag.item.hexic.mediaweaves", "Mediaweave")
         gen.add("hexic.media_bundle.items", "%s/%s")
         gen.add("hexic.media.infinite", "%s: %s")

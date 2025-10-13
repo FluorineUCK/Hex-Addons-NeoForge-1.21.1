@@ -304,6 +304,9 @@ tasks.processResources {
             commandLine("magick", "wizard:", "$itemsRoot/wizard.png")
         }
         exec {
+            commandLine("magick", "null:", "$itemsRoot/no.png")
+        }
+        exec {
             commandLine("magick",
                 "https://raw.githubusercontent.com/malcolmriley/unused-textures/master/blocks/overlay_rune_0.png",
                 "(",
@@ -317,20 +320,31 @@ tasks.processResources {
                 "-alpha", "off",
                 "-compose", "copy_opacity",
                 "-composite",
+                "-fx", "u*2",
                 "$itemsRoot/stringworm.miff"
             )
         }
         for ((name, expr) in mapOf(
-            "media" to "u*#74b3f2*2",
-            "hex" to "u*#b38ef3*2",
-            "action" to "u*#fc77be*2",
-            "thing" to "u*#8d6acc*2",
+            "media" to "u*#74b3f2",
+            "hex" to "u*#b38ef3",
+            "action" to "u*#fc77be",
+            "thing" to "u*#8d6acc",
+            "pure" to "u",
         )) {
             exec {
                 commandLine("magick", "$itemsRoot/stringworm.miff", "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
             }
         }
-        file("$itemsRoot/stringworm.miff").delete()
+        // people will hate this
+        for (i in 0..31) {
+            file("$itemsRoot/stringworm_tinted_$i.png").outputStream().use {
+                exec {
+                    commandLine("magick", "$itemsRoot/stringworm.miff", "-fx", "i+j == $i ? u : Transparent", "png:-")
+                    standardOutput = it
+                }
+            }
+        }
+        //file("$itemsRoot/stringworm.miff").delete()
         exec {
             commandLine("magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
         }
