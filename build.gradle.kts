@@ -77,6 +77,7 @@ repositories {
     maven { url = uri("https://masa.dy.fi/maven/") }
     maven { url = uri("https://maven.blamejared.com/") }
     maven { url = uri("https://maven.gegy.dev/releases") }
+    maven { url = uri("https://maven.hexxy.media/") }
     maven { url = uri("https://maven.jamieswhiteshirt.com/libs-release/") }
     maven { url = uri("https://maven.kosmx.dev/") }
     maven { url = uri("https://maven.ladysnake.org/releases/") }
@@ -87,6 +88,7 @@ repositories {
     maven { url = uri("https://maven.terraformersmc.com/releases") }
     maven { url = uri("https://mvn.devos.one/snapshots/") }
     maven { url = uri("https://maven.pool.net.eu.org/") }
+    maven { url = uri("https://repo.sleeping.town/") }
 }
 
 data class Addon(val id: String, val name: String, val version: String, val hexicVersion: String, val description: String) {
@@ -243,23 +245,23 @@ dependencies {
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
     modCompileOnly("miyucomics.hexical:hexical:main-SNAPSHOT")
-    modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") })
-    modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") })
+    modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") })
+    modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("maven.modrinth:hexcellular:1.0.4")!!)
     modDepends(modImplementation("maven.modrinth:jsonpatcher:1.0.0-beta.4+mc.1.20.1")!!)
-    modDepends(implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3")!!) // trans maven.modrinth:jsonpatcher
-    modDepends(modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0")!!) // trans maven.modrinth:jsonpatcher
+    implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3") // trans maven.modrinth:jsonpatcher
+    modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0") // trans maven.modrinth:jsonpatcher
     modDepends(modImplementation("miyucomics.hexpose:hexpose:1.0.0")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     val cardinal_version = "5.2.3"
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")!!)
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")
     modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")!!)
     modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")!!)
     modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")!!)
     modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")!!)
     modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")!!)
-    modDepends(modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")!!)
+    modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
     modDepends(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
     modDepends(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
 
