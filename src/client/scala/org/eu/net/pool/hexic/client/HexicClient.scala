@@ -100,7 +100,12 @@ def init(): Unit =
   HotbarRendering.Companion.getEvent.register: () =>
     foldLocalPlayer(HotbarRendering.ALL):
       _.getComponent(PlayerInfoComponent.key).wispMedia.fold(HotbarRendering.ALL)(_ => HotbarRendering.NONE)
-  ColorProviderRegistry.ITEM.register((stack, idx) => FrozenPigment.fromNBT(stack.getSubNbt("pigment")).getColorProvider.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0)), dyedStringworm)
+  ColorProviderRegistry.ITEM.register((stack, idx) => boundary:
+    val nbt = stack.getSubNbt("pigment")
+    if nbt == null then boundary.break(0xFFFFFFFF)
+    val prov = FrozenPigment.fromNBT(nbt).getColorProvider
+    prov.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0))
+  , dyedStringworm)
   for i <- 0 until 32 do
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
