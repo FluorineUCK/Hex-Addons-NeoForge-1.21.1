@@ -1880,12 +1880,12 @@ object registerHopperEndpoint extends (() => Unit):
           (source, dest) match
             case (None, None) => null
             case (Some(s), None) => new HopperSource:
-              export s.{getItems, withdraw}
+              export s._
             case (None, Some(d)) => new HopperDestination:
-              export d.{deposit, simulateDeposit}
+              export d._
             case (Some(s), Some(d)) => new HopperSource with HopperDestination:
-              export s.{getItems, withdraw}
-              export d.{deposit, simulateDeposit}
+              export s._
+              export d._
         case _ => null
 
 extension [A, B] (p: (A, B))
