@@ -407,6 +407,20 @@ tasks.processResources {
             commandLine("magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
         }
     }
+
+    eachFile {
+        if (name.endsWith(".ase")) {
+            exec {
+                if (name.endsWith("_*.ase")) {
+                    commandLine("aseprite", "-b", "--split-layers", file, "--save-as", "$destinationDir/${path.replace("_*.ase", "")}_{layer}.png")
+                } else {
+                    commandLine("aseprite", "-b", file, "--save-as", "$destinationDir/${path.replace(".ase", "")}.png")
+                }
+            }
+            exclude()
+        }
+        if (name.endsWith(".ase.split-layers")) exclude()
+    }
 }
 
 tasks.withType<AbstractArchiveTask> {
