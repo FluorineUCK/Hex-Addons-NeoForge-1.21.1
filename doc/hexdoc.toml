@@ -5,7 +5,7 @@ default_branch = "main"
 
 resource_dirs = [
     "resources",
-    "../build/resources/main",
+    "../build2001/resources/main",
     "../src/main/generated",
     { modid="hexcasting" },
     { modid="minecraft" },

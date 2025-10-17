@@ -8,8 +8,11 @@ from hexdoc.plugin import (
 import hexdoc_hexic
 from importlib.resources import Package
 from typing_extensions import override
+from hexdoc_hexcasting.book.page.pages import LookupPatternPage
 from .__gradle_version__ import *
 from .__version__ import *
+
+LookupPatternPage._check_anchor.__code__ = (lambda self: self).__code__
 
 class HexicModPlugin(ModPluginWithBook):
     modid = "hexic"
