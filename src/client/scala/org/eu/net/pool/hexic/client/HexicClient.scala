@@ -106,6 +106,8 @@ def init(): Unit =
     val prov = FrozenPigment.fromNBT(nbt).getColorProvider
     prov.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0))
   , dyedStringworm)
+  for (color, item) <- Pen.instances do
+    ColorProviderRegistry.ITEM.register((_, idx) => if idx == 1 then color.getSignColor else 0xFFFFFFF, item)
   for i <- 0 until 32 do
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
@@ -123,6 +125,15 @@ def datagen(gen: FabricDataGenerator): Unit =
         for (_, item) <- Mediaweave.colors do gen.register(item, Models.GENERATED)
         for (_, item) <- stringworms do gen.register(item, Models.GENERATED)
         for item <- MediaBundle.items do gen.register(item, Models.GENERATED)
+        for (_, item) <- Pen.instances do
+          gen.writer.accept(ModelIds.getItemModelId(item), () => JsonObject().tap: j =>
+            j.addProperty("parent", "minecraft:item/generated")
+            j.add("textures", JsonObject().tap: j =>
+              j.addProperty("layer0", "hexic:item/pen_back")
+              j.addProperty("layer1", "hexic:item/pen_cover")
+              j.addProperty("layer2", "hexic:item/pen_overlay")
+            )
+          )
         gen.writer.accept(ModelIds.getItemModelId(dyedStringworm), () => JsonObject().tap: j =>
           j.addProperty("parent", "minecraft:item/generated")
           j.add("textures", JsonObject().tap: j =>
@@ -182,6 +193,8 @@ def datagen(gen: FabricDataGenerator): Unit =
 
         for (color, item) <- Mediaweave.colors do
           gen.add(item, s"${color.humanName} Mediaweave")
+        for (color, item) <- Pen.instances do
+          gen.add(item, s"${color.humanName} Pen")
         for (_, item) <- stringworms do
           gen.add(item, s"Stringworm")
         for item <- MediaBundle.items do

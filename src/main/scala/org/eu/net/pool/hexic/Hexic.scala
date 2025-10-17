@@ -8,13 +8,13 @@ import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, Spe
 import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, SpellContinuation}
-import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult}
+import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult, ResolvedPattern}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapNotEnoughArgs, MishapOthersName}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.{HexUtils, MediaHelper}
-import at.petrak.hexcasting.common.lib.{HexItems, HexRegistries}
+import at.petrak.hexcasting.common.lib.{HexAttributes, HexItems, HexRegistries, HexSounds}
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
 import at.petrak.hexcasting.xplat.IXplatAbstractions
@@ -68,7 +68,7 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.{BlockPos, Vec3d}
-import net.minecraft.util.{Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, Util, Uuids, WorldSavePath}
+import net.minecraft.util.{Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
 import net.minecraft.world.World
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.common_curses.{CommonCursesKt, SlotAccess, TextManipulator}
@@ -114,7 +114,7 @@ import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
 import at.petrak.hexcasting.api.item.{IotaHolderItem, MediaHolderItem}
 import at.petrak.hexcasting.api.misc.MediaConstants
 import at.petrak.hexcasting.common.items.magic.{ItemMediaHolder, ItemPackagedHex}
-import at.petrak.hexcasting.common.msgs.MsgNewSpiralPatternsS2C
+import at.petrak.hexcasting.common.msgs.{MsgClearSpiralPatternsS2C, MsgNewSpiralPatternsS2C, MsgOpenSpellGuiS2C}
 import at.petrak.hexcasting.fabric.cc.adimpl.CCMediaHolder
 import kotlin.jvm.internal.DefaultConstructorMarker
 import net.minecraft.client.item.{BundleTooltipData, TooltipContext, TooltipData}
@@ -133,6 +133,7 @@ import java.io.OutputStreamWriter
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.minecraft.block.AbstractBlock
+import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 
 given Logger = LoggerFactory.getLogger("hexic")
@@ -455,6 +456,25 @@ extension [T] (x: T | Null)
     case null => null
     case x: T => f(x)
 
+case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)):
+  override def use(world: World, player: PlayerEntity, hand: Hand): TypedActionResult[ItemStack] =
+    // if player.getAttributeValue(HexAttributes.FEEBLE_MIND) > 0.0 then
+    //   TypedActionResult.fail(player.getStackInHand(hand))
+    // else
+      if !world.isClient && player.isInstanceOf[ServerPlayerEntity] then
+        val serverPlayer: ServerPlayerEntity = player.asInstanceOf[ServerPlayerEntity]
+        val vm = IXplatAbstractions.INSTANCE.getStaffcastVM(serverPlayer, hand)
+        val patterns = IXplatAbstractions.INSTANCE.getPatternsSavedInUi(serverPlayer).asScala
+        val descs = vm.generateDescs
+        IXplatAbstractions.INSTANCE.sendPacketToPlayer(serverPlayer, new MsgOpenSpellGuiS2C(hand, patterns, descs.getFirst, descs.getSecond, 0))
+      player.incrementStat(Stats.USED.getOrCreateStat(this))
+      TypedActionResult.success(player.getStackInHand(hand))
+object Pen:
+  val instances: DyeColor :> Pen = DyeColor.values.map(c => c -> new Pen(c)).toMap
+
+trait PenAccess:
+  def getPen(color: DyeColor): util.List[HexPattern]
+
 case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHolderItem:
   override def readIotaTag(stack: ItemStack): NbtCompound | Null =
     stack.getNbt match
@@ -714,6 +734,7 @@ def init(): Unit =
     Registries.ITEM(s"stringworm_$flavor") = item
   Registries.ITEM("stringworm_pigmented") = dyedStringworm
   Registries.ITEM("wizard") = wizard
+  for (color, item) <- Pen.instances do Registries.ITEM(s"pen/${color.asString}") = item
   //Registries.ITEM("echo") = EchoItem
   if fabric.isModLoaded("hexical") then
     for
