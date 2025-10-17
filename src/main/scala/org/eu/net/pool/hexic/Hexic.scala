@@ -1196,6 +1196,49 @@ def init(): Unit =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName)
+  Patterns.register("rotate", nw"qaeaqweeee"):
+    Patterns.mkConstAction(2):
+      case Seq(ary: ListIota, nr: DoubleIota) =>
+        val list = ary.getList.asScala
+        val d = nr.getDouble
+        var n = d.toInt
+        if (d - n).abs > DoubleIota.TOLERANCE then
+          throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
+        while n < 0 do n += list.size
+        n %= list.size
+        Seq(ListIota((list.drop(n) ++ list.take(n)).toSeq.asJava))
+      case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
+      case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
+  Patterns.register("take", nw"qaeaqwd"):
+    Patterns.mkConstAction(2):
+      case Seq(ary: ListIota, nr: DoubleIota) =>
+        val list = ary.getList.asScala
+        val d = nr.getDouble
+        var n = d.toInt
+        if (d - n).abs > DoubleIota.TOLERANCE then
+          throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
+        Seq(ListIota((if n < 0 then list.takeRight(-n) else list.take(n)).toSeq.asJava))
+      case Seq(ary: ListIota, nrs: ListIota) =>
+        val list = ary.getList.asScala.toIndexedSeq
+        val incl = nrs.getList.asScala.map(iotaInt(_, throw MishapInvalidIota.ofType(nrs, 0, "hexic:int_or_list")))
+        Seq(ListIota(list.indices.filter(incl.contains(_)).map(list(_)).toSeq.asJava))
+      case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
+      case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
+  Patterns.register("drop", nw"qaeaqda"):
+    Patterns.mkConstAction(2):
+      case Seq(ary: ListIota, nr: DoubleIota) =>
+        val list = ary.getList.asScala
+        val d = nr.getDouble
+        var n = d.toInt
+        if (d - n).abs > DoubleIota.TOLERANCE then
+          throw MishapInvalidIota.ofType(nr, 0, "int")
+        Seq(ListIota((if n < 0 then list.dropRight(-n) else list.drop(n)).toSeq.asJava))
+      case Seq(ary: ListIota, nrs: ListIota) =>
+        val list = ary.getList.asScala.toIndexedSeq
+        val excl = nrs.getList.asScala.map(iotaInt(_, throw MishapInvalidIota.ofType(nrs, 0, "int_list")))
+        Seq(ListIota(list.indices.filter(!excl.contains(_)).map(list(_)).toSeq.asJava))
+      case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
+      case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
   Patterns.register("murmur", e"wwaqwa"):
     Patterns.mkLiteral:
       locally(summon[CastingEnvironment]).getCastingEntity match
@@ -1270,6 +1313,17 @@ def init(): Unit =
     o.flush()
   finally
     out.close()
+
+def iotaInt(iota: Iota, er: => Nothing): Int =
+  iota match
+    case d: DoubleIota =>
+      val n = d.getDouble
+      val i = n.toInt
+      if (i - n).abs > DoubleIota.TOLERANCE then
+        er
+      else
+        i
+    case _ => er
 
 def assume(cond: Boolean, msg: => String = "assumption failed"): Unit = if !cond then panic(msg)
 
