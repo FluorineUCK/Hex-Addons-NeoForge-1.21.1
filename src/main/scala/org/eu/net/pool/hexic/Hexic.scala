@@ -695,7 +695,6 @@ def init(): Unit =
   iotaTypeRegistry("location") = LocationIota
   iotaTypeRegistry("nbt") = NbtIota
   iotaTypeRegistry("variant") = VariantIota
-  iotaTypeRegistry("stack") = StackIota
   iotaTypeRegistry("map") = MapIota
   iotaTypeRegistry("tripwire") = TripwireIota.getType
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
@@ -1196,6 +1195,49 @@ def init(): Unit =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName)
+  Patterns.register("rotate", nw"qaeaqweeee"):
+    Patterns.mkConstAction(2):
+      case Seq(ary: ListIota, nr: DoubleIota) =>
+        val list = ary.getList.asScala
+        val d = nr.getDouble
+        var n = d.toInt
+        if (d - n).abs > DoubleIota.TOLERANCE then
+          throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
+        while n < 0 do n += list.size
+        n %= list.size
+        Seq(ListIota((list.drop(n) ++ list.take(n)).toSeq.asJava))
+      case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
+      case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
+  Patterns.register("take", nw"qaeaqwd"):
+    Patterns.mkConstAction(2):
+      case Seq(ary: ListIota, nr: DoubleIota) =>
+        val list = ary.getList.asScala
+        val d = nr.getDouble
+        var n = d.toInt
+        if (d - n).abs > DoubleIota.TOLERANCE then
+          throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
+        Seq(ListIota((if n < 0 then list.takeRight(-n) else list.take(n)).toSeq.asJava))
+      case Seq(ary: ListIota, nrs: ListIota) =>
+        val list = ary.getList.asScala.toIndexedSeq
+        val incl = nrs.getList.asScala.map(iotaInt(_, throw MishapInvalidIota.ofType(nrs, 0, "hexic:int_or_list")))
+        Seq(ListIota(list.indices.filter(incl.contains(_)).map(list(_)).toSeq.asJava))
+      case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
+      case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
+  Patterns.register("drop", nw"qaeaqda"):
+    Patterns.mkConstAction(2):
+      case Seq(ary: ListIota, nr: DoubleIota) =>
+        val list = ary.getList.asScala
+        val d = nr.getDouble
+        var n = d.toInt
+        if (d - n).abs > DoubleIota.TOLERANCE then
+          throw MishapInvalidIota.ofType(nr, 0, "int")
+        Seq(ListIota((if n < 0 then list.dropRight(-n) else list.drop(n)).toSeq.asJava))
+      case Seq(ary: ListIota, nrs: ListIota) =>
+        val list = ary.getList.asScala.toIndexedSeq
+        val excl = nrs.getList.asScala.map(iotaInt(_, throw MishapInvalidIota.ofType(nrs, 0, "int_list")))
+        Seq(ListIota(list.indices.filter(!excl.contains(_)).map(list(_)).toSeq.asJava))
+      case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
+      case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
   Patterns.register("murmur", e"wwaqwa"):
     Patterns.mkLiteral:
       locally(summon[CastingEnvironment]).getCastingEntity match
@@ -1270,6 +1312,17 @@ def init(): Unit =
     o.flush()
   finally
     out.close()
+
+def iotaInt(iota: Iota, er: => Nothing): Int =
+  iota match
+    case d: DoubleIota =>
+      val n = d.getDouble
+      val i = n.toInt
+      if (i - n).abs > DoubleIota.TOLERANCE then
+        er
+      else
+        i
+    case _ => er
 
 def assume(cond: Boolean, msg: => String = "assumption failed"): Unit = if !cond then panic(msg)
 
@@ -1649,21 +1702,6 @@ object LocationIota extends IotaType[LocationIota]:
     case d: NbtCompound => Vec3Iota.TYPE.display(d.get("vec"))
     case _ => null
 
-case class StackIota[T](stack: VariantIota[T], count: BigInt) extends Iota(StackIota, stack):
-  export stack.given ClassTag[T]
-  override def isTruthy: Boolean = ???
-  override def toleratesOther(that: Iota): Boolean = that match
-    case s: StackIota[?] => stack == s.stack && count == s.count
-    case _ => false
-  override def serialize: NbtElement = stack.serialize tap (_.asInstanceOf[NbtCompound].putByteArray("n", count.toByteArray))
-object StackIota extends IotaType[StackIota[?]]:
-  def color: Int = 0xa34646
-  def deserialize(using NbtElement, ServerWorld): StackIota[?] =
-    val c: NbtCompound = HexUtils.downcast(summon, NbtCompound.TYPE)
-    StackIota(VariantIota.deserialize, c.getByteArray("n") pipe (BigInt(_)))
-  def display(e: NbtElement): Text =
-    val c = HexUtils.downcast(e, NbtCompound.TYPE)
-    VariantIota.parseVariant(c).fold(NullIota.DISPLAY)(t => BigInt(c.getByteArray("n")) pipe t._1.display)
 inline def repeat[T](inline value: T, inline cond: T => Boolean)(inline body: T => T): T =
   var current = value
   while (cond(current)) current = body(current)
@@ -1703,11 +1741,6 @@ private def normalize(obj: Any)(using u: Unsafe): Long =
     u.getInt(obj, 4L).toLong & 0xFFFFFFFFL
   else
     u.getLong(obj, 8L)
-
-def expNotation[T](n: T)(using num: Integral[T]) =
-  toExp(n)() match
-    case (v, Some(d)) => s"${v}${x10(d)}"
-    case (v, None) => v.toString
 
 given Codec[Text] = Codecs.TEXT
 given DynamicOps[NbtElement] = NbtOps.INSTANCE
@@ -1842,8 +1875,6 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
     type T: ClassTag
     def variant: TransferVariant[T]
     def display: Text
-    def display(count: BigInt): Text =
-      t"${display}x${expNotation(count)}"
   def color: Int = 0x720a0a
   private[hexic] def parseVariant(c: NbtCompound): Option[(TaggedVariant, RegistryKey[Reader])] =
     Identifier.tryParse(c.getString("type")) match
@@ -1879,14 +1910,6 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
         type T = Fluid
         def variant: TransferVariant[Fluid] = s
         def display: MutableText = t"${s.getFluid.getDefaultState.getBlockState.getBlock.getName}: ${ItemInlineData.make(s.getFluid.getBucketItem.getDefaultStack)}"
-        override def display(count: BigInt): Text =
-          val buckets = count / FluidConstants.BUCKET
-          // small quantities of liquid value using millibuckets
-          if buckets < 100 then
-            display.append("x").append(f"${count.toDouble / FluidConstants.BUCKET.toDouble}%.3f")
-          else
-            // normal exp-notation bucket count
-            display.append("x").append(expNotation(buckets))
   registry("media") = c =>
     Some(new TaggedVariant:
       type T = MediaVariant.type

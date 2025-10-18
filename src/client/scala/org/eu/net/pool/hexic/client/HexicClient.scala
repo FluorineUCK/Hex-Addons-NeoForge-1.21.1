@@ -162,12 +162,17 @@ def datagen(gen: FabricDataGenerator): Unit =
           "murmur" -> "Murmur Reflection",
           "reveal" -> "Greater Reveal",
           "dye_offhand" -> "Apply Pigment",
+          "rotate" -> "Ferris Distillation",
+          "take" -> "Retention Distillation",
+          "drop" -> "Rejection Distillation",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
+        for (klass, name) <- Vector(
+          "int_or_list" -> "§aint§r or §5[§aint§5]§r",
+        ) do gen.add(s"hexcasting.mishap.invalid_value.class.hexic:$klass", name)
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
-          "variant" -> "Object Variant",
-          "stack" -> "Object Stack",
+          "variant" -> "Concept",
           // infinite hexxy
           "jvm/class" -> "Class",
           "jvm/pointer" -> "Address",
