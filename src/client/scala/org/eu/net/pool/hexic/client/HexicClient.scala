@@ -17,10 +17,11 @@ import net.minecraft.client.gui.widget.TextFieldWidget
 import net.minecraft.client.network.{ClientPlayNetworkHandler, ClientPlayerEntity}
 import net.minecraft.client.render.model.json
 import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator, ModelIds, Models, TextureKey, TextureMap}
-import net.minecraft.data.server.recipe.RecipeJsonProvider
+import net.minecraft.data.server.recipe.{RecipeJsonProvider, ShapedRecipeJsonBuilder}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.inventory.Inventory
-import net.minecraft.item.{Item, ItemStack}
+import net.minecraft.item.{Item, ItemStack, Items}
+import net.minecraft.recipe.book.RecipeCategory
 import net.minecraft.registry.{MutableRegistry, Registries, RegistryKeys, RegistryWrapper}
 import net.minecraft.screen.slot.Slot
 import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
@@ -99,7 +100,12 @@ def init(): Unit =
   HotbarRendering.Companion.getEvent.register: () =>
     foldLocalPlayer(HotbarRendering.ALL):
       _.getComponent(PlayerInfoComponent.key).wispMedia.fold(HotbarRendering.ALL)(_ => HotbarRendering.NONE)
-  ColorProviderRegistry.ITEM.register((stack, idx) => FrozenPigment.fromNBT(stack.getSubNbt("pigment")).getColorProvider.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0)), dyedStringworm)
+  ColorProviderRegistry.ITEM.register((stack, idx) => boundary:
+    val nbt = stack.getSubNbt("pigment")
+    if nbt == null then boundary.break(0xFFFFFFFF)
+    val prov = FrozenPigment.fromNBT(nbt).getColorProvider
+    prov.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0))
+  , dyedStringworm)
   for i <- 0 until 32 do
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
@@ -155,12 +161,18 @@ def datagen(gen: FabricDataGenerator): Unit =
           "metatable" -> "Patchwork Exaltation",
           "murmur" -> "Murmur Reflection",
           "reveal" -> "Greater Reveal",
+          "dye_offhand" -> "Apply Pigment",
+          "rotate" -> "Ferris Distillation",
+          "take" -> "Retention Distillation",
+          "drop" -> "Rejection Distillation",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
+        for (klass, name) <- Vector(
+          "int_or_list" -> "§aint§r or §5[§aint§5]§r",
+        ) do gen.add(s"hexcasting.mishap.invalid_value.class.hexic:$klass", name)
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
-          "variant" -> "Object Variant",
-          "stack" -> "Object Stack",
+          "variant" -> "Concept",
           // infinite hexxy
           "jvm/class" -> "Class",
           "jvm/pointer" -> "Address",
@@ -183,13 +195,21 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexic.media.finite", "%s: %s/%s (%s)")
         gen.add("hexic.media.external", "Media")
         gen.add("hexic.media.internal", "Trinkets")
+        gen.add("text.hexic.pigment_holder_item", "an item storing a pigment")
         gen.add(wizard, "Wizard")
         gen.add("hexdoc.hexic.title", "Hexic")
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
   pack.addProvider:
     new FabricRecipeProvider(_):
       override def generate(consumer: Consumer[RecipeJsonProvider]): Unit =
-        ;
+        for case item@MediaBundle(color, 6) <- MediaBundle.items do
+          ShapedRecipeJsonBuilder(RecipeCategory.TOOLS, item, 1)
+            .group(" s ")
+            .group("waw")
+            .group(" w ")
+            .input('s', Items.STRING)
+            .input('w', Mediaweave.colors(color))
+            .input('a', Items.AMETHYST_SHARD)
   pack.addProvider:
     new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
