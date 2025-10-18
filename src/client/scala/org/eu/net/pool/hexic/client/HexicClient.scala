@@ -161,7 +161,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "metatable" -> "Patchwork Exaltation",
           "murmur" -> "Murmur Reflection",
           "reveal" -> "Greater Reveal",
-          "dye_offhand" -> "Externalize Pigment",
+          "dye_offhand" -> "Apply Pigment",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
