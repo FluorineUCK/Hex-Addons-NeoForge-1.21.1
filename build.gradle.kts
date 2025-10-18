@@ -436,23 +436,29 @@ tasks.jar {
 
 val py_version: String by project.properties
 
+val wheelFiles by lazy {
+    fileTree("_site/dst/docs/v") { include("**/*.whl") }.files
+}
+
 class P(project: Project) {
+    fun getStdout(action: ExecSpec.() -> Unit) = 
+        `java.io`.ByteArrayOutputStream().also {
+            project.exec {
+                action()
+                standardOutput = it
+            }
+        }.toString().trim()
+
     val commit_id by lazy {
-        val stdout = `java.io`.ByteArrayOutputStream()
-        project.exec {
+        getStdout {
             commandLine("jj", "log", "-r", "@", "--template", "commit_id", "--no-graph")
-            standardOutput = stdout;
         }
-        stdout.toString()
     }
 
     val change_id by lazy {
-        val stdout = `java.io`.ByteArrayOutputStream()
-        project.exec {
+        getStdout {
             commandLine("jj", "log", "-r", "@", "--template", "change_id", "--no-graph")
-            standardOutput = stdout;
         }
-        stdout.toString()
     }
 
     companion object {
@@ -462,6 +468,25 @@ class P(project: Project) {
 val contentRoot = P.contentRoot
 val p = P(project)
 project.ext.set("p", p)
+
+val wheelFileHashes by lazy {
+    wheelFiles.map { it.name to p.getStdout { commandLine("git", "hash-object", "-w", it) } }
+}
+val wheelTree by lazy {
+    p.getStdout {
+        commandLine("git", "mktree")
+        standardInput = `java.io`.ByteArrayInputStream(wheelFileHashes.joinToString("") { (k, v) -> "100644 blob $v\t$k\n" }.toByteArray())
+    }
+}
+val wheelCommit by lazy {
+    p.getStdout {
+        commandLine("git", "commit-tree", wheelTree)
+        standardInput = `java.io`.ByteArrayInputStream(byteArrayOf())
+    }
+}
+tasks.register<Exec>("pushWheels") {
+    commandLine("git", "push", "origin", "+$wheelCommit:refs/heads/wheels")
+}
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 
