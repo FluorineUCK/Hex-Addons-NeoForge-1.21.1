@@ -86,7 +86,7 @@ import java.io.{File, FileNotFoundException, FileOutputStream, IOException, Inpu
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
 import java.nio.file.{Files, Path, StandardOpenOption}
-import java.util.{Optional, UUID}
+import java.util.{List, Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
@@ -234,8 +234,13 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
 sealed abstract class PropertyAccessIota(name: String, direction: "head" | "tail")(using world: ServerWorld) extends Iota(PropertyAccessIota.Type, ()):
   def property: Iota = StateStorage.Companion.getProperty(world, name)
   def property_=(x: Iota): Unit = StateStorage.Companion.setProperty(world, name, x)
+  def toStream(reverseIdx: Int): PropertyAccessIota.Stream
+  def toWriter(reverseIdx: Int): PropertyAccessIota.Writer
   override def toleratesOther(iota: Iota): Boolean = ==(iota)
-  override def serialize(): NbtElement = ???
+  override def serialize(): NbtCompound =
+    val c = NbtCompound()
+    c.put("n", name)
+    c
 object PropertyAccessIota:
   case class Stream(name: String, direction: "head" | "tail")(using ServerWorld) extends PropertyAccessIota(name, direction) with IterableOnce[Iota]:
     override def iterator: Iterator[Iota] = new Iterator[Iota]:
@@ -250,11 +255,20 @@ object PropertyAccessIota:
         val s = l.getList.asScala.toSeq
         direction match
           case "head" =>
-            property = ListIota(s.init)
-            s.lastOption.getOrElse(NullIota())
+            property = ListIota(s.tail)
+            s.headOption.getOrElse(NullIota())
           case "tail" =>
             property = ListIota(s.init)
             s.lastOption.getOrElse(NullIota())
+    override def serialize(): NbtCompound =
+      val c = super.serialize()
+      c.put("p", direction match
+        case "head" => "← "
+        case "tail" => " →")
+      if isDev then println(s"Stream($direction) = $c")
+      c
+    override def toStream(reverseIdx: Int): Stream = this
+    override def toWriter(reverseIdx: Int): Writer = throw MishapInvalidIota.ofType(this, reverseIdx, "hexic:writer")
   case class Writer(name: String, direction: "head" | "tail")(using ServerWorld) extends PropertyAccessIota(name, direction):
     override def isTruthy: Boolean = true
     def <<(x: Iota): Unit = property match
@@ -264,6 +278,15 @@ object PropertyAccessIota:
         direction match
           case "head" => property = ListIota(x +: l.getList.toSeq)
           case "tail" => property = ListIota(l.getList.toSeq :+ x)
+    override def serialize(): NbtCompound =
+      val c = super.serialize()
+      c.put("p", direction match
+        case "head" => "→ "
+        case "tail" => " ←")
+      if isDev then println(s"Writer($direction) = $c")
+      c
+    override def toStream(reverseIdx: Int): Stream = throw MishapInvalidIota.ofType(this, reverseIdx, "hexic:stream")
+    override def toWriter(reverseIdx: Int): Writer = this
   object Type extends IotaType[PropertyAccessIota]:
     type A = (String, "add" | "remove", "head" | "tail")
     def split(tag: NbtElement): A =
@@ -682,8 +705,29 @@ object dyedStringworm extends Stringworm:
       case null => super.getName(stack)
       case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName.getString.replace("Pigment", "Stringworm"))
 
-object Extern:
-  def getStringworm(idx: Int) = stringworms(idx)._2
+private [hexic] object Extern:
+  private [hexic] def getStringworm(idx: Int) = stringworms(idx)._2
+  private [hexic] def observePropertyHook(args: util.List[? <: Iota], idx: Int, argc: Int)(original: => String)(using cir: CallbackInfoReturnable[util.List[Iota]]) =
+    args.lastOption match
+      case Some(s: PropertyAccessIota.Stream) =>
+        cir.setReturnValue(Seq(s.take()))
+        null
+      case _ =>
+        try
+          original
+        catch case e: MishapInvalidIota =>
+          throw MishapInvalidIota(e.getPerpetrator, e.getReverseIdx, t"${e.getExpected} or stream")
+  private [hexic] def writePropertyHook(args: util.List[? <: Iota], idx: Int, argc: Int)(original: => String)(using cir: CallbackInfoReturnable[util.List[Iota]]) =
+    args.takeRight(2).toSeq match
+      case Seq(s: PropertyAccessIota.Writer, w: Iota) =>
+        s << w
+        cir.setReturnValue(Seq())
+        null
+      case _ =>
+        try
+          original
+        catch case e: MishapInvalidIota =>
+          throw MishapInvalidIota(e.getPerpetrator, e.getReverseIdx, t"${e.getExpected} or writer")
 
 val _ =
   Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
@@ -754,6 +798,7 @@ def init(): Unit =
   iotaTypeRegistry("variant") = VariantIota
   iotaTypeRegistry("map") = MapIota
   iotaTypeRegistry("tripwire") = TripwireIota.getType
+  iotaTypeRegistry("access") = PropertyAccessIota.Type
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
   ifModLoaded"infinite-hexxy${
     iotaTypeRegistry("jvm/class") = ClassIota
@@ -830,6 +875,22 @@ def init(): Unit =
     Patterns.mkLiteral(NbtIota(NbtLongArray(Array[Long]())))
   Patterns.register("empty_map", (HexDir.EAST, "dqdwdqd")):
     Patterns.mkLiteral(MapIota())
+  Patterns.register("prop_fi", sw"aawqe"):
+    Patterns.mkConstAction(1):
+      case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Writer(x.getName, "head"))
+      case Seq(x) => throw MishapInvalidIota(x, 0, "property")
+  Patterns.register("prop_fo", sw"aawqd"):
+    Patterns.mkConstAction(1):
+      case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Stream(x.getName, "head"))
+      case Seq(x) => throw MishapInvalidIota(x, 0, "property")
+  Patterns.register("prop_li", sw"aawdwq"):
+    Patterns.mkConstAction(1):
+      case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Writer(x.getName, "tail"))
+      case Seq(x) => throw MishapInvalidIota(x, 0, "property")
+  Patterns.register("prop_lo", sw"aawdwa"):
+    Patterns.mkConstAction(1):
+      case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Stream(x.getName, "tail"))
+      case Seq(x) => throw MishapInvalidIota(x, 0, "property")
   Patterns.register("nbt/serialize", nw"edwaq"):
     Patterns.mkConstAction(1):
       case Seq(x: Iota) => Seq(IotaType.serialize(x))

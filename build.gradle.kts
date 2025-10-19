@@ -259,7 +259,7 @@ dependencies {
     compat("miyucomics.hexical:hexical:main-SNAPSHOT")
     modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0") { exclude(module = "serialization-hooks") })
-    modDepends(modImplementation("maven.modrinth:hexcellular:1.0.4")!!)
+    modDepends(modImplementation("miyucomics.hexcellular:hexcellular:1.1.0")!!)
     modDepends(modImplementation("maven.modrinth:jsonpatcher:1.0.0-beta.4+mc.1.20.1")!!)
     implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3") // trans maven.modrinth:jsonpatcher
     modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0") // trans maven.modrinth:jsonpatcher
