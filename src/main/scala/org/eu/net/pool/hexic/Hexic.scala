@@ -253,13 +253,16 @@ object PropertyAccessIota:
       case _: NullIota => NullIota()
       case l: ListIota =>
         val s = l.getList.asScala.toSeq
-        direction match
-          case "head" =>
-            property = ListIota(s.tail)
-            s.headOption.getOrElse(NullIota())
-          case "tail" =>
-            property = ListIota(s.init)
-            s.lastOption.getOrElse(NullIota())
+        if l.isEmpty then
+          NullIota()
+        else
+          direction match
+            case "head" =>
+              property = ListIota(s.tail)
+              s.head
+            case "tail" =>
+              property = ListIota(s.init)
+              s.last
     override def serialize(): NbtCompound =
       val c = super.serialize()
       c.put("p", direction match
@@ -304,11 +307,11 @@ object PropertyAccessIota:
         case "remove" => Stream(a._1, a._3)
     override def display(tag: NbtElement): Text =
       (split(tag) match
-        case (name, "add", "head") => s"→ $name"
-        case (name, "add", "tail") => s"$name ←"
-        case (name, "remove", "head") => s"← $name"
-        case (name, "remove", "tail") => s"$name →"
-      ).styled(_.withColor(color))
+        case (name, "add", "head") => t"→ $name"
+        case (name, "add", "tail") => t"$name ←"
+        case (name, "remove", "head") => t"← $name"
+        case (name, "remove", "tail") => t"$name →"
+      ) formatted Formatting.GREEN
     override def color: Int = PropertyIota.TYPE.color
 
 class Pointer[T](val address: Long) extends AnyVal:
@@ -2108,13 +2111,15 @@ object MapIota extends IotaType[MapIota]:
       def castToCompound = HexUtils.downcast(_, NbtCompound.TYPE)
       val itemPair = items.map(castToCompound).iterator
       def writePair(pair: NbtCompound) =
-        output.append(IotaType.getDisplay(pair("k") pipe castToCompound))
+        output.append(try IotaType.getDisplay(pair("k") pipe castToCompound) catch case e => t"∞" formatted Formatting.RED)
         output.append(" → ")
-        output.append(IotaType.getDisplay(pair("v") pipe castToCompound))
+        output.append(try IotaType.getDisplay(pair("v") pipe castToCompound) catch case e => t"∞" formatted Formatting.RED)
       writePair(itemPair.next())
       while itemPair.hasNext do
         output.append(", ")
         writePair(itemPair.next())
+    else
+      output.append("→")
     output.append("]")
     output
 trait IotaCoercion[T]:
