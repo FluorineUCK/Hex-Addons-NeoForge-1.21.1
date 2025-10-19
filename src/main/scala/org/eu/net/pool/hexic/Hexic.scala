@@ -231,11 +231,16 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
   else
     `else`
 
-enum PropertyAccessIota(name: String, direction: "head" | "tail")(using world: ServerWorld) extends Iota(PropertyAccessIota.Type, ()):
-  case Stream(name: String, direction: "head" | "tail")(using ServerWorld) extends PropertyAccessIota(name, direction) with IterableOnce[Iota]:
+sealed abstract class PropertyAccessIota(name: String, direction: "head" | "tail")(using world: ServerWorld) extends Iota(PropertyAccessIota.Type, ()):
+  def property: Iota = StateStorage.Companion.getProperty(world, name)
+  def property_=(x: Iota): Unit = StateStorage.Companion.setProperty(world, name, x)
+  override def toleratesOther(iota: Iota): Boolean = ==(iota)
+  override def serialize(): NbtElement = ???
+object PropertyAccessIota:
+  case class Stream(name: String, direction: "head" | "tail")(using ServerWorld) extends PropertyAccessIota(name, direction) with IterableOnce[Iota]:
     override def iterator: Iterator[Iota] = new Iterator[Iota]:
       override def hasNext: Boolean = isTruthy
-      override def next(): Iota = take()
+      override def next(): Iota = Stream.this.take()
     override def isTruthy: Boolean = property match
       case l: ListIota => l.isTruthy
       case _ => false
@@ -250,12 +255,15 @@ enum PropertyAccessIota(name: String, direction: "head" | "tail")(using world: S
           case "tail" =>
             property = ListIota(s.init)
             s.lastOption.getOrElse(NullIota())
-  case Writer(name: String, direction: "head" | "tail")(using ServerWorld) extends PropertyAccessIota(name, direction)
-  def property: Iota = StateStorage.Companion.getProperty(world, name)
-  def property_=(x: Iota): Unit = StateStorage.Companion.setProperty(world, name, x)
-  override def toleratesOther(iota: Iota): Boolean = ==(iota)
-  override def serialize(): NbtElement = ???
-object PropertyAccessIota:
+  case class Writer(name: String, direction: "head" | "tail")(using ServerWorld) extends PropertyAccessIota(name, direction):
+    override def isTruthy: Boolean = true
+    def <<(x: Iota): Unit = property match
+      case _: NullIota =>
+        property = ListIota(Seq(x))
+      case l: ListIota =>
+        direction match
+          case "head" => property = ListIota(x +: l.getList.toSeq)
+          case "tail" => property = ListIota(l.getList.toSeq :+ x)
   object Type extends IotaType[PropertyAccessIota]:
     type A = (String, "add" | "remove", "head" | "tail")
     def split(tag: NbtElement): A =
