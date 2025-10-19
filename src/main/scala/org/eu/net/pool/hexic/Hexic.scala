@@ -67,7 +67,7 @@ import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntit
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
-import net.minecraft.util.math.{BlockPos, Vec3d}
+import net.minecraft.util.math.{BlockPos, Direction, Vec3d}
 import net.minecraft.util.{Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, Util, Uuids, WorldSavePath}
 import net.minecraft.world.World
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
@@ -230,6 +230,55 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
     `then`
   else
     `else`
+
+enum PropertyAccessIota(name: String, direction: "head" | "tail")(using world: ServerWorld) extends Iota(PropertyAccessIota.Type, ()):
+  case Stream(name: String, direction: "head" | "tail")(using ServerWorld) extends PropertyAccessIota(name, direction) with IterableOnce[Iota]:
+    override def iterator: Iterator[Iota] = new Iterator[Iota]:
+      override def hasNext: Boolean = isTruthy
+      override def next(): Iota = take()
+    override def isTruthy: Boolean = property match
+      case l: ListIota => l.isTruthy
+      case _ => false
+    def take(): Iota = property match
+      case _: NullIota => NullIota()
+      case l: ListIota =>
+        val s = l.getList.asScala.toSeq
+        direction match
+          case "head" =>
+            property = ListIota(s.init)
+            s.lastOption.getOrElse(NullIota())
+          case "tail" =>
+            property = ListIota(s.init)
+            s.lastOption.getOrElse(NullIota())
+  case Writer(name: String, direction: "head" | "tail")(using ServerWorld) extends PropertyAccessIota(name, direction)
+  def property: Iota = StateStorage.Companion.getProperty(world, name)
+  def property_=(x: Iota): Unit = StateStorage.Companion.setProperty(world, name, x)
+  override def toleratesOther(iota: Iota): Boolean = ==(iota)
+  override def serialize(): NbtElement = ???
+object PropertyAccessIota:
+  object Type extends IotaType[PropertyAccessIota]:
+    type A = (String, "add" | "remove", "head" | "tail")
+    def split(tag: NbtElement): A =
+      val c = tag.downcast[NbtCompound]
+      val name = c.getString("n")
+      c.getString("p") match
+        case "→ " => (name, "add", "head")
+        case "← " => (name, "remove", "head")
+        case " ←" => (name, "add", "tail")
+        case " →" => (name, "remove", "tail")
+    override def deserialize(using nbt: NbtElement, world: ServerWorld): PropertyAccessIota =
+      val a: A = split(nbt)
+      a._2 match
+        case "add" => Writer(a._1, a._3)
+        case "remove" => Stream(a._1, a._3)
+    override def display(tag: NbtElement): Text =
+      (split(tag) match
+        case (name, "add", "head") => s"→ $name"
+        case (name, "add", "tail") => s"$name ←"
+        case (name, "remove", "head") => s"← $name"
+        case (name, "remove", "tail") => s"$name →"
+      ).styled(_.withColor(color))
+    override def color: Int = PropertyIota.TYPE.color
 
 class Pointer[T](val address: Long) extends AnyVal:
   inline def cast[R]: Pointer[R] = Pointer(address)
