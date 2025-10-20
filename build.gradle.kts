@@ -521,6 +521,18 @@ open class Hexdoc: Exec() {
     @Internal
     var docsPrefix = project.file(".")
 }
+
+tasks.register<GradleBuild>("processWithDatagen") {
+    dependsOn("runDatagen")
+    tasks = listOf("processResources")
+}
+
+tasks.named("runDatagen") {
+    doLast {
+
+    }
+}
+
 val Hexdoc.docsRoot get() = file("$docsPrefix/v/${if (release) "$version/$py_version" else "latest/${p.change_id}"}")
 fun Hexdoc.cleanPrefix() {
     doFirst {

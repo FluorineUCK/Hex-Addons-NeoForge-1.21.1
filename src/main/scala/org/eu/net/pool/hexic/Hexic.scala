@@ -56,7 +56,7 @@ import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.Fluid
 import net.minecraft.inventory.{SidedInventory, StackReference}
-import net.minecraft.item.{Item, ItemStack}
+import net.minecraft.item.{Item, ItemStack, Items}
 import net.minecraft.nbt.*
 import net.minecraft.nbt.visitor.StringNbtWriter
 import net.minecraft.registry.tag.TagKey
@@ -567,10 +567,13 @@ object ItemStackAccess:
 case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().maxCount(1)) with MediaHolderItem:
   extension (stack: ItemStack)
     private def heldItems: Seq[ItemStack] =
-      for
-        nbt <- Option(stack.getNbt).toSeq
-        case item: NbtCompound <- nbt.getList("Contents", NbtElement.COMPOUND_TYPE)
-      yield ItemStack.fromNbt(item)
+      Option(stack.getNbt)
+        .map(_.get("Contents"))
+        .collect:
+          case list: NbtList => list.collect:
+            case c: NbtCompound => ItemStack.fromNbt(c)
+        .getOrElse(Seq(ItemStack(Items.AMETHYST_SHARD)))
+        .toSeq
     private def heldItems_=(x: Seq[ItemStack]): Unit =
       stack.getOrCreateNbt.put("Contents", NbtList().tap: l =>
         for item <- x do
@@ -627,7 +630,7 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
       else if HexCardinalComponents.MEDIA_HOLDER.getNullable(otherStack) != null then
         val held = stack.heldItems
         if fits(held, otherStack.getItem) then
-          stack.heldItems = held :+ otherStack.copyAndEmpty()
+          stack.heldItems = otherStack.copyAndEmpty() +: held
           player.playSound(SoundEvents.ITEM_BUNDLE_INSERT, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       true
     else
@@ -635,7 +638,7 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
   private def fits(held: Seq[ItemStack], subj: Item): Boolean =
     val cur = held.map(_.getItem match { case b: MediaBundle => b.size/2; case _ => 1 }).sum
     subj match
-      case MediaBundle(_, subjSize) => subjSize <= size && cur + subjSize/2 <= size
+      case MediaBundle(_, subjSize) => subjSize < size && cur + subjSize/2 <= size
       case _ => cur < size
   override def onStackClicked(stack: ItemStack, slot: Slot, clickType: ClickType, player: PlayerEntity): Boolean =
     if clickType == ClickType.RIGHT then
@@ -648,7 +651,7 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
       else if HexCardinalComponents.MEDIA_HOLDER.getNullable(slot.getStack) != null then
         val held = stack.heldItems
         if fits(held, slot.getStack.getItem) then
-          stack.heldItems = held :+ slot.getStack.copyAndEmpty()
+          stack.heldItems = slot.getStack.copyAndEmpty() +: held
           player.playSound(SoundEvents.ITEM_BUNDLE_INSERT, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       true
     else

@@ -10,6 +10,7 @@ import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, FabricModelProvider, FabricRecipeProvider, FabricTagProvider}
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
+import net.minecraft.advancement.criterion.InventoryChangedCriterion
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.color.item.ItemColorProvider
 import net.minecraft.client.gui.screen.ChatScreen
@@ -210,6 +211,7 @@ def datagen(gen: FabricDataGenerator): Unit =
             .input('s', Items.STRING)
             .input('w', Mediaweave.colors(color))
             .input('a', Items.AMETHYST_SHARD)
+            .criterion("recipe", InventoryChangedCriterion.Conditions.items(Mediaweave.colors(color)))
   pack.addProvider:
     new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
