@@ -132,6 +132,7 @@ import java.io.Writer
 import java.io.OutputStreamWriter
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
+import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
 import net.minecraft.block.AbstractBlock
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 
@@ -695,9 +696,10 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
 class Stringworm extends Item(Stringworm.settings)
 object Stringworm:
   val settings = Item.Settings().maxCount(16)
+  val flavors = Seq("pure", "action", "hex", "media", "thing")
 
 val stringworms =
-  Seq("pure", "action", "hex", "media", "thing").map(_ -> new Stringworm)
+  Stringworm.flavors.map(_ -> new Stringworm).toMap
 
 object dyedStringworm extends Stringworm:
   override def getName(stack: ItemStack): Text =
@@ -706,7 +708,7 @@ object dyedStringworm extends Stringworm:
       case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName.getString.replace("Pigment", "Stringworm"))
 
 private [hexic] object Extern:
-  private [hexic] def getStringworm(idx: Int) = stringworms(idx)._2
+  private [hexic] def getStringworm(idx: Int) = stringworms(Stringworm.flavors(idx))
   private [hexic] def observePropertyHook(args: util.List[? <: Iota], idx: Int, argc: Int)(original: => String)(using cir: CallbackInfoReturnable[util.List[Iota]]) =
     args.lastOption match
       case Some(s: PropertyAccessIota.Stream) =>
@@ -771,6 +773,18 @@ trait HasCodec:
   def getCodec: Codec[? <: this.type]
 given [T <: Mishap] => Conversion[T, HasCodec] = _.asInstanceOf
 
+lazy val itemGroup = FabricItemGroup.builder()
+  .icon(() => new ItemStack(stringworms("media")))
+  .displayName(Text.translatable("itemGroup.hexic.group"))
+  .entries: (ctx, entries) =>
+    for f <- Stringworm.flavors do
+      entries.add(stringworms(f))
+    for c <- DyeColor.values do
+      entries.add(Mediaweave.colors(c))
+      entries.add(MediaBundle(c, 6))
+      entries.add(MediaBundle(c, 12))
+  .build()
+
 def init(): Unit =
   given_Logger.info:
     val possible = Seq(
@@ -781,7 +795,7 @@ def init(): Unit =
       "and the ASM stared back.",
       "'put everything in one file', they said",
       "hey did I tell you about the two secret slots in the player preview?",
-      "see line 631 for more information",
+      "see line 777 for more information",
       "no, you cannot flay sheep.",
       "filled with undocumented features! no do not open the bug tracker that's supposed to do that",
       "i bet your game is about to crash",
@@ -815,6 +829,7 @@ def init(): Unit =
     Registries.ITEM(s"stringworm_$flavor") = item
   Registries.ITEM("stringworm_pigmented") = dyedStringworm
   Registries.ITEM("wizard") = wizard
+  Registries.ITEM_GROUP("group") = itemGroup
   //Registries.ITEM("echo") = EchoItem
   if fabric.isModLoaded("hexical") then
     for
