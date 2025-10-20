@@ -8,13 +8,13 @@ import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, Spe
 import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, SpellContinuation}
-import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult}
+import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult, ResolvedPattern}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapNotEnoughArgs, MishapOthersName}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.{HexUtils, MediaHelper}
-import at.petrak.hexcasting.common.lib.{HexItems, HexRegistries}
+import at.petrak.hexcasting.common.lib.{HexAttributes, HexItems, HexRegistries, HexSounds}
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
 import at.petrak.hexcasting.xplat.IXplatAbstractions
@@ -56,7 +56,7 @@ import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.Fluid
 import net.minecraft.inventory.{SidedInventory, StackReference}
-import net.minecraft.item.{Item, ItemStack}
+import net.minecraft.item.{Item, ItemStack, Items}
 import net.minecraft.nbt.*
 import net.minecraft.nbt.visitor.StringNbtWriter
 import net.minecraft.registry.tag.TagKey
@@ -68,7 +68,7 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.{BlockPos, Direction, Vec3d}
-import net.minecraft.util.{Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, Util, Uuids, WorldSavePath}
+import net.minecraft.util.{Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
 import net.minecraft.world.World
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.common_curses.{CommonCursesKt, SlotAccess, TextManipulator}
@@ -114,7 +114,7 @@ import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
 import at.petrak.hexcasting.api.item.{IotaHolderItem, MediaHolderItem}
 import at.petrak.hexcasting.api.misc.MediaConstants
 import at.petrak.hexcasting.common.items.magic.{ItemMediaHolder, ItemPackagedHex}
-import at.petrak.hexcasting.common.msgs.MsgNewSpiralPatternsS2C
+import at.petrak.hexcasting.common.msgs.{MsgClearSpiralPatternsS2C, MsgNewSpiralPatternsS2C, MsgOpenSpellGuiS2C}
 import at.petrak.hexcasting.fabric.cc.adimpl.CCMediaHolder
 import kotlin.jvm.internal.DefaultConstructorMarker
 import net.minecraft.client.item.{BundleTooltipData, TooltipContext, TooltipData}
@@ -132,7 +132,9 @@ import java.io.Writer
 import java.io.OutputStreamWriter
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
+import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
 import net.minecraft.block.AbstractBlock
+import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 
 given Logger = LoggerFactory.getLogger("hexic")
@@ -538,6 +540,25 @@ extension [T] (x: T | Null)
     case null => null
     case x: T => f(x)
 
+case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)):
+  override def use(world: World, player: PlayerEntity, hand: Hand): TypedActionResult[ItemStack] =
+    // if player.getAttributeValue(HexAttributes.FEEBLE_MIND) > 0.0 then
+    //   TypedActionResult.fail(player.getStackInHand(hand))
+    // else
+      if !world.isClient && player.isInstanceOf[ServerPlayerEntity] then
+        val serverPlayer: ServerPlayerEntity = player.asInstanceOf[ServerPlayerEntity]
+        val vm = IXplatAbstractions.INSTANCE.getStaffcastVM(serverPlayer, hand)
+        val patterns = IXplatAbstractions.INSTANCE.getPatternsSavedInUi(serverPlayer).asScala
+        val descs = vm.generateDescs
+        IXplatAbstractions.INSTANCE.sendPacketToPlayer(serverPlayer, new MsgOpenSpellGuiS2C(hand, patterns, descs.getFirst, descs.getSecond, 0))
+      player.incrementStat(Stats.USED.getOrCreateStat(this))
+      TypedActionResult.success(player.getStackInHand(hand))
+object Pen:
+  val instances: DyeColor :> Pen = DyeColor.values.map(c => c -> new Pen(c)).toMap
+
+trait PenAccess:
+  def getPen(color: DyeColor): util.List[HexPattern]
+
 case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHolderItem:
   override def readIotaTag(stack: ItemStack): NbtCompound | Null =
     stack.getNbt match
@@ -570,10 +591,13 @@ object ItemStackAccess:
 case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().maxCount(1)) with MediaHolderItem:
   extension (stack: ItemStack)
     private def heldItems: Seq[ItemStack] =
-      for
-        nbt <- Option(stack.getNbt).toSeq
-        case item: NbtCompound <- nbt.getList("Contents", NbtElement.COMPOUND_TYPE)
-      yield ItemStack.fromNbt(item)
+      Option(stack.getNbt)
+        .map(_.get("Contents"))
+        .collect:
+          case list: NbtList => list.collect:
+            case c: NbtCompound => ItemStack.fromNbt(c)
+        .getOrElse(Seq(ItemStack(Items.AMETHYST_SHARD)))
+        .toSeq
     private def heldItems_=(x: Seq[ItemStack]): Unit =
       stack.getOrCreateNbt.put("Contents", NbtList().tap: l =>
         for item <- x do
@@ -630,7 +654,7 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
       else if HexCardinalComponents.MEDIA_HOLDER.getNullable(otherStack) != null then
         val held = stack.heldItems
         if fits(held, otherStack.getItem) then
-          stack.heldItems = held :+ otherStack.copyAndEmpty()
+          stack.heldItems = otherStack.copyAndEmpty() +: held
           player.playSound(SoundEvents.ITEM_BUNDLE_INSERT, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       true
     else
@@ -638,7 +662,7 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
   private def fits(held: Seq[ItemStack], subj: Item): Boolean =
     val cur = held.map(_.getItem match { case b: MediaBundle => b.size/2; case _ => 1 }).sum
     subj match
-      case MediaBundle(_, subjSize) => subjSize <= size && cur + subjSize/2 <= size
+      case MediaBundle(_, subjSize) => subjSize < size && cur + subjSize/2 <= size
       case _ => cur < size
   override def onStackClicked(stack: ItemStack, slot: Slot, clickType: ClickType, player: PlayerEntity): Boolean =
     if clickType == ClickType.RIGHT then
@@ -651,7 +675,7 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
       else if HexCardinalComponents.MEDIA_HOLDER.getNullable(slot.getStack) != null then
         val held = stack.heldItems
         if fits(held, slot.getStack.getItem) then
-          stack.heldItems = held :+ slot.getStack.copyAndEmpty()
+          stack.heldItems = slot.getStack.copyAndEmpty() +: held
           player.playSound(SoundEvents.ITEM_BUNDLE_INSERT, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       true
     else
@@ -698,9 +722,10 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
 class Stringworm extends Item(Stringworm.settings)
 object Stringworm:
   val settings = Item.Settings().maxCount(16)
+  val flavors = Seq("pure", "action", "hex", "media", "thing")
 
 val stringworms =
-  Seq("pure", "action", "hex", "media", "thing").map(_ -> new Stringworm)
+  Stringworm.flavors.map(_ -> new Stringworm).toMap
 
 object dyedStringworm extends Stringworm:
   override def getName(stack: ItemStack): Text =
@@ -709,7 +734,7 @@ object dyedStringworm extends Stringworm:
       case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName.getString.replace("Pigment", "Stringworm"))
 
 private [hexic] object Extern:
-  private [hexic] def getStringworm(idx: Int) = stringworms(idx)._2
+  private [hexic] def getStringworm(idx: Int) = stringworms(Stringworm.flavors(idx))
   private [hexic] def observePropertyHook(args: util.List[? <: Iota], idx: Int, argc: Int)(original: => String)(using cir: CallbackInfoReturnable[util.List[Iota]]) =
     args.lastOption match
       case Some(s: PropertyAccessIota.Stream) =>
@@ -774,6 +799,19 @@ trait HasCodec:
   def getCodec: Codec[? <: this.type]
 given [T <: Mishap] => Conversion[T, HasCodec] = _.asInstanceOf
 
+lazy val itemGroup = FabricItemGroup.builder()
+  .icon(() => new ItemStack(stringworms("media")))
+  .displayName(Text.translatable("itemGroup.hexic.group"))
+  .entries: (ctx, entries) =>
+    for c <- DyeColor.values do
+      entries.add(Mediaweave.colors(c))
+      entries.add(MediaBundle(c, 6))
+      // entries.add(MediaBundle(c, 12))
+      entries.add(Pen.instances(c))
+    for f <- Stringworm.flavors do
+      entries.add(stringworms(f))
+  .build()
+
 def init(): Unit =
   given_Logger.info:
     val possible = Seq(
@@ -784,7 +822,7 @@ def init(): Unit =
       "and the ASM stared back.",
       "'put everything in one file', they said",
       "hey did I tell you about the two secret slots in the player preview?",
-      "see line 631 for more information",
+      "see line 818 for more information",
       "no, you cannot flay sheep.",
       "filled with undocumented features! no do not open the bug tracker that's supposed to do that",
       "i bet your game is about to crash",
@@ -818,6 +856,8 @@ def init(): Unit =
     Registries.ITEM(s"stringworm_$flavor") = item
   Registries.ITEM("stringworm_pigmented") = dyedStringworm
   Registries.ITEM("wizard") = wizard
+  for (color, item) <- Pen.instances do Registries.ITEM(s"pen/${color.asString}") = item
+  Registries.ITEM_GROUP("group") = itemGroup
   //Registries.ITEM("echo") = EchoItem
   if fabric.isModLoaded("hexical") then
     for
@@ -905,6 +945,8 @@ def init(): Unit =
   Patterns.register("spellmind/restore", e"deeeeeqdwewewewewewqdwwewwewwewwewwewwqdwwwewwwewwwewwwewwwewww"):
     Patterns.mkAction: (img, cont) =>
       ???
+  Patterns.register("whatthefuck", ne"daadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadadda"):
+    Patterns.mkLiteral(PatternIota(e"wedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqeedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqeedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqqedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqqedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqeedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqqedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqe"))
   Patterns.register("nbt/deserialize", (HexDir.NORTH_WEST, "edwaqa")):
     Patterns.mkConstAction(1):
       case Seq(data: NbtIota) =>

@@ -10,6 +10,7 @@ import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, FabricModelProvider, FabricRecipeProvider, FabricTagProvider}
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
+import net.minecraft.advancement.criterion.InventoryChangedCriterion
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.color.item.ItemColorProvider
 import net.minecraft.client.gui.screen.ChatScreen
@@ -106,6 +107,8 @@ def init(): Unit =
     val prov = FrozenPigment.fromNBT(nbt).getColorProvider
     prov.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0))
   , dyedStringworm)
+  for (color, item) <- Pen.instances do
+    ColorProviderRegistry.ITEM.register((_, idx) => if idx == 1 then color.getSignColor else 0xFFFFFFF, item)
   for i <- 0 until 32 do
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
@@ -123,6 +126,15 @@ def datagen(gen: FabricDataGenerator): Unit =
         for (_, item) <- Mediaweave.colors do gen.register(item, Models.GENERATED)
         for (_, item) <- stringworms do gen.register(item, Models.GENERATED)
         for item <- MediaBundle.items do gen.register(item, Models.GENERATED)
+        for (_, item) <- Pen.instances do
+          gen.writer.accept(ModelIds.getItemModelId(item), () => JsonObject().tap: j =>
+            j.addProperty("parent", "minecraft:item/generated")
+            j.add("textures", JsonObject().tap: j =>
+              j.addProperty("layer0", "hexic:item/pen_back")
+              j.addProperty("layer1", "hexic:item/pen_cover")
+              j.addProperty("layer2", "hexic:item/pen_overlay")
+            )
+          )
         gen.writer.accept(ModelIds.getItemModelId(dyedStringworm), () => JsonObject().tap: j =>
           j.addProperty("parent", "minecraft:item/generated")
           j.add("textures", JsonObject().tap: j =>
@@ -165,6 +177,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "rotate" -> "Ferris Distillation",
           "take" -> "Retention Distillation",
           "drop" -> "Rejection Distillation",
+          "whatthefuck" -> "Suffering",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (klass, name) <- Vector(
           "int_or_list" -> "§aint§r or §5[§aint§5]§r",
@@ -177,10 +190,13 @@ def datagen(gen: FabricDataGenerator): Unit =
           "jvm/class" -> "Class",
           "jvm/pointer" -> "Address",
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
+        gen.add("itemGroup.hexic.group", "Hexic")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
 
         for (color, item) <- Mediaweave.colors do
           gen.add(item, s"${color.humanName} Mediaweave")
+        for (color, item) <- Pen.instances do
+          gen.add(item, s"${color.humanName} Pen")
         for (_, item) <- stringworms do
           gen.add(item, s"Stringworm")
         for item <- MediaBundle.items do
@@ -210,6 +226,7 @@ def datagen(gen: FabricDataGenerator): Unit =
             .input('s', Items.STRING)
             .input('w', Mediaweave.colors(color))
             .input('a', Items.AMETHYST_SHARD)
+            .criterion("recipe", InventoryChangedCriterion.Conditions.items(Mediaweave.colors(color)))
   pack.addProvider:
     new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
