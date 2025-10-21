@@ -132,7 +132,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "free" -> "Deallocator's Gambit",
           "staffcast_factory" -> "Lani's Greater Gambit",
           "staffcast_factory/lazy" -> "Lani's Lesser Gambit",
-          "metatable" -> "Metatable Exaltation",
+          "metatable" -> "Patchwork Exaltation",
           "murmur" -> "Murmur Reflection",
           "reveal" -> "Greater Reveal",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)

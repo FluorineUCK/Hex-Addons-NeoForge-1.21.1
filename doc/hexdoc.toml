@@ -11,6 +11,7 @@ resource_dirs = [
     { modid="hexdoc" },
     { modid="moreiotas" },
     { modid="hexal" },
+    { modid="hexcellular" },
 ]
 export_dir = "src/hexdoc_hexic/_export/generated"
 

@@ -334,7 +334,7 @@ wheels = [
 
 [[package]]
 name = "hexdoc"
-version = "1!0.1.0a30"
+version = "1!0.1.0a31"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -363,9 +363,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "yarl" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/2e/8d20342dd745640717e885a36bc2aa250eed203393ff170790fbd2f2239c/hexdoc-1!0.1.0a30.tar.gz", hash = "sha256:6f56e20fb47a76be13df4d4c201f20b098dbc46876f49a4352f00bd324200ce7", size = 151708, upload-time = "2025-09-27T17:44:37.139Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/ac/1f60aa61bad8597d3fb8f9502191523e245ffd1135ed1c4f19bd1f0731da/hexdoc-1!0.1.0a31.tar.gz", hash = "sha256:d5c49fc4285c9325edb80b44e41477c60b7c8a2b3acd0ee3f4136391c685bd37", size = 153006, upload-time = "2025-10-11T05:01:18.819Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/23/47/d2c48a0c2779855a6c0f4c1eab6c62e9c72d141297b9ef75606c8e32c86e/hexdoc-1!0.1.0a30-py3-none-any.whl", hash = "sha256:4f38ae7f270c61ca6a1a62caa5c228fd308c46b08ce0d09342a707dedbb1e250", size = 220263, upload-time = "2025-09-27T17:44:35.226Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/fd/cd1722868a3a4c71ac773b1a9a20ea976d317418cf6f23e6c8c8854f7181/hexdoc-1!0.1.0a31-py3-none-any.whl", hash = "sha256:aebc440fcecd0852edbb1ac780dc4c2b083e168aa68ba68518572ceba42220e2", size = 222119, upload-time = "2025-10-11T05:01:16.982Z" },
 ]
 
 [[package]]
@@ -400,21 +400,35 @@ wheels = [
 ]
 
 [[package]]
+name = "hexdoc-hexcellular"
+version = "1.1.0.1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "hexdoc-hexcasting" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/45/10/7159c810ff25cdb530c5e406825f1452b18bf2eb34d58390b5509f9c37e9/hexdoc_hexcellular-1.1.0.1.0.0.tar.gz", hash = "sha256:7d673d161b0e79d24ba61e0488b08a1d0eeb58390c383b233f80612d982579f0", size = 8927, upload-time = "2025-07-18T02:04:20.469Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/cf/dae8aa5f27c921d136ea754a547a7eb1d569d679d512b5f1e84b113c4049/hexdoc_hexcellular-1.1.0.1.0.0-py3-none-any.whl", hash = "sha256:8714b959cc56b88c1e1ea673e91149cd638b1d30f452f42084576acf510f875d", size = 11753, upload-time = "2025-07-18T02:04:19.377Z" },
+]
+
+[[package]]
 name = "hexdoc-hexic"
 source = { editable = "." }
 dependencies = [
     { name = "hexdoc" },
     { name = "hexdoc-hexal" },
     { name = "hexdoc-hexcasting" },
+    { name = "hexdoc-hexcellular" },
     { name = "hexdoc-minecraft" },
     { name = "hexdoc-moreiotas" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "hexdoc" },
+    { name = "hexdoc", specifier = ">=1!0.1.0a31" },
     { name = "hexdoc-hexal", url = "https://github.com/FallingColors/Hexal/raw/a5d1dbc6528e4a6c7c8f67ba3adc4c143dafb6e5/docs/v/latest/main/dist/hexdoc_hexal-0.3.0.1.0rc4.dev0-py3-none-any.whl" },
     { name = "hexdoc-hexcasting" },
+    { name = "hexdoc-hexcellular" },
     { name = "hexdoc-minecraft", specifier = "==1.20.1.*" },
     { name = "hexdoc-moreiotas", specifier = "==0.1.1.*" },
 ]
