@@ -290,19 +290,48 @@ tasks.processResources {
 
     dependsOn(cloth)
     dependsOn(*downloadedBags.values.toTypedArray())
+    val itemsRoot = "$destinationDir/assets/hexic/textures/item"
     doLast {
         for ((name, color) in colors) {
             exec {
-                commandLine("magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$destinationDir/assets/hexic/textures/item/${name}_mediaweave.png")
+                commandLine("magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$itemsRoot/${name}_mediaweave.png")
             }
             val bag = downloadedBags[name]!!.dest
             exec {
-                commandLine("magick", bag, "-write", "$destinationDir/assets/hexic/textures/item/large_${name}_bundle.png", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "$destinationDir/assets/hexic/textures/item/small_${name}_bundle.png")
+                commandLine("magick", bag, "-write", "$itemsRoot/large_${name}_bundle.png", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "$itemsRoot/small_${name}_bundle.png")
             }
         }
         exec {
-            commandLine("magick", "wizard:", "$destinationDir/assets/hexic/textures/item/wizard.png")
+            commandLine("magick", "wizard:", "$itemsRoot/wizard.png")
         }
+        exec {
+            commandLine("magick",
+                "https://raw.githubusercontent.com/malcolmriley/unused-textures/master/blocks/overlay_rune_0.png",
+                "(",
+                    "-clone", "0",
+                    "-alpha", "extract",
+                    "-type", "bilevel",
+                    "-define", "connected-components:mean-color=true",
+                    "-define", "connected-components:area-threshold=26",
+                    "-connected-components", "4",
+                ")",
+                "-alpha", "off",
+                "-compose", "copy_opacity",
+                "-composite",
+                "$itemsRoot/stringworm.miff"
+            )
+        }
+        for ((name, expr) in mapOf(
+            "media" to "u*#74b3f2*2",
+            "hex" to "u*#b38ef3*2",
+            "action" to "u*#fc77be*2",
+            "thing" to "u*#8d6acc*2",
+        )) {
+            exec {
+                commandLine("magick", "$itemsRoot/stringworm.miff", "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
+            }
+        }
+        file("$itemsRoot/stringworm.miff").delete()
     }
 }
 

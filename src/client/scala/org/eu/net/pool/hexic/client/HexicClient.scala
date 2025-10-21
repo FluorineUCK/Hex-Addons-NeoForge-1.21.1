@@ -1,4 +1,5 @@
-package org.eu.net.pool.hexic.client
+package org.eu.net.pool.hexic
+package client
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
@@ -22,7 +23,6 @@ import net.minecraft.util.DyeColor
 import net.minecraft.util.collection.DefaultedList
 import org.eu.net.pool.common_curses.{HotbarRendering, SlotAccess, TextManipulator}
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
-import org.eu.net.pool.hexic.{*, given}
 import org.eu.net.pool.hexic.mixin.client.ChatScreenAccess
 
 import java.util.function.Consumer
@@ -102,6 +102,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         ;
       override def generateItemModels(gen: ItemModelGenerator): Unit =
         for (_, item) <- Mediaweave.colors do gen.register(item, Models.GENERATED)
+        for (_, item) <- stringworms do gen.register(item, Models.GENERATED)
         for item <- MediaBundle.items do gen.register(item, Models.GENERATED)
         gen.register(wizard, Models.GENERATED)
   pack.addProvider:
@@ -148,6 +149,8 @@ def datagen(gen: FabricDataGenerator): Unit =
 
         for (color, item) <- Mediaweave.colors do
           gen.add(item, s"${color.humanName} Mediaweave")
+        for (_, item) <- stringworms do
+          gen.add(item, s"Stringworm")
         for item <- MediaBundle.items do
           gen.add(item, item.size match
             case 6 => s"${item.color.humanName} Media Pouch"
