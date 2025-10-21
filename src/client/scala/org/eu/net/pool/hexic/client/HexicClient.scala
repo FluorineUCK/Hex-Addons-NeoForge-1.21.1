@@ -130,8 +130,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           "jvm/newinstance_boxed" -> "Constructor Purification I",
           "malloc" -> "Allocator's Purification",
           "free" -> "Deallocator's Gambit",
-          "staffcast_factory" -> "Lani's Lesser Gambit",
-          "staffcast_factory/lazy" -> "Lani's Greater Gambit",
+          "staffcast_factory" -> "Lani's Greater Gambit",
+          "staffcast_factory/lazy" -> "Lani's Lesser Gambit",
           "metatable" -> "Metatable Exaltation",
           "murmur" -> "Murmur Reflection",
           "reveal" -> "Greater Reveal",
@@ -139,7 +139,6 @@ def datagen(gen: FabricDataGenerator): Unit =
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
-          // hexent
           "variant" -> "Object Variant",
           "stack" -> "Object Stack",
           // infinite hexxy
