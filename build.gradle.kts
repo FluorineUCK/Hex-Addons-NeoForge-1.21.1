@@ -332,6 +332,19 @@ tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+tasks.register<Exec>("hexdoc") {
+    dependsOn("processResources")
+    environment["GITHUB_PAGES_URL"] = ""
+    environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
+    val stdout = `java.io`.ByteArrayOutputStream()
+    exec {
+        commandLine("git", "rev-parse", "HEAD")
+        standardOutput = stdout;
+    }
+    environment["GITHUB_SHA"] = stdout.toString()
+    commandLine("env", "hexdoc", "build")
+}
+
 // configure the maven publication
 publishing {
     publications {
