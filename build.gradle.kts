@@ -140,7 +140,7 @@ fun download(url: String, name: String = file(url).name): Download {
     return tasks.register<Download>("download_${file(name).nameWithoutExtension}") {
         src(url)
         dest(outPath)
-        overwrite(true)
+        overwrite(false)
     }.get()
 }
 
@@ -256,6 +256,27 @@ dependencies {
     modRuntimeOnly("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
 }
 
+val colors = mapOf(
+    "white" to 16383998,
+    "orange" to 16351261,
+    "magenta" to 13061821,
+    "light_blue" to 3847130,
+    "yellow" to 16701501,
+    "lime" to 8439583,
+    "pink" to 15961002,
+    "gray" to 4673362,
+    "light_gray" to 10329495,
+    "cyan" to 1481884,
+    "purple" to 8991416,
+    "blue" to 3949738,
+    "brown" to 8606770,
+    "green" to 6192150,
+    "red" to 11546150,
+    "black" to 1908001,
+)
+
+val downloadedBags = colors.mapValues { download("https://raw.githubusercontent.com/malcolmriley/unused-textures/master/items/tool_pouch_${it.key}.png") }
+
 tasks.processResources {
     inputs.property("version", project.version)
     inputs.property("minecraft_version", project.property("minecraft_version"))
@@ -267,27 +288,15 @@ tasks.processResources {
     }
 
     dependsOn(cloth)
+    dependsOn(*downloadedBags.values.toTypedArray())
     doLast {
-        for ((name, color) in listOf(
-            "white" to 16383998,
-            "orange" to 16351261,
-            "magenta" to 13061821,
-            "light_blue" to 3847130,
-            "yellow" to 16701501,
-            "lime" to 8439583,
-            "pink" to 15961002,
-            "gray" to 4673362,
-            "light_gray" to 10329495,
-            "cyan" to 1481884,
-            "purple" to 8991416,
-            "blue" to 3949738,
-            "brown" to 8606770,
-            "green" to 6192150,
-            "red" to 11546150,
-            "black" to 1908001,
-        )) {
+        for ((name, color) in colors) {
             exec {
                 commandLine("magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$destinationDir/assets/hexic/textures/item/${name}_mediaweave.png")
+            }
+            val bag = downloadedBags[name]!!.dest
+            exec {
+                commandLine("magick", bag, "-write", "$destinationDir/assets/hexic/textures/item/large_${name}_bundle.png", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "$destinationDir/assets/hexic/textures/item/small_${name}_bundle.png")
             }
         }
         exec {

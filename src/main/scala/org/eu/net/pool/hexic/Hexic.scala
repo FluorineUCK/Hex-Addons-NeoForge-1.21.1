@@ -13,7 +13,7 @@ import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapInvalidIota, MishapOthersName}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
-import at.petrak.hexcasting.api.utils.HexUtils
+import at.petrak.hexcasting.api.utils.{HexUtils, MediaHelper}
 import at.petrak.hexcasting.common.lib.{HexItems, HexRegistries}
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
@@ -55,7 +55,7 @@ import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentTyp
 import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.Fluid
-import net.minecraft.inventory.SidedInventory
+import net.minecraft.inventory.{SidedInventory, StackReference}
 import net.minecraft.item.{Item, ItemStack}
 import net.minecraft.nbt.*
 import net.minecraft.nbt.visitor.StringNbtWriter
@@ -65,10 +65,10 @@ import net.minecraft.server.MinecraftServer
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntity}
 import net.minecraft.server.world.ServerWorld
-import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextContent, Texts}
+import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.{BlockPos, Vec3d}
-import net.minecraft.util.{Arm, DyeColor, Formatting, Hand, Identifier, Rarity, Util, Uuids, WorldSavePath}
+import net.minecraft.util.{Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, Util, Uuids, WorldSavePath}
 import net.minecraft.world.World
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.common_curses.{CommonCursesKt, SlotAccess, TextManipulator}
@@ -86,7 +86,7 @@ import java.io.{File, FileNotFoundException, FileOutputStream, IOException, Inpu
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
 import java.nio.file.{Files, Path, StandardOpenOption}
-import java.util.UUID
+import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
@@ -112,13 +112,21 @@ import scala.math.Ordered.orderingToOrdered
 import scala.util.CommandLineParser.FromString
 import scala.util.boundary.Label
 import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
-import at.petrak.hexcasting.api.item.IotaHolderItem
+import at.petrak.hexcasting.api.item.{IotaHolderItem, MediaHolderItem}
+import at.petrak.hexcasting.api.misc.MediaConstants
+import at.petrak.hexcasting.common.items.magic.ItemMediaHolder
 import at.petrak.hexcasting.common.msgs.MsgNewSpiralPatternsS2C
+import at.petrak.hexcasting.fabric.cc.adimpl.CCMediaHolder
 import kotlin.jvm.internal.DefaultConstructorMarker
-import net.minecraft.client.item.TooltipContext
+import net.minecraft.client.item.{BundleTooltipData, TooltipContext, TooltipData}
 import net.minecraft.entity.LivingEntity
-import net.minecraft.sound.SoundCategory
+import net.minecraft.screen.slot.Slot
+import net.minecraft.sound.{SoundCategory, SoundEvents}
+import net.minecraft.util.collection.DefaultedList
+import org.eu.net.pool.hexic.MediaBundle.{DUST_AMOUNT, PERCENTAGE}
 
+import java.math.RoundingMode
+import java.text.DecimalFormat
 import java.util.function.Predicate
 import scala.quoted.Quotes
 
@@ -464,6 +472,120 @@ object Mediaweave:
   val colors: DyeColor :> Mediaweave = DyeColor.values().map(c => c -> Mediaweave(c)).toMap
   val tag: TagKey[Item] = TagKey.of(Registries.ITEM, "mediaweaves")
 
+extension (x: Iterable[Boolean])
+  def any: Boolean = x.exists(identity)
+  def all: Boolean = x.forall(identity)
+
+case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().maxCount(1)) with MediaHolderItem:
+  extension (stack: ItemStack)
+    private def heldItems: Seq[ItemStack] =
+      for
+        nbt <- Option(stack.getNbt).toSeq
+        case item: NbtCompound <- nbt.getList("Contents", NbtElement.COMPOUND_TYPE)
+      yield ItemStack.fromNbt(item)
+    private def heldItems_=(x: Seq[ItemStack]): Unit =
+      stack.getOrCreateNbt.put("Contents", NbtList().tap: l =>
+        for item <- x do
+          val c = NbtCompound()
+          item.writeNbt(c)
+          l.add(c)
+      )
+    private def withMediaHolders[T](f: Seq[CCMediaHolder] => T): T =
+      val heldItems = stack.heldItems
+      try
+        f(heldItems.flatMap(p => Option(HexCardinalComponents.MEDIA_HOLDER.getNullable(p))))
+      finally
+        stack.heldItems = heldItems
+    private def mediaHolders = stack.heldItems.flatMap(p => Option(HexCardinalComponents.MEDIA_HOLDER.getNullable(p)))
+  override def getMedia(stack: ItemStack): Long = stack.mediaHolders.map(_.getMedia).sum
+  override def getMaxMedia(stack: ItemStack): Long = stack.mediaHolders.map(_.getMaxMedia).sum
+  override def setMedia(staeck: ItemStack, media: Long): Unit = throw IllegalCallerException()
+  override def canProvideMedia(stack: ItemStack): Boolean = stack.mediaHolders.exists(_.canProvide)
+  override def canRecharge(stack: ItemStack): Boolean = stack.mediaHolders.exists(_.canRecharge)
+  override def insertMedia(stack: ItemStack, amount: Long, simulate: Boolean): Long =
+    stack.withMediaHolders: h =>
+      var total: Long = 0
+      for (_, holders) <- h.groupBy(_.getConsumptionPriority).toSeq.sortBy(_._1).reverse do
+        var rem = holders
+        while rem.nonEmpty do
+          val cur = rem.head
+          val ext = cur.insertMedia((amount - total) / rem.size, simulate)
+          total += ext
+          if total >= amount then return total
+          rem = rem.tail
+      total
+  override def withdrawMedia(stack: ItemStack, amount: Long, simulate: Boolean): Long =
+    stack.withMediaHolders: h =>
+      var total: Long = 0
+      for (_, holders) <- h.groupBy(_.getConsumptionPriority).toSeq.sortBy(_._1).reverse do
+        var rem = holders
+        while rem.nonEmpty do
+          val cur = rem.head
+          val ext = cur.withdrawMedia((amount - total) / rem.size, simulate)
+          total += ext
+          if total >= amount then
+            if total > amount then total -= insertMedia(stack, total - amount, simulate)
+            return total
+          rem = rem.tail
+      total
+  override def onClicked(stack: ItemStack, otherStack: ItemStack, slot: Slot, clickType: ClickType, player: PlayerEntity, cursorStackReference: StackReference): Boolean =
+    if clickType == ClickType.RIGHT then
+      if otherStack.isEmpty then
+        val held = stack.heldItems
+        held.headOption.foreach: p =>
+          cursorStackReference.set(p)
+          stack.heldItems = held.tail
+          player.playSound(SoundEvents.ITEM_BUNDLE_REMOVE_ONE, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
+      else if HexCardinalComponents.MEDIA_HOLDER.getNullable(otherStack) != null then
+        val held = stack.heldItems
+        if held.length < size then
+          stack.heldItems = held :+ otherStack.copyAndEmpty()
+          player.playSound(SoundEvents.ITEM_BUNDLE_INSERT, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
+      true
+    else
+      false
+  override def onStackClicked(stack: ItemStack, slot: Slot, clickType: ClickType, player: PlayerEntity): Boolean =
+    if clickType == ClickType.RIGHT then
+      if slot.getStack.isEmpty then
+        val held = stack.heldItems
+        held.headOption.foreach: p =>
+          slot.setStack(p)
+          stack.heldItems = held.tail
+          player.playSound(SoundEvents.ITEM_BUNDLE_REMOVE_ONE, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
+      else if HexCardinalComponents.MEDIA_HOLDER.getNullable(slot.getStack) != null then
+        val held = stack.heldItems
+        if held.length < size then
+          stack.heldItems = held :+ slot.getStack.copyAndEmpty()
+          player.playSound(SoundEvents.ITEM_BUNDLE_INSERT, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
+      true
+    else
+      false
+  override def getTooltipData(stack: ItemStack): Optional[TooltipData] = Optional.of(BundleTooltipData(DefaultedList.copyOf(ItemStack.EMPTY, stack.heldItems*), stack.heldItems.size))
+  override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
+    tooltip.add(Text.translatable("hexic.media_bundle.items", stack.heldItems.size, size).styled(_.withColor(Formatting.GRAY)))
+    val (canProvide, cantProvide) = stack.mediaHolders.partition(_.canProvide)
+    val (canRecharge, consumables) = canProvide.partition(_.canRecharge)
+    val consumableTotal = consumables.map(_.getMedia).sum
+    val batteryTotal = canRecharge.map(_.getMedia).sum
+    val trinketTotal = cantProvide.map(_.getMedia).sum
+    val batteryMax = canRecharge.map(_.getMaxMedia).sum
+    val trinketMax = cantProvide.map(_.getMaxMedia).sum
+    if canRecharge.nonEmpty then
+      tooltip.add(showMedia("external", batteryTotal + consumableTotal, batteryMax))
+    else if consumables.nonEmpty then
+      tooltip.add(showMedia("external", consumableTotal))
+    if cantProvide.nonEmpty then
+      tooltip.add(showMedia("internal", trinketTotal, trinketMax))
+  private def showMedia(tag: String, media: Long) = Text.translatable("hexic.media.infinite", Text.translatable(s"hexic.media.$tag"), Text.translatable("hexcasting.tooltip.media", dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR))))
+  private def showMedia(tag: String, media: Long, maxMedia: Long) = Text.translatable("hexic.media.finite", Text.translatable(s"hexic.media.$tag"), dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.translatable("hexcasting.tooltip.media", dustAmount(maxMedia)).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.literal(PERCENTAGE.format(100.0 * media / maxMedia)+"%").styled(_.withColor(MediaHelper.mediaBarColor(media, maxMedia))))
+  private def dustAmount(media: Long) = Text.literal(DUST_AMOUNT.format(media / MediaConstants.DUST_UNIT.toDouble))
+
+type Media = Long
+object MediaBundle:
+  val items: Seq[MediaBundle] = for i <- Seq(6, 12); c <- DyeColor.values yield MediaBundle(c, i)
+  private val PERCENTAGE = new DecimalFormat("####")
+  PERCENTAGE.setRoundingMode(RoundingMode.DOWN)
+  private val DUST_AMOUNT = new DecimalFormat("###,###.##")
 val wizard = Item(Item.Settings().rarity(Rarity.EPIC).maxCount(1))
 
 trait HasCodec:
@@ -480,7 +602,7 @@ def init(): Unit =
       "and the ASM stared back.",
       "'put everything in one file', they said",
       "hey did I tell you about the two secret slots in the player preview?",
-      "see line 1000 for more information",
+      "see line 548 for more information",
       "no, you cannot flay sheep.",
       "filled with undocumented features! no do not open the bug tracker that's supposed to do that",
       "i bet your game is about to crash",
@@ -504,6 +626,10 @@ def init(): Unit =
   hexXplat.getContinuationTypeRegistry("tripwire") = TripwireIota.Frame
   for (color, item) <- Mediaweave.colors do
     Registries.ITEM(s"${color.asString}_mediaweave") = item
+  for item <- MediaBundle.items do
+    Registries.ITEM(item.size match
+      case 6 => s"small_${item.color.asString}_bundle"
+      case 12 => s"large_${item.color.asString}_bundle") = item
   Registries.ITEM("wizard") = wizard
   //Registries.ITEM("echo") = EchoItem
   ifModLoaded"hexent${
@@ -999,7 +1125,7 @@ def init(): Unit =
                 override def extractMediaEnvironment(cost: Long, simulate: Boolean): Long =
                   if player.isCreative then 0L else extractMediaFromInventory(cost, canOvercast, simulate)
                 override def getCastingHand: Hand = castingHand
-                override def getPigment: FrozenPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
+                override def getPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
               val image = CastingImage(Seq(StringIota.make(text)).asJava, 0, Seq().asJava, false, 0, NbtCompound(), null)
               val instrs = s.getList.asScala.toSeq
               val vm = CastingVM(image, env)
@@ -1149,7 +1275,7 @@ object itsGiving:
 object MediaVariant extends TransferVariant[MediaVariant.type]:
   def getNbt = NbtCompound()
   def getObject: MediaVariant.type = MediaVariant
-  def isBlank: Boolean = false
+  def isBlank = false
   def toNbt = NbtCompound()
   def toPacket(buf: net.minecraft.network.PacketByteBuf): Unit = ()
 

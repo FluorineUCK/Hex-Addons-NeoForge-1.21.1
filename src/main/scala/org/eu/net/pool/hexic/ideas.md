@@ -6,8 +6,8 @@
 * [ ] dyeing iotas
 * [ ] computercraft integration
 * [ ] setting your mind refl
-* [ ] media pouches
-* [ ] mediaweave chat interception
+* [x] media pouches
+* [x] mediaweave chat interception
 * [ ] multi slate drifting
 
 
@@ -16,6 +16,7 @@
 * [ ] document lani's gambits
 * [ ] document mediaweave chat interception
 * [ ] document greater reveal
+* [ ] document media bundles
 
 
 * [ ] find my undocumented features
