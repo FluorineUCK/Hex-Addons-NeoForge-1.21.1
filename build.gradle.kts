@@ -86,6 +86,7 @@ dependencies {
     include(api("org.scala-lang:scala-library:2.13.6")!!)
     include(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.9999-hexxytest.2.2")!!)
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
+    include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation("maven.modrinth:hexcassettes:1.1.4")

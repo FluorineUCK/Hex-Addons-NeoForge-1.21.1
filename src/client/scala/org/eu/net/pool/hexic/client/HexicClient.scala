@@ -1,13 +1,14 @@
 package org.eu.net.pool.hexic.client
 
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
+import net.fabricmc.fabric.api.datagen.v1.provider.FabricModelProvider
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
+import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.inventory.Inventory
 import net.minecraft.item.ItemStack
 import net.minecraft.screen.slot.Slot
 import net.minecraft.util.collection.DefaultedList
-
 import org.eu.net.pool.hexic.*
 
 import scala.language.experimental.{macros, saferExceptions}
@@ -16,8 +17,15 @@ import scala.util.boundary
 def init(): Unit =
   println("Hello, client!")
 
-def datagen(using FabricDataGenerator): Unit =
-  println("Hello, datagen!")
+def datagen(gen: FabricDataGenerator): Unit =
+  val pack = gen.createPack()
+  pack.addProvider: out =>
+    new FabricModelProvider(out) {
+      override def generateBlockStateModels(gen: BlockStateModelGenerator): Unit =
+        ;
+      override def generateItemModels(gen: ItemModelGenerator): Unit =
+        gen.register()
+    }
 
 object inventory_??? extends Inventory:
   override def size(): Int = ???

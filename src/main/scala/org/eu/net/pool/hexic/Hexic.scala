@@ -13,11 +13,18 @@ import at.petrak.hexcasting.api.casting.mishaps.{MishapInvalidIota, MishapOthers
 import at.petrak.hexcasting.api.utils.HexUtils
 import at.petrak.hexcasting.common.lib.HexRegistries
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
+import com.ibm.icu.util.MeasureUnit
+import com.mojang.brigadier.Command
+import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.builder.{LiteralArgumentBuilder, RequiredArgumentBuilder}
+import com.mojang.brigadier.context.CommandContext
 import com.mojang.serialization.{Codec, DynamicOps}
 import com.samsthenerd.inline.api.data.ItemInlineData
+import com.sun.nio.file.ExtendedOpenOption
+import kotlin.text.Charsets
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
-import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant
+import net.fabricmc.fabric.api.item.v1.FabricItemSettings
+import net.fabricmc.fabric.api.transfer.v1.fluid.{FluidConstants, FluidVariant}
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.fabricmc.fabric.api.transfer.v1.storage.TransferVariant
 import net.minecraft.Bootstrap
@@ -28,19 +35,21 @@ import net.minecraft.fluid.Fluid
 import net.minecraft.item.Item
 import net.minecraft.nbt.*
 import net.minecraft.nbt.visitor.StringNbtWriter
-import net.minecraft.registry.{Registries, Registry, RegistryKey}
+import net.minecraft.registry.{Registries, Registry, RegistryKey, RegistryKeys}
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
-import net.minecraft.text.{HoverEvent, MutableText, Text}
+import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextContent}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.Vec3d
-import net.minecraft.util.{Formatting, Hand, Identifier, Uuids}
+import net.minecraft.util.{Formatting, Hand, Identifier, Rarity, Uuids}
 import net.minecraft.world.World
 import org.eu.net.pool.hexic
 import org.slf4j.{Logger, LoggerFactory}
 import ram.talia.moreiotas.api.casting.iota.StringIota
 
+import java.io.{File, FileNotFoundException, IOException}
+import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.UUID
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
@@ -68,12 +77,20 @@ extension (c: NbtCompound)
   def iota(using ServerWorld): Iota = IotaType.deserializeIota(c, summon)
 
 def init(): Unit =
+  WarCrime.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
+  try
+    System.getProperties.load(Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8))
+  catch
+    case _: FileNotFoundException => ;
+    case i: IOException =>
+      summon[Logger].warn("Failed to read properties", i)
   Registry.register(HexRegistries.IOTA_TYPE, "location": Identifier, LocationIota)
   Registry.register(HexRegistries.IOTA_TYPE, "text": Identifier, TextIota)
   Registry.register(HexRegistries.IOTA_TYPE, "nbt": Identifier, NbtIota)
   Registry.register(HexRegistries.IOTA_TYPE, "variant": Identifier, VariantIota)
   Registry.register(HexRegistries.IOTA_TYPE, "stack": Identifier, StackIota)
   Registry.register(HexRegistries.IOTA_TYPE, "map": Identifier, MapIota)
+  Registry.register(Registries.ITEM, "echo": Identifier, EchoItem)
   Registry.register(HexRegistries.ACTION, "nbt/serialize": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaq", HexDir.NORTH_WEST), new ConstMediaAction:
     import ConstMediaAction.DefaultImpls => d
     override def getArgc: Int = 1
@@ -344,6 +361,37 @@ def init(): Unit =
         ),
     )
   })
+  Registry.register(HexRegistries.ARITHMETIC, "text": Identifier, {
+    import Arithmetic.*
+    arith("text",
+      ADD -> ((a: TextIota, b: TextIota) => TextIota(a.text + b.text)),
+      APPEND -> ((a: TextIota, b: TextIota) => TextIota(a.text + b.text)),
+      CONS -> ((a: TextIota, b: TextIota) => TextIota(b.text + a.text)),
+      INDEX -> ((a: TextIota, idx: DoubleIota) =>
+        val ord = a.text.asOrderedText
+        val n = idx `asIntOrThrow` 0
+        boundary:
+          ord.accept: (i, s, c) =>
+            if i == n then
+              boundary break TextIota(Text.literal(c.toChar.toString) setStyle s)
+            else
+              true
+          NullIota()
+      ),
+      SLICE -> ((a: TextIota, min: DoubleIota, max: DoubleIota) =>
+        val ord = a.text.asOrderedText
+        val range = min.asIntOrThrow(1) to max.asIntOrThrow(0)
+        val out = mutable.ArrayBuffer[(Style, Char)]()
+        boundary:
+          ord.accept: (i, s, c) =>
+            if range contains i then
+              out.add(s -> c.toChar)
+            else
+              true
+          NullIota()
+      ),
+    )
+  })
   Registry.register(HexRegistries.ARITHMETIC, "maps": Identifier, {
     import Arithmetic.*
     arith("map",
@@ -367,6 +415,12 @@ def init(): Unit =
       LESS_EQ -> ((a: MapIota, b: MapIota) => b.map.containsAll(a.map)),
     )
   })
+  Registry.register(HexRegistries.ARITHMETIC, "null_abs": Identifier, {
+    import Arithmetic.*
+    arith("null_abs",
+      ABS -> ((a: NullIota) => DoubleIota(0)),
+    )
+  })
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
       .requires(_.hasPermissionLevel(2))
@@ -382,11 +436,7 @@ def init(): Unit =
               t.value.deserialize(d, c.getSource.getWorld) match
                 case null => throw CommandException("Iota did not accept the given data")
                 case r: Iota =>
-                  c.getSource.sendFeedback(() => Text.translatable("debug print jumpscare"), true)
-                  println("before")
-                  println(s"before2 ${r}")
                   p.gimmeIota(r)
-                  println("after")
                   c.getSource.sendFeedback(() => Text.translatable("Pushed %s to stack", try r.display catch case x: (Exception | Error) => x.getMessage), true)
                   1
                 case x => throw CommandException(s"${x} is not an iota")
@@ -404,8 +454,103 @@ def init(): Unit =
             c.getSource.sendFeedback(() => Text.translatable("Pushed %s to stack", r.display), true)
             1
           ).build()
-      ).build()
-    )
+      ).build())
+    d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("property").pipe: c =>
+      c.`then`(LiteralArgumentBuilder.literal("get")
+        .`then`(RequiredArgumentBuilder.argument("property", StringArgumentType.string())
+          .executes((c: CommandContext[ServerCommandSource]) =>
+            val prop = StringArgumentType.getString(c, "property")
+            System.getProperty(prop) match
+              case null => throw CommandException(t"Property ${prop} is not set")
+              case s =>
+                c.getSource.sendFeedback(() => t"Property ${prop} is set to ${s}", false)
+                1
+          )
+          .build())
+        .build()
+      )
+      c.`then`(LiteralArgumentBuilder.literal("set")
+        .`then`(RequiredArgumentBuilder.argument("property", StringArgumentType.string())
+          .`then`(RequiredArgumentBuilder.argument("value", StringArgumentType.string())
+            .executes((c: CommandContext[ServerCommandSource]) =>
+              val prop = StringArgumentType.getString(c, "property")
+              val value = StringArgumentType.getString(c, "value")
+              System.setProperty(prop, value)
+              c.getSource.sendFeedback(() => t"Changed the value of property ${prop}", true)
+              1
+            )
+            .build())
+          .build())
+        .build()
+      )
+      c.`then`(LiteralArgumentBuilder.literal("remove")
+        .`then`(RequiredArgumentBuilder.argument("property", StringArgumentType.string())
+          .build())
+        .build()
+      )
+      c.`then`(LiteralArgumentBuilder.literal[ServerCommandSource]("reload")
+        .executes(c =>
+          val out = Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8)
+          try
+            System.getProperties.load(out)
+          catch
+            case _: FileNotFoundException => throw CommandException("Properties file does not exist")
+          finally
+            out.close()
+          c.getSource.sendFeedback(() => "Reloaded properties from file", true)
+          1
+        ).build()
+      )
+      c.`then`(LiteralArgumentBuilder.literal[ServerCommandSource]("flush")
+        .executes(c =>
+          val out = Files.newBufferedWriter(Path.of("config/jvm.properties"), Charsets.UTF_8)
+          try
+            System.getProperties.store(out, null)
+          finally
+            out.close()
+          c.getSource.sendFeedback(() => "Saved properties to file", true)
+          1
+        ).build()
+      )
+      c.build())
+  Registry.register(HexRegistries.ACTION, "fuck_you": Identifier, ActionRegistryEntry(HexPattern.fromAngles("qqaddaaddaqqqwwaadada", HexDir.NORTH_EAST), new ConstMediaAction {
+    import ConstMediaAction.DefaultImpls as d
+    def execute(stack: util.List[? <: Iota], env: CastingEnvironment): util.List[Iota] = ???
+    def executeWithOpCount(stack: util.List[? <: Iota], env: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, stack, env)
+    def getArgc: Int = 1
+    def getMediaCost: Long = 0
+    def operate(env: CastingEnvironment, image: CastingImage, cont: SpellContinuation): OperationResult = d.operate(this, env, image, cont)
+  }))
+
+extension (text: Text)
+  def +(other: Text) = Text.literal("").append(text).append(other)
+  def uncons: Option[(Text, Text)] =
+    boundary:
+      if !text.getContent.empty then
+        val contentText = text.copy
+        val siblingsText = Text.literal("")
+        siblingsText.setStyle(text.getStyle)
+        siblingsText.getSiblings ++= contentText.getSiblings
+        contentText.getSiblings.clear()
+        boundary.break(Some((contentText, siblingsText)))
+      for sibling <- text.getSiblings do
+        for p <- sibling.uncons do
+          boundary.break(Some(p both(_.copy.styled(_.withParent(text.getStyle)))))
+      None
+  def unsnoc: Option[(Text, Text)] =
+    boundary:
+      for sibling <- text.getSiblings do
+        for p <- sibling.unsnoc do
+          boundary.break(Some(p both(_.copy.styled(_.withParent(text.getStyle)))))
+      if !text.getContent.empty then
+        boundary.break(Some((text.copyContentOnly, Text.literal("")) both(_.setStyle(text.getStyle))))
+      None
+extension (content: TextContent)
+  def empty = content match
+    case l: LiteralTextContent => l.string == ""
+    case _ => false
+
+object EchoItem extends Item(FabricItemSettings().rarity(Rarity.RARE))
 
 case class Nonce(id: UUID):
   def this() = this(UUID.randomUUID())
@@ -602,7 +747,7 @@ object LocationIota extends IotaType[LocationIota]:
     case _ => null
 
 case class StackIota[T](stack: VariantIota[T], count: Long) extends Iota(StackIota, stack):
-  given ClassTag[T] = stack.tag
+  export stack.given ClassTag[T]
   override def isTruthy: Boolean = ???
   override def toleratesOther(that: Iota): Boolean = that match
     case s: StackIota[?] => stack == s.stack && count == s.count
@@ -615,24 +760,30 @@ object StackIota extends IotaType[StackIota[?]]:
     StackIota(VariantIota.deserialize, c.getLong("n"))
   def display(e: NbtElement): Text =
     val c = HexUtils.downcast(e, NbtCompound.TYPE)
-    VariantIota.display(c).copy.tap: t =>
-      t.append("x" + expNotation(c.getLong("n")))
+    VariantIota.parseVariant(c).fold(NullIota.DISPLAY)(t => t"${t}x${c.getLong("n")}")
 inline def repeat[T](inline value: T, inline cond: T => Boolean)(inline body: T => T): T =
   var current = value
   while (cond(current)) current = body(current)
   current
 
-def expNotation(n: Long) =
-  if n >= 1000000 then
+def toExp(value: Long, trigger: Long = 1000000, max: Long = 1000): (Long, Option[Long]) =
+  if value >= trigger then
     // someone needs to stop you
     var d = 0
     val r =
-      repeat(n, _ >= 1000): n =>
+      repeat(value, _ >= max): n =>
         d += 1
         n / 10
-    f"${r.toDouble / 100}%.2fx10${d.toString.map(c => "⁰¹²³⁴⁵⁶⁷⁸⁹"(c - '0'))}"
+    (value, Some(d))
   else
-    n.toString
+    (value, None)
+
+def x10(power: Long) = "x10" + power.toString.map(c => "⁰¹²³⁴⁵⁶⁷⁸⁹"(c - '0'))
+
+def expNotation(n: Long) =
+  toExp(n) match
+    case (v, Some(d)) => s"${v}${x10(d)}"
+    case (v, None) => v.toString
 
 given Codec[Text] = Codecs.TEXT
 given DynamicOps[NbtElement] = NbtOps.INSTANCE
@@ -664,11 +815,10 @@ case class NbtIota(data: NbtElement) extends Iota(NbtIota, data):
   override def serialize: NbtElement = data
 //noinspection UnstableApiUsage
 case class VariantIota[T: ClassTag](data: TransferVariant[T], key: RegistryKey[VariantIota.Reader]) extends Iota(VariantIota, data):
-  def tag: ClassTag[T] = summon
   override def isTruthy: Boolean = true
   override def toleratesOther(that: Iota): Boolean =
     that match
-      case v: VariantIota[T] => tag == v.tag && key == v.key && data == v.data
+      case v: VariantIota[T] => key == v.key && data == v.data
       case _ => false
   override def serialize: NbtElement =
     data.toNbt
@@ -678,11 +828,12 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
   type Reader = NbtCompound => Option[VariantIota.TaggedVariant]
   trait TaggedVariant:
     type T: ClassTag
-    def tag: ClassTag[T] = summon
     def variant: TransferVariant[T]
     def display: Text
+    def display(count: Long): Text =
+      t"${display}x${expNotation(count)}"
   def color: Int = 0x720a0a
-  private def parseVariant(c: NbtCompound): Option[(TaggedVariant, RegistryKey[Reader])] =
+  private[hexic] def parseVariant(c: NbtCompound): Option[(TaggedVariant, RegistryKey[Reader])] =
     Identifier.tryParse(c.getString("type")) match
       case null => None
       case i => Option.fromNullable(registry.get(i)).flatMap(_(c)).map((_, RegistryKey.of(VariantIota, i)))
@@ -692,7 +843,7 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
       case c: NbtCompound =>
         parseVariant(c) match
           case Some((t, k)) =>
-            given ClassTag[t.T] = t.tag
+            import t.given
             VariantIota(t.variant, k)
           case None => null
       case _ => null
@@ -716,7 +867,15 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
       new TaggedVariant:
         type T = Fluid
         def variant: TransferVariant[Fluid] = s
-        def display: Text = t"${s.getFluid.getDefaultState.getBlockState.getBlock.getName}: ${ItemInlineData.make(s.getFluid.getBucketItem.getDefaultStack)}"
+        def display: MutableText = t"${s.getFluid.getDefaultState.getBlockState.getBlock.getName}: ${ItemInlineData.make(s.getFluid.getBucketItem.getDefaultStack)}"
+        override def display(count: Long): Text =
+          val buckets = count / FluidConstants.BUCKET
+          // small quantities of liquid value using millibuckets
+          if buckets < 100 then
+            display.append("x").append(f"${count.toDouble / FluidConstants.BUCKET.toDouble}%.3f")
+          else
+            // normal exp-notation bucket count
+            display.append("x").append(expNotation(buckets))
   )
   Registry.register(registry, "media": Identifier, c =>
     Some(new TaggedVariant:
@@ -727,11 +886,11 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
 extension [T] (t: T) def |>[U](f: T => U): U = t.pipe(f)
 extension [T] (t: T) def |-[U](f: T => U): T = t.tap(f)
 extension [A, B] (p: (A, B))
-  infix def both[R, S](f: (A => R) & (B => S)) = (f(p._1), f(p._2))
+  infix def both[R, S](f: (A => R) & (B => S)): (R, S) = (f(p._1), f(p._2))
 case class MapIota(map: Map[NbtCompound, NbtCompound] = Map())(using val world: ServerWorld) extends Iota(MapIota, map):
   def get(key: Iota): Option[Iota] = map.get(IotaType.serialize(key)).map(IotaType.deserializeIota(_, summon))
   def apply(key: Iota): Iota = get(key) getOrElse NullIota()
-  def -(keys: Iota*): MapIota = MapIota(map removedAll (keys map IotaType.serialize))
+  def -(keys: Iota*): MapIota = MapIota(map -- (keys map IotaType.serialize))
   def --(other: MapIota): MapIota = MapIota(map -- other.map.keys)
   def +(pairs: (Iota, Iota)*): MapIota = MapIota(map ++ pairs.map(_ both IotaType.serialize))
   def ++(other: MapIota): MapIota = MapIota(map ++ other.map)
@@ -740,8 +899,8 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map())(using val world: 
   def tail: MapIota = MapIota(map.tail)
   def init: MapIota = MapIota(map.init)
   def last: (Iota, Iota) = map.last both(IotaType.deserializeIota(_, summon))
-  def &(other: MapIota) = MapIota(map.filter(_._1|>other.map.contains))
-  def ^(other: MapIota) = mutable.Map[NbtCompound, NbtCompound]().tap(m =>
+  def &(other: MapIota): MapIota = MapIota(map.filter(_._1|>other.map.contains))
+  def ^(other: MapIota): MapIota = mutable.Map[NbtCompound, NbtCompound]().tap(m =>
     m.addAll(map)
     for ((k, v) <- other.map) do
       if m contains k then
@@ -767,22 +926,22 @@ object MapIota extends IotaType[MapIota]:
       .toMap[NbtCompound, NbtCompound]
       .pipe(new MapIota(_))
   def display(data: NbtElement): Text =
-    val l = HexUtils.downcast(data, NbtList.TYPE)
-    val p: MutableText = "["
-    p.styled(_.withColor(color))
-    if l.nonEmpty then
-      def o = HexUtils.downcast(_, NbtCompound.TYPE)
-      val i = l.map(o).iterator
-      def r(c: NbtCompound) =
-        p.append(IotaType.getDisplay(c("k")|>o))
-        p.append(" → ")
-        p.append(IotaType.getDisplay(c("v")|>o))
-      r(i.next())
-      while (i.hasNext) do
-        p.append(", ")
-        r(i.next())
-    p.append("]")
-    p
+    val items = HexUtils.downcast(data, NbtList.TYPE)
+    val output: MutableText = "["
+    output.styled(_.withColor(color))
+    if items.nonEmpty then
+      def castToCompound = HexUtils.downcast(_, NbtCompound.TYPE)
+      val itemPair = items.map(castToCompound).iterator
+      def writePair(pair: NbtCompound) =
+        output.append(IotaType.getDisplay(pair("k")|>castToCompound))
+        output.append(" → ")
+        output.append(IotaType.getDisplay(pair("v")|>castToCompound))
+      writePair(itemPair.next())
+      while itemPair.hasNext do
+        output.append(", ")
+        writePair(itemPair.next())
+    output.append("]")
+    output
 trait IotaCoercion[T]:
   typ: IotaType[I] =>
   // need _root_ path, since `typ` could theoretically have these as members
