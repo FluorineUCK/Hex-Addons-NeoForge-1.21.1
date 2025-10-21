@@ -460,8 +460,8 @@ tasks.register<Exec>("publishToPypi") {
 tasks.named("publish") {
     dependsOn("publishToPypi")
 }
-tasks.register<Zip>("processWheel") {
-    dependsOn("wheel")
+val processWheel by tasks.register<Zip>("processWheel") {
+    dependsOn(wheel)
     from(zipTree(wheelPath))
     eachFile {
         if (!name.endsWith(".png")) {
@@ -471,6 +471,13 @@ tasks.register<Zip>("processWheel") {
     }
     destinationDirectory = mergeHexdoc.docsRoot
     archiveFileName = wheelPath.name
+}
+
+tasks.register("docs") {
+    dependsOn(mergeHexdoc, processWheel)
+    doLast {
+        println("https://hexic.pool.net.eu.org/${mergeHexdoc.docsRoot.relativeTo(mergeHexdoc.docsPrefix)}/en_us")
+    }
 }
 
 // configure the maven publication
