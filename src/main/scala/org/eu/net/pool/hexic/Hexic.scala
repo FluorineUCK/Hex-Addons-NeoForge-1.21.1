@@ -901,20 +901,20 @@ def init(): Unit =
         ),
     )
   })
-  Registry.register(hexXplat.getArithmeticRegistry, "maps": Identifier, {
+  hexXplat.getArithmeticRegistry("maps") =
     import Arithmetic.*
     arith("map",
       ADD -> ((a: MapIota, b: MapIota) => a ++ b),
       SUB -> ((a: MapIota, b: MapIota) => a -- b),
       ABS -> ((a: MapIota) => DoubleIota(a.map.size)),
       INDEX -> ((a: MapIota, k: Iota) => a(k)),
-      UNAPPEND -> ((a: MapIota) => a.last.pipe(p => Seq(p._1, p._2)) prepended a.init),
+      UNAPPEND -> ((a: MapIota) => a.lastOption.map(p => Seq(p._1, p._2)).getOrElse(Seq(NullIota(), NullIota())) prepended a.init),
       INDEX_OF -> ((a: MapIota, v: Iota) =>
         val c = IotaType.serialize(v)
         a.update(_.filter(_._2 == c))),
       REMOVE -> ((a: MapIota, k: Iota) => a - k),
       REPLACE -> ((a: MapIota, k: Iota, v: Iota) => a + (k -> v)),
-      UNCONS -> ((a: MapIota) => a.head.pipe(p => Seq(p._1, p._2)) prepended a.tail),
+      UNCONS -> ((a: MapIota) => a.headOption.map(p => Seq(p._1, p._2)).getOrElse(Seq(NullIota(), NullIota())) prepended a.tail),
       AND -> ((a: MapIota, b: MapIota) => a & b),
       OR -> ((a: MapIota, b: MapIota) => b ++ a),
       XOR -> ((a: MapIota, b: MapIota) => a ^ b),
@@ -923,7 +923,6 @@ def init(): Unit =
       GREATER_EQ -> ((a: MapIota, b: MapIota) => a.map containsAll b.map),
       LESS_EQ -> ((a: MapIota, b: MapIota) => b.map containsAll a.map),
     )
-  })
   hexXplat.getArithmeticRegistry("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
@@ -1874,6 +1873,8 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map())(using val world: 
   def tail: MapIota = MapIota(map.tail)
   def init: MapIota = MapIota(map.init)
   def last: (Iota, Iota) = map.last both(IotaType.deserialize(_, summon))
+  def headOption: Option[(Iota, Iota)] = map.headOption map(_.both(IotaType.deserialize(_, summon)))
+  def lastOption: Option[(Iota, Iota)] = map.lastOption map(_.both(IotaType.deserialize(_, summon)))
   def &(other: MapIota): MapIota = MapIota(map.filter(_._1 pipe other.map.contains))
   def ^(other: MapIota): MapIota = mutable.Map[NbtCompound, NbtCompound]().tap(m =>
     m.addAll(map)
