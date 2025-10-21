@@ -1,4 +1,5 @@
 import de.undercouch.gradle.tasks.download.Download
+import org.gradle.api.publish.maven.internal.publication.MavenPomInternal
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 
 plugins {
@@ -356,7 +357,7 @@ tasks.register<Exec>("mergeHexdoc") {
     environment["GITHUB_SHA"] = stdout.toString()
     commandLine("env", "hexdoc", "merge")
 }
-tasks.register<Exec>("wheel") {
+val wheel by tasks.register<Exec>("wheel") {
     commandLine("uv", "build")
     outputs.file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
 }
@@ -375,7 +376,6 @@ publishing {
         create<MavenPublication>("mavenJava") {
             artifactId = project.property("archives_base_name") as String
             from(components["java"])
-            artifact(file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl"))
         }
     }
 
