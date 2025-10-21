@@ -382,10 +382,10 @@ val change_id by lazy {
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 
+val contentRoot = "__CONTENT__"
 fun Exec.hexdocTask(prefix: String, vararg args: String) {
-    environment["GITHUB_PAGES_URL"] = ""
+    environment["GITHUB_PAGES_URL"] = "https://hexic.pool.net.eu.org/"
     environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
-    val contentRoot = "__CONTENT__"
     environment["DEBUG_GITHUBUSERCONTENT"] = contentRoot
     environment["GITHUB_SHA"] = commit_id
     commandLine("env", "hexdoc", *args)
@@ -398,16 +398,18 @@ fun Exec.hexdocTask(prefix: String, vararg args: String) {
         for (f in root.walk()) {
             if (f.isFile) {
                 println("$f\tcontains=${f.readText().contains(contentRoot)}")
-                f.writeText(f.readText().replace(Regex("$contentRoot/*([\\w/.-]+?\\.png)")) {
-                    val path = it.groups[1]!!.value.replace(contentRoot, "").trimStart('/')
-                    val b64 = `java.util`.Base64.getEncoder().encodeToString(file(path).readBytes())
-                    println("\t$it\t$path")
-                    "data:image/png;base64,$b64"
-                })
+                f.writeText(includeContent(f.readText()))
             }
         }
     }
 }
+fun includeContent(text: String) = 
+    text.replace(Regex("$contentRoot/*([\\w/.-]+?\\.png)")) {
+        val path = it.groups[1]!!.value.replace(contentRoot, "").trimStart('/')
+        val b64 = `java.util`.Base64.getEncoder().encodeToString(file(path).readBytes())
+        println("\t$it\t$path")
+        "data:image/png;base64,$b64"
+    }
 
 tasks.register<Exec>("hexdoc") {
     doFirst {
@@ -423,16 +425,29 @@ tasks.register<Exec>("mergeHexdoc") {
     if (release) commandLine(*commandLine.toTypedArray(), "--release")
 }
 val wheel by tasks.register<Exec>("wheel") {
+    dependsOn("hexdoc")
     commandLine("env", "uv", "build")
     outputs.file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
 }
 
 tasks.register<Exec>("publishToPypi") {
-    dependsOn("env", "wheel")
-    commandLine("uv", "publish")
+    dependsOn("wheel")
+    commandLine("env", "uv", "publish")
 }
 tasks.named("publish") {
     dependsOn("publishToPypi")
+}
+tasks.register<Zip>("processWheel") {
+    dependsOn("wheel")
+    from(zipTree("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl"))
+    eachFile {
+        if (!name.endsWith(".png")) {
+            filter(::includeContent)
+            filter { it.replace(contentRoot, "https://codeberg.org/PoolloverNathan/hexic/raw/commit/$commit_id") }
+        }
+    }
+    archiveFileName = "hexdoc_hexic-$version.1.1-py3-none-any.whl"
+    destinationDirectory = buildDir
 }
 
 // configure the maven publication
@@ -443,7 +458,7 @@ publishing {
             from(components["java"])
             artifact(file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")) {
                 builtBy(wheel)
-                classifier = "hexdoc"
+                classifier = "hexdoc-py3-none-any"
                 extension = "whl"
             }
         }

@@ -43,8 +43,8 @@ only-include = [
     "gradle.properties",
 ]
 artifacts = [
-    "/doc/src/_export/generated",
-    "/doc/src/__gradle_version__.py",
+    "/doc/src/hexdoc_hexic/_export/generated",
+    "/doc/src/hexdoc_hexic/__gradle_version__.py",
 ]
 
 [tool.hatch.build.targets.wheel]
