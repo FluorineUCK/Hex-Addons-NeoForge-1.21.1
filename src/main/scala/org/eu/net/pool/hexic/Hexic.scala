@@ -1328,7 +1328,7 @@ def init(): Unit =
           staffcast.setImage(img)
           val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
           try
-            vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
+            vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
           finally
             staffcast.setImage(oldImage)
             HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
