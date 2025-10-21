@@ -6,8 +6,10 @@
   "mixins": [
     "IotaMixin",
     "IotaTypeMixin",
+    "ItemStackMixin",
     "OpTickMixin",
-    "OpTickMixin$SpellMixin"
+    "OpTickMixin$SpellMixin",
+    "PacketByteBufMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -23,6 +23,7 @@ java {
 
 scala {
     scalaVersion = "3.7.1"
+
 }
 
 loom {
@@ -45,6 +46,9 @@ fabricApi {
 
 repositories {
     mavenLocal()
+    mavenCentral()
+    maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
+    maven { url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") }
     maven { url = uri("https://dl.cloudsmith.io/public/libp2p/jvm-libp2p/maven/") }
     maven { url = uri("https://artifacts.consensys.net/public/maven/maven/") }
     maven { url = uri("https://jitpack.io/") }
@@ -73,17 +77,30 @@ dependencies {
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
     modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
     modImplementation("net.fabricmc:fabric-language-kotlin:1.13.4+kotlin.2.2.0")
-    modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")
+    include(modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")!!)
 
     val minecraft_version = "1.20.1"
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
     modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
+    include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
+    include(api("org.scala-lang:scala-library:2.13.6")!!)
     include(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.9999-hexxytest.2.2")!!)
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
+    modImplementation("maven.modrinth:hexcassettes:1.1.4")
+    modImplementation("maven.modrinth:spasm:0.2.2")
     modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") }
-    modImplementation(files("hexal-fabric-1.20.1-0.3.0-3-skyevg-unofficial-teleport-experiment.jar"))
+    modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") }
+//    modImplementation("miyucomics:hexpose:1.0.0")
+//    modImplementation(files("hexical-2.0.0.jar"))
+    val cardinal_version = "5.2.3"
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")
 }
 
 tasks.processResources {
@@ -104,6 +121,10 @@ tasks.withType<JavaCompile>().configureEach {
     // If Javadoc is generated, this must be specified in that task too.
     options.encoding = "UTF-8"
     options.release.set(targetJavaVersion)
+}
+
+tasks.withType<ScalaCompile>().configureEach {
+    scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature"))
 }
 
 tasks.jar {
