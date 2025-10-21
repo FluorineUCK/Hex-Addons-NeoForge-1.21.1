@@ -7,15 +7,17 @@ import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.ConstMediaAction
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastingEnvironment, OperationResult}
-import at.petrak.hexcasting.api.casting.iota.{Iota, IotaType, Vec3Iota}
+import at.petrak.hexcasting.api.casting.iota.{DoubleIota, Iota, IotaType, Vec3Iota}
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.MishapInvalidIota
 import at.petrak.hexcasting.common.lib.HexRegistries
 import com.mojang.serialization.{Codec, DynamicOps}
+import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.minecraft.nbt.*
 import net.minecraft.registry.{Registry, RegistryKey}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{MutableText, Text}
+import net.minecraft.util.collection.DefaultedList
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.Vec3d
 import net.minecraft.util.{Formatting, Identifier}
@@ -24,9 +26,12 @@ import org.eu.net.pool.hexic
 import org.slf4j.{Logger, LoggerFactory}
 import ram.talia.moreiotas.api.casting.iota.StringIota
 
+import scala.collection.convert.ImplicitConversions.given
 import java.{lang, util}
 import scala.annotation.tailrec
+import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters.*
+import scala.quoted.Expr
 import scala.reflect.ClassTag
 import scala.util.chaining.given
 
@@ -57,19 +62,188 @@ def init(): Unit =
     override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
     override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
   ))
-  Registry.register(HexRegistries.ARITHMETIC, "nbt": Identifier, new Arithmetic:
+  Registry.register(HexRegistries.ARITHMETIC, "nbt": Identifier, {
     import Arithmetic.*
-    override def arithName(): String = "NBT"
-    private def ops = Map[HexPattern, util.List[Iota] => util.List[Iota]](
-      ADD -> ???
+    arith("nbt",
+      ADD -> ((a: NbtIota, b: NbtIota) =>
+        Seq[NbtIota]:
+          (a.data, b.data) match
+            case (a: NbtDouble, b: AbstractNbtNumber) => NbtDouble.of(a.doubleValue + b.doubleValue)
+            case (a: AbstractNbtNumber, b: NbtDouble) => NbtDouble.of(a.doubleValue + b.doubleValue)
+            case (a: NbtFloat, b: AbstractNbtNumber) => NbtFloat.of(a.floatValue + b.floatValue)
+            case (a: AbstractNbtNumber, b: NbtFloat) => NbtFloat.of(a.floatValue + b.floatValue)
+            case (a: NbtLong, b: AbstractNbtNumber) => NbtLong.of(a.longValue + b.longValue)
+            case (a: AbstractNbtNumber, b: NbtLong) => NbtLong.of(a.longValue + b.longValue)
+            case (a: NbtInt, b: AbstractNbtNumber) => NbtInt.of(a.intValue + b.intValue)
+            case (a: AbstractNbtNumber, b: NbtInt) => NbtInt.of(a.intValue + b.intValue)
+            case (a: NbtShort, b: AbstractNbtNumber) => NbtShort.of((a.shortValue + b.shortValue).toShort)
+            case (a: AbstractNbtNumber, b: NbtShort) => NbtShort.of((a.shortValue + b.shortValue).toShort)
+            case (a: NbtByte, b: AbstractNbtNumber) => NbtByte.of((a.byteValue + b.byteValue).toByte)
+            case (a: AbstractNbtNumber, b: NbtByte) => NbtByte.of((a.byteValue + b.byteValue).toByte)
+      ),
+      SUB -> ((a: NbtIota, b: NbtIota) =>
+        Seq[NbtIota]:
+          (a.data, b.data) match
+            case (a: NbtDouble, b: AbstractNbtNumber) => NbtDouble.of(a.doubleValue - b.doubleValue)
+            case (a: AbstractNbtNumber, b: NbtDouble) => NbtDouble.of(a.doubleValue - b.doubleValue)
+            case (a: NbtFloat, b: AbstractNbtNumber) => NbtFloat.of(a.floatValue - b.floatValue)
+            case (a: AbstractNbtNumber, b: NbtFloat) => NbtFloat.of(a.floatValue - b.floatValue)
+            case (a: NbtLong, b: AbstractNbtNumber) => NbtLong.of(a.longValue - b.longValue)
+            case (a: AbstractNbtNumber, b: NbtLong) => NbtLong.of(a.longValue - b.longValue)
+            case (a: NbtInt, b: AbstractNbtNumber) => NbtInt.of(a.intValue - b.intValue)
+            case (a: AbstractNbtNumber, b: NbtInt) => NbtInt.of(a.intValue - b.intValue)
+            case (a: NbtShort, b: AbstractNbtNumber) => NbtShort.of((a.shortValue - b.shortValue).toShort)
+            case (a: AbstractNbtNumber, b: NbtShort) => NbtShort.of((a.shortValue - b.shortValue).toShort)
+            case (a: NbtByte, b: AbstractNbtNumber) => NbtByte.of((a.byteValue - b.byteValue).toByte)
+            case (a: AbstractNbtNumber, b: NbtByte) => NbtByte.of((a.byteValue - b.byteValue).toByte)
+      ),
+      MUL -> ((a: NbtIota, b: NbtIota) =>
+        Seq[NbtIota]:
+          (a.data, b.data) match
+            case (a: NbtDouble, b: AbstractNbtNumber) => NbtDouble.of(a.doubleValue * b.doubleValue)
+            case (a: AbstractNbtNumber, b: NbtDouble) => NbtDouble.of(a.doubleValue * b.doubleValue)
+            case (a: NbtFloat, b: AbstractNbtNumber) => NbtFloat.of(a.floatValue * b.floatValue)
+            case (a: AbstractNbtNumber, b: NbtFloat) => NbtFloat.of(a.floatValue * b.floatValue)
+            case (a: NbtLong, b: AbstractNbtNumber) => NbtLong.of(a.longValue * b.longValue)
+            case (a: AbstractNbtNumber, b: NbtLong) => NbtLong.of(a.longValue * b.longValue)
+            case (a: NbtInt, b: AbstractNbtNumber) => NbtInt.of(a.intValue * b.intValue)
+            case (a: AbstractNbtNumber, b: NbtInt) => NbtInt.of(a.intValue * b.intValue)
+            case (a: NbtShort, b: AbstractNbtNumber) => NbtShort.of((a.shortValue * b.shortValue).toShort)
+            case (a: AbstractNbtNumber, b: NbtShort) => NbtShort.of((a.shortValue * b.shortValue).toShort)
+            case (a: NbtByte, b: AbstractNbtNumber) => NbtByte.of((a.byteValue * b.byteValue).toByte)
+            case (a: AbstractNbtNumber, b: NbtByte) => NbtByte.of((a.byteValue * b.byteValue).toByte)
+      ),
+      DIV -> ((a: NbtIota, b: NbtIota) =>
+        Seq[NbtIota]:
+          (a.data, b.data) match
+            case (a: NbtDouble, b: AbstractNbtNumber) => NbtDouble.of(a.doubleValue / b.doubleValue)
+            case (a: AbstractNbtNumber, b: NbtDouble) => NbtDouble.of(a.doubleValue / b.doubleValue)
+            case (a: NbtFloat, b: AbstractNbtNumber) => NbtFloat.of(a.floatValue / b.floatValue)
+            case (a: AbstractNbtNumber, b: NbtFloat) => NbtFloat.of(a.floatValue / b.floatValue)
+            case (a: NbtLong, b: AbstractNbtNumber) => NbtLong.of(a.longValue / b.longValue)
+            case (a: AbstractNbtNumber, b: NbtLong) => NbtLong.of(a.longValue / b.longValue)
+            case (a: NbtInt, b: AbstractNbtNumber) => NbtInt.of(a.intValue / b.intValue)
+            case (a: AbstractNbtNumber, b: NbtInt) => NbtInt.of(a.intValue / b.intValue)
+            case (a: NbtShort, b: AbstractNbtNumber) => NbtShort.of((a.shortValue / b.shortValue).toShort)
+            case (a: AbstractNbtNumber, b: NbtShort) => NbtShort.of((a.shortValue / b.shortValue).toShort)
+            case (a: NbtByte, b: AbstractNbtNumber) => NbtByte.of((a.byteValue / b.byteValue).toByte)
+            case (a: AbstractNbtNumber, b: NbtByte) => NbtByte.of((a.byteValue / b.byteValue).toByte)
+      ),
+      INDEX -> ((a: NbtIota, b: DoubleIota | StringIota) =>
+        Seq[NbtIota]:
+          (a.data, b) match
+            case (a: AbstractNbtList[? <: NbtElement], b: DoubleIota) => a.get(b.asIntOrThrow(0))
+            case (a: NbtCompound, b: NbtString) => a.get(b.asString)
+      ),
+      SLICE -> ((a: NbtIota, f: DoubleIota | StringIota, t: DoubleIota) =>
+        Seq[NbtIota]:
+          (a.data, f, t) match
+            case (a: NbtByteArray, b: DoubleIota, c: DoubleIota) => (a: Array[Byte]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtByteArray
+            case (a: NbtIntArray, b: DoubleIota, c: DoubleIota) => (a: Array[Int]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtIntArray
+            case (a: NbtLongArray, b: DoubleIota, c: DoubleIota) => (a: Array[Long]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtLongArray
+            case (a: NbtList, b: DoubleIota, c: DoubleIota) =>
+              val l = NbtList()
+              a.slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2).foreach(l.add)
+              l
+            case (a: NbtCompound, b: StringIota, c: StringIota) =>
+              NbtCompound().tap: r =>
+                a.getKeys.collect:
+                  case k if k <= b.getString && k > c.getString => r(k) = a(k)
+        ),
+      INDEX_OF -> ((a: NbtIota, b: NbtIota) =>
+        Seq[NbtIota]:
+          (a.data, b.data) match
+            case (a: AbstractNbtList[? <: NbtElement], b: NbtElement) => NbtInt.of(a.indexOf(b))
+            case (a: NbtCompound, b: NbtElement) =>
+              val list = NbtList()
+              a.getKeys.foreach: k =>
+                if a.get(k) == b then
+                  list.add(NbtString.of(k))
+              NbtIota(list)
+      ),
+      APPEND -> ((a: NbtIota, b: NbtIota) =>
+        Seq[NbtIota]:
+          (a.data, b.data) match
+            case (a: AbstractNbtList[t], b) if b.isInstanceOf[t] =>
+              a.copy().tap:
+                case c: AbstractNbtList[t] =>
+                  c.add(b.asInstanceOf[t])
+      ),
+      UNAPPEND -> ((a: NbtIota) =>
+        a.data match
+          case a: AbstractNbtList[?] =>
+            val s = a.asScala
+            Seq[NbtIota](NbtList().tap(_.addAll(s.init)), s.last)
+          case c: NbtCompound =>
+            val k = c.getKeys.asScala.toBuffer
+            Seq[NbtIota](
+              NbtCompound().tap: d =>
+                k.init.foreach: k =>
+                  d(k) = c(k),
+              NbtString.of(k.last),
+              c(k.last),
+            )
+      ),
+      CONS -> ((a: NbtIota, b: NbtIota) =>
+        Seq[NbtIota]:
+          (a.data, b.data) match
+            case (a: AbstractNbtList[t], b) if b.isInstanceOf[t] =>
+              a.copy().tap:
+                case c: AbstractNbtList[t] =>
+                  c.add(b.asInstanceOf[t])
+        ),
+      UNCONS -> ((a: NbtIota) =>
+        a.data match
+          case a: AbstractNbtList[?] =>
+            val s = a.asScala
+            Seq[NbtIota](NbtList().tap(_.addAll(s.tail)), s.head)
+          case c: NbtCompound =>
+            val k = c.getKeys.asScala.toBuffer
+            Seq[NbtIota](
+              NbtCompound().tap: d =>
+                k.tail.foreach: k =>
+                  d(k) = c(k),
+              NbtString.of(k.head),
+              c(k.head),
+            )
+        ),
+//      CONS -> ???,
+//      UNCONS -> ???,
     )
+  })
 
-    override def opTypes(): lang.Iterable[HexPattern] = ops.keys.asJava
+given Conversion[NbtIota, NbtElement] = _.data
+given Conversion[NbtElement, NbtIota] = NbtIota(_)
 
-    override def getOperator(pattern: HexPattern): Operator =
-      val f = ops(pattern)
-      ???
-  )
+given Conversion[Array[Byte], NbtByteArray] = NbtByteArray(_)
+given Conversion[Array[Int], NbtIntArray] = NbtIntArray(_)
+given Conversion[Array[Long], NbtLongArray] = NbtLongArray(_)
+given Conversion[NbtByteArray, Array[Byte]] = _.getByteArray
+given Conversion[NbtIntArray, Array[Int]] = _.getIntArray
+given Conversion[NbtLongArray, Array[Long]] = _.getLongArray
+
+extension [T](l: util.AbstractList[T])
+  def apply(n: Int): T = l.get(n)
+  def update(n: Int, x: T): Unit = l.set(n, x)
+extension (c: NbtCompound)
+  def apply(k: String): NbtElement | Null = c.get(k)
+  def update(k: String, v: NbtElement | Null): Unit = c.put(k, v)
+
+given Conversion[Double, DoubleIota] = DoubleIota(_)
+given Conversion[Int, DoubleIota] = DoubleIota(_)
+given Conversion[DoubleIota, Double] = _.getDouble
+extension (d: DoubleIota) def asIntOrThrow(idx: Int): Int =
+  val v = d.getDouble
+  if (v.round - v).abs > DoubleIota.TOLERANCE then
+    throw MishapInvalidIota.of(d, idx, "int")
+  v.round.intValue
+
+extension (i: CastingImage)
+  def withStack(m: Seq[Iota] => Seq[Iota]): CastingImage = i.copy(util.ArrayList(m(i.getStack.asScala.toSeq).asJavaCollection), i.getParenCount, i.getParenthesized, i.getEscapeNext, i.getOpsConsumed, i.getUserData)
+extension (o: OperationResult)
+  def withStack(m: Seq[Iota] => Seq[Iota]): OperationResult = o.copy(o.getNewImage.withStack(m), o.getSideEffects, o.getNewContinuation, o.getSound)
+
+inline def arith(name: String, inline ops: (HexPattern, AnyRef)*) = ${ arithImpl('name, 'ops) }
 
 trait Selector[-T, R]:
   def apply(target: T): R
@@ -146,11 +320,12 @@ class NbtIota(val data: NbtElement) extends Iota(NbtIota, data):
     case that: NbtIota => this.data == that.data
     case _ => this.data == that
   override def serialize: NbtElement = data
+given Conversion[String, MutableText] = Text.literal
 object NbtIota extends IotaType[NbtIota]:
+  def name: Text = ("NBT": MutableText).styled(_.withColor(color))
   def color: Int = Formatting.DARK_AQUA.getColorValue
   def deserialize(using NbtElement, ServerWorld): NbtIota = NbtIota(summon)
   def display(e: NbtElement): Text =
-    given Conversion[String, MutableText] = Text.literal
     e match
       case b: NbtByte => s"Byte Tag: ${b.byteValue}"
       case c: NbtCompound => s"Compound Tag [${c.getSize}]"
