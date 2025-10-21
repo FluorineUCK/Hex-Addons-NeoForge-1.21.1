@@ -611,7 +611,8 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
 
 type Media = Long
 object MediaBundle:
-  val items: Seq[MediaBundle] = for i <- Seq(6, 12); c <- DyeColor.values yield MediaBundle(c, i)
+  val items: Seq[MediaBundle] = for i <- Seq(6, 12); c <- DyeColor.values yield new MediaBundle(c, i)
+  def apply(c: DyeColor, s: Int) = items.find(b => b.color == c && b.size == s).get
   private val PERCENTAGE = new DecimalFormat("####")
   PERCENTAGE.setRoundingMode(RoundingMode.DOWN)
   private val DUST_AMOUNT = new DecimalFormat("###,###.##")
