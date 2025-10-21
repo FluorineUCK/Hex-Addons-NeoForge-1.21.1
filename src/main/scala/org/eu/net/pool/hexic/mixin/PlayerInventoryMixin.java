@@ -20,7 +20,7 @@ import net.minecraft.item.ItemStack;
 class PlayerInventoryMixin {
   @Shadow public PlayerEntity player;
 
-  @WrapOperation(method = "dropAll", at = @At(value = "FIELD", target = "combinedInventory"))
+  @WrapOperation(method = "dropAll", at = @At(value = "FIELD", target = "Lnet/minecraft/entity/player/PlayerInventory;combinedInventory:Ljava/util/List;"))
   List foo(PlayerInventory instance, Operation<List> orig) {
     List o = orig.call(instance);
     ArrayList m = new ArrayList<>();

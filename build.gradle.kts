@@ -39,6 +39,8 @@ loom {
             sourceSet("client")
         }
     }
+
+    mixin.useLegacyMixinAp = false
 }
 
 fabricApi {
@@ -212,7 +214,6 @@ dependencies {
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
     include(modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")!!)
     include(modImplementation("net.fabricmc:fabric-language-kotlin:1.13.4+kotlin.2.2.0")!!)
-    include(modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")!!)
 
     val minecraft_version = "1.20.1"
     include(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
@@ -351,13 +352,11 @@ tasks.withType<ScalaCompile>().configureEach {
     scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature", "-Ycc-debug"))
 }
 
-loom.mixin.useLegacyMixinAp = false
-
 tasks.jar {
     from("LICENSE") {
         rename { "${it}_${project.base.archivesName}" }
     }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    duplicatesStrategy = DuplicatesStrategy.WARN
 }
 
 class P(project: Project) {

@@ -98,7 +98,6 @@ import scala.jdk.CollectionConverters.*
 import scala.language.experimental.{macros, saferExceptions}
 import scala.language.{dynamics, existentials, implicitConversions, postfixOps, reflectiveCalls}
 import scala.reflect.{ClassTag, classTag}
-import scala.tools.asm.tree.MethodNode
 import scala.util.{NotGiven, Random, TupledFunction, boundary}
 import scala.util.chaining.given
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
