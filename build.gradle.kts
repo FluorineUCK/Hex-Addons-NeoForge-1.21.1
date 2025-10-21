@@ -380,28 +380,55 @@ val change_id by lazy {
     stdout.toString()
 }
 
-tasks.register<Exec>("hexdoc") {
-    dependsOn("processResources")
+val release: Boolean = !System.getenv("release").isNullOrEmpty()
+
+fun Exec.hexdocTask(prefix: String, vararg args: String) {
     environment["GITHUB_PAGES_URL"] = ""
     environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
-    environment["DEBUG_GITHUBUSERCONTENT"] = "https://codeberg.org/poollovernathan/hexic/raw/commit/$commit_id"
+    val contentRoot = "__CONTENT__"
+    environment["DEBUG_GITHUBUSERCONTENT"] = contentRoot
     environment["GITHUB_SHA"] = commit_id
-    commandLine("env", "hexdoc", "build", "--branch", change_id)
+    commandLine("env", "hexdoc", *args)
+    doFirst {
+        println(commandLine)
+    }
+    doLast {
+        val root = file("$prefix/v/${if (release) "$version/1.1" else "latest/$change_id"}")
+        println(root)
+        for (f in root.walk()) {
+            if (f.isFile) {
+                println("$f\tcontains=${f.readText().contains(contentRoot)}")
+                f.writeText(f.readText().replace(Regex("$contentRoot/*([\\w/.-]+?\\.png)")) {
+                    val path = it.groups[1]!!.value.replace(contentRoot, "").trimStart('/')
+                    val b64 = `java.util`.Base64.getEncoder().encodeToString(file(path).readBytes())
+                    println("\t$it\t$path")
+                    "data:image/png;base64,$b64"
+                })
+            }
+        }
+    }
+}
+
+tasks.register<Exec>("hexdoc") {
+    doFirst {
+        file("_site/src").deleteRecursively()
+    }
+    dependsOn("processResources")
+    hexdocTask("_site/src/docs", "build", "--branch", change_id)
+    if (release) commandLine(*commandLine.toTypedArray(), "--release")
 }
 tasks.register<Exec>("mergeHexdoc") {
     dependsOn("hexdoc")
-    environment["GITHUB_PAGES_URL"] = ""
-    environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
-    environment["GITHUB_SHA"] = commit_id
-    commandLine("env", "hexdoc", "merge")
+    hexdocTask("_site/dst/docs", "merge")
+    if (release) commandLine(*commandLine.toTypedArray(), "--release")
 }
 val wheel by tasks.register<Exec>("wheel") {
-    commandLine("uv", "build")
+    commandLine("env", "uv", "build")
     outputs.file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
 }
 
 tasks.register<Exec>("publishToPypi") {
-    dependsOn("wheel")
+    dependsOn("env", "wheel")
     commandLine("uv", "publish")
 }
 tasks.named("publish") {
@@ -414,6 +441,11 @@ publishing {
         create<MavenPublication>("mavenJava") {
             artifactId = project.property("archives_base_name") as String
             from(components["java"])
+            artifact(file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")) {
+                builtBy(wheel)
+                classifier = "hexdoc"
+                extension = "whl"
+            }
         }
     }
 
