@@ -11,17 +11,19 @@ import org.eu.net.pool.hexic.ducks.SimpleRegistryDuck;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.gen.Accessor;
 
 import java.util.Map;
 
 @Mixin(SimpleRegistry.class)
-public class SimpleRegistryMixin<T> implements SimpleRegistryDuck {
+public abstract class SimpleRegistryMixin<T> implements SimpleRegistryDuck {
     @Shadow @Final private ObjectList<RegistryEntry.Reference<T>> rawIdToEntry;
     @Shadow @Final private Object2IntMap<T> entryToRawId;
     @Shadow @Final private Map<Identifier, RegistryEntry.Reference<T>> idToEntry;
     @Shadow @Final private Map<RegistryKey<T>, RegistryEntry.Reference<T>> keyToEntry;
     @Shadow @Final private Map<T, RegistryEntry.Reference<T>> valueToEntry;
     @Shadow @Final private Map<T, Lifecycle> entryToLifecycle;
+    @Shadow private boolean frozen;
 
     @Override
     public void hexic$clear() {
@@ -32,4 +34,8 @@ public class SimpleRegistryMixin<T> implements SimpleRegistryDuck {
         valueToEntry.clear();
         entryToLifecycle.clear();
     }
+
+    @Override
+    @Accessor
+    public abstract void setFrozen(boolean frozen);
 }

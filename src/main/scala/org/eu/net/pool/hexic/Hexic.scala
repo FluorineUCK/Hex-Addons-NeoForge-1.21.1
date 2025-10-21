@@ -1,19 +1,20 @@
 //noinspection NotImplementedCode
 package org.eu.net.pool.hexic
 
-import at.petrak.hexcasting.api.casting.ActionRegistryEntry
+import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, SpecialHandler}
+import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, SpellContinuation}
-import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, OperationResult}
+import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapInvalidIota, MishapOthersName}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.HexUtils
-import at.petrak.hexcasting.common.lib.HexRegistries
+import at.petrak.hexcasting.common.lib.{HexItems, HexRegistries}
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
 import at.petrak.hexcasting.xplat.IXplatAbstractions
@@ -66,8 +67,8 @@ import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntit
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
-import net.minecraft.util.math.Vec3d
-import net.minecraft.util.{DyeColor, Formatting, Hand, Identifier, Rarity, Util, Uuids, WorldSavePath}
+import net.minecraft.util.math.{BlockPos, Vec3d}
+import net.minecraft.util.{Arm, DyeColor, Formatting, Hand, Identifier, Rarity, Util, Uuids, WorldSavePath}
 import net.minecraft.world.World
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.common_curses.{CommonCursesKt, SlotAccess, TextManipulator}
@@ -112,6 +113,13 @@ import scala.util.CommandLineParser.FromString
 import scala.util.boundary.Label
 import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
 import at.petrak.hexcasting.api.item.IotaHolderItem
+import at.petrak.hexcasting.common.msgs.MsgNewSpiralPatternsS2C
+import kotlin.jvm.internal.DefaultConstructorMarker
+import net.minecraft.client.item.TooltipContext
+import net.minecraft.entity.LivingEntity
+import net.minecraft.sound.SoundCategory
+
+import java.util.function.Predicate
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -198,9 +206,10 @@ object Patterns:
     mkConstAction(0): (args: Seq[Iota]) =>
       args :+ value
   def register(id: Identifier, pattern: HexPattern)(body: Action): Unit =
-    HexRegistries.ACTION(id) = ActionRegistryEntry(pattern, body)
+    actionRegistry(id) = ActionRegistryEntry(pattern, body)
 
 inline def unsafe(using u: Unsafe) = u
+val hexXplat: IXplatAbstractions = IXplatAbstractions.INSTANCE
 
 extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
   if isDev || fabric.isModLoaded(ctx.parts(0)) then
@@ -321,12 +330,26 @@ trait SlotReference:
   @throws[Mishap]
   def count_=(using Transaction, CastingEnvironment)(count: Long): Unit
 
-class PlayerInfoComponent(val player: PlayerEntity, var wispMedia: Option[Long] = None, var murmur: Option[String] = None) extends Component, AutoSyncedComponent:
+class PlayerInfoComponent(
+  val player: PlayerEntity,
+  var wispMedia: Option[Long] = None,
+  var murmur: Option[String] = None,
+  var leftWeave: ItemStack = ItemStack.EMPTY,
+  var rightWeave: ItemStack = ItemStack.EMPTY,
+) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
     if c.getBoolean("isWisp") then
       wispMedia = Some(c.getLong("media"))
     else
       wispMedia = None
+    if c.contains("shl", NbtElement.COMPOUND_TYPE) then
+      leftWeave = ItemStack.fromNbt(c.getCompound("shl"))
+    else
+      leftWeave = ItemStack.EMPTY
+    if c.contains("shr", NbtElement.COMPOUND_TYPE) then
+      rightWeave = ItemStack.fromNbt(c.getCompound("shr"))
+    else
+      rightWeave = ItemStack.EMPTY
 
   override def writeToNbt(c: NbtCompound): Unit =
     wispMedia match
@@ -335,6 +358,8 @@ class PlayerInfoComponent(val player: PlayerEntity, var wispMedia: Option[Long] 
       case Some(media) =>
         c.putBoolean("isWisp", true)
         c.putLong("media", media)
+    if !leftWeave.isEmpty then c.put("shl", NbtCompound().tap(leftWeave.writeNbt))
+    if !rightWeave.isEmpty then c.put("shr", NbtCompound().tap(rightWeave.writeNbt))
 object PlayerInfoComponent:
   val key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
@@ -398,8 +423,8 @@ def startKubo(path: File)(using CanThrow[IOException]): Unit =
           p.waitFor()
         : Runnable
 
-lazy val iotaTypeRegistry = IXplatAbstractions.INSTANCE.getIotaTypeRegistry
-lazy val actionRegistry = IXplatAbstractions.INSTANCE.getActionRegistry
+lazy val iotaTypeRegistry = hexXplat.getIotaTypeRegistry
+lazy val actionRegistry = hexXplat.getActionRegistry
 
 trait ServerAware[T <: IotaType[?]]:
   type Iota = T match { case IotaType[t] => t }
@@ -421,10 +446,16 @@ case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHo
         case c: NbtCompound => c
         case _ => null
   override def writeable(stack: ItemStack): Boolean = readIotaTag(stack) == null
-  override def canWrite(stack: ItemStack, iota: Iota): Boolean = writeable(stack) && iota.executable
+  override def canWrite(stack: ItemStack, iota: Iota): Boolean = writeable(stack) && (iota match
+    case l: ListIota =>
+      val i = l.getList.asScala
+      i.isEmpty || i.head.executable && i.last.executable
+    case _ => false)
   override def writeDatum(stack: ItemStack, iota: Iota): Unit =
     assume(canWrite(stack, iota))
     stack.getOrCreateNbt.put("Hex", IotaType.serialize(iota))
+  override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
+    IotaHolderItem.appendHoverText(this, stack, tooltip, context)
 object Mediaweave:
   val colors: DyeColor :> Mediaweave = DyeColor.values().map(c => c -> Mediaweave(c)).toMap
   val tag: TagKey[Item] = TagKey.of(Registries.ITEM, "mediaweaves")
@@ -441,16 +472,16 @@ def init(): Unit =
   catch
     case _: FileNotFoundException =>
     case i: IOException => summon[Logger].warn("Failed to read properties", i)
-  HexRegistries.IOTA_TYPE("location") = LocationIota
-  HexRegistries.IOTA_TYPE("nbt") = NbtIota
-  HexRegistries.IOTA_TYPE("variant") = VariantIota
-  HexRegistries.IOTA_TYPE("stack") = StackIota
-  HexRegistries.IOTA_TYPE("map") = MapIota
-  HexRegistries.IOTA_TYPE("tripwire") = TripwireIota.getType
-  for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do HexRegistries.IOTA_TYPE(s"meta/$i") = c
-  HexRegistries.IOTA_TYPE("jvm/class") = ClassIota
-  HexRegistries.IOTA_TYPE("jvm/pointer") = PointerIota
-  HexRegistries.CONTINUATION_TYPE("tripwire") = TripwireIota.Frame
+  iotaTypeRegistry("location") = LocationIota
+  iotaTypeRegistry("nbt") = NbtIota
+  iotaTypeRegistry("variant") = VariantIota
+  iotaTypeRegistry("stack") = StackIota
+  iotaTypeRegistry("map") = MapIota
+  iotaTypeRegistry("tripwire") = TripwireIota.getType
+  for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
+  iotaTypeRegistry("jvm/class") = ClassIota
+  iotaTypeRegistry("jvm/pointer") = PointerIota
+  hexXplat.getContinuationTypeRegistry("tripwire") = TripwireIota.Frame
   for (color, item) <- Mediaweave.colors do
     Registries.ITEM(s"${color.asString}_mediaweave") = item
   Registries.ITEM("wizard") = wizard
@@ -909,6 +940,43 @@ def init(): Unit =
     val in = Option.when(buf.readBoolean())(buf.readString())
     if isDev then println(s"${player.getName.getString} murmurs: $in")
     player.getComponent(PlayerInfoComponent.key).murmur = in)
+  ServerPlayNetworking.registerGlobalReceiver("sync_mediaweave", (_, player, _, buf, _) =>
+    val flags = buf.readByte()
+    if (flags & 1) != 0 && (flags & 8) == 0 then player.playerScreenHandler.setCursorStack(buf.readItemStack())
+    if (flags & 2) != 0 then
+      val c = player.getComponent(PlayerInfoComponent.key)
+      if (flags & 4) != 0 then
+        c.leftWeave = buf.readItemStack()
+      else
+        c.rightWeave = buf.readItemStack()
+      PlayerInfoComponent.key.sync(player)
+    if (flags & 8) != 0 then
+      val text = buf.readString()
+      val c = player.getComponent(PlayerInfoComponent.key)
+      val stack = if (flags & 4) != 0 then c.leftWeave else c.rightWeave
+      stack.getItem match
+        case m@Mediaweave(color) => m.readIotaTag(stack) match
+          case t: NbtCompound => IotaType.deserialize(t, player.getServerWorld) match
+            case s: ListIota =>
+              val env = new PlayerBasedCastEnv(player,
+                if player.getMainArm match
+                  case Arm.LEFT => (flags & 4) != 0
+                  case Arm.RIGHT => (flags & 4) == 0
+                then Hand.MAIN_HAND else Hand.OFF_HAND
+              ):
+                override def extractMediaEnvironment(cost: Long, simulate: Boolean): Long =
+                  if player.isCreative then 0L else extractMediaFromInventory(cost, canOvercast, simulate)
+                override def getCastingHand: Hand = castingHand
+                override def getPigment: FrozenPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
+              val image = CastingImage(Seq(StringIota.make(text)).asJava, 0, Seq().asJava, false, 0, NbtCompound(), null)
+              val instrs = s.getList.asScala.toSeq
+              val view = CastingVM(image, env).queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld)
+              val packet = MsgNewSpiralPatternsS2C(player.getUuid, instrs.collect { case p: PatternIota => p.getPattern }.asJava, 140)
+              hexXplat.sendPacketToPlayer(player, packet)
+              hexXplat.sendPacketTracking(player, packet)
+            case _ =>
+          case null =>
+        case _ =>)
 
 def assume(cond: Boolean, msg: => String = "assumption failed"): Unit = if !cond then panic(msg)
 
@@ -1328,12 +1396,6 @@ trait MediaContainerProvider:
   @targetName("hexic$MediaContainerProvider$getMediaContainer")
   def getMediaContainer(c: Context): Option[MediaContainer]
 
-given Unsafe =
-  val klass = classNamed("sun.misc.Unsafe").get.runtimeClass
-  val field = klass.getDeclaredField("theUnsafe")
-  field.setAccessible(true)
-  field.get(null).asInstanceOf[Unsafe]
-
 def allocUninitializedInstance[T: ClassTag](using u: Unsafe) = u.allocateInstance(summon[ClassTag[T]].runtimeClass).asInstanceOf[T]
 
 private def normalize(obj: Any)(using u: Unsafe): Long =
@@ -1530,12 +1592,6 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
       type T = MediaVariant.type
       def variant: MediaVariant.type = MediaVariant
       def display: Text = Text.literal("Media").styled(_.withColor(0x74b3f2)))
-
-def classNamed(name: String): Option[ClassTag[?]] =
-  try
-    Some(ClassTag(Class.forName(name)))
-  catch
-    case _: ClassNotFoundException => None
 
 object registerHopperEndpoint extends (() => Unit):
   def apply(): Unit =

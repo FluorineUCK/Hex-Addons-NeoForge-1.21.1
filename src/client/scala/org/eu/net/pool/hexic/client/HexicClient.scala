@@ -1,5 +1,6 @@
 package org.eu.net.pool.hexic.client
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, FabricModelProvider, FabricRecipeProvider, FabricTagProvider}
@@ -7,7 +8,8 @@ import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.gui.screen.ChatScreen
-import net.minecraft.client.network.ClientPlayerEntity
+import net.minecraft.client.gui.widget.TextFieldWidget
+import net.minecraft.client.network.{ClientPlayNetworkHandler, ClientPlayerEntity}
 import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator, Models}
 import net.minecraft.data.server.recipe.RecipeJsonProvider
 import net.minecraft.entity.player.PlayerEntity
@@ -15,6 +17,7 @@ import net.minecraft.inventory.Inventory
 import net.minecraft.item.{Item, ItemStack}
 import net.minecraft.registry.{MutableRegistry, Registries, RegistryKeys, RegistryWrapper}
 import net.minecraft.screen.slot.Slot
+import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
 import net.minecraft.util.collection.DefaultedList
 import org.eu.net.pool.common_curses.{HotbarRendering, SlotAccess, TextManipulator}
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
@@ -46,6 +49,42 @@ object Hooks:
       buf.writeBoolean(currentMurmur.isDefined)
       currentMurmur.foreach(buf.writeString)
       ClientPlayNetworking.send("murmur", buf)
+  def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
+    foldLocalPlayer(original): p =>
+      val c = p.getComponent(PlayerInfoComponent.key)
+      boundary[OrderedText]:
+        if c.rightWeave.hasCustomName && c.rightWeave.getItem.isInstanceOf[Mediaweave] then
+          val wake = c.rightWeave.getName.getString.toLowerCase
+          if field.getText.toLowerCase.startsWith(s"$wake:") then
+            boundary.break[OrderedText]: v =>
+              original.accept: (idx, style, p) =>
+                v.accept(idx, if idx + firstCharacterIndex <= wake.length then style.withColor(c.rightWeave.getItem.asInstanceOf[Mediaweave].color.getSignColor) else style, p)
+        if c.leftWeave.hasCustomName && c.leftWeave.getItem.isInstanceOf[Mediaweave] then
+          val wake = c.leftWeave.getName.getString.toLowerCase
+          if field.getText.toLowerCase.startsWith(s"$wake:") then
+            boundary.break[OrderedText]: v =>
+              original.accept: (idx, style, p) =>
+                v.accept(idx, if idx + firstCharacterIndex <= wake.length then style.withColor(c.leftWeave.getItem.asInstanceOf[Mediaweave].color.getSignColor) else style, p)
+        original
+  def interceptSendMessage(handler: ClientPlayNetworkHandler, msg: String): Boolean =
+    foldLocalPlayer(false): p =>
+      boundary[Boolean]:
+        val c = p.getComponent(PlayerInfoComponent.key)
+        val (left, text) = boundary[(Boolean, String)]:
+          if c.rightWeave.hasCustomName && c.rightWeave.getItem.isInstanceOf[Mediaweave] then
+            val wake = c.rightWeave.getName.getString.toLowerCase
+            if msg.toLowerCase.startsWith(s"$wake:") then
+              boundary.break((false, msg.substring(wake.length + 1)))
+          if c.leftWeave.hasCustomName && c.leftWeave.getItem.isInstanceOf[Mediaweave] then
+            val wake = c.leftWeave.getName.getString.toLowerCase
+            if msg.toLowerCase.startsWith(s"$wake:") then
+              boundary.break((true, msg.substring(wake.length + 1)))
+          boundary.break(false)
+        val buf = PacketByteBufs.create()
+        buf.writeByte(if left then 12 else 8)
+        buf.writeString(text.trim)
+        ClientPlayNetworking.send("sync_mediaweave", buf)
+        true
 
 def init(): Unit =
   HotbarRendering.Companion.getEvent.register: () =>
