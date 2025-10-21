@@ -613,7 +613,13 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
 
 val stringworms =
   val settings = Item.Settings().maxCount(16)
-  Seq("action", "hex", "media", "thing").map(_ -> Item(settings))
+  Seq("pure", "action", "hex", "media", "thing").map(_ -> new Item(settings))
+
+object dyedStringworm extends Item(Item.Settings().maxCount(16)):
+  override def getName(stack: ItemStack): Text =
+    stack.getSubNbt("pigment") match
+      case null => super.getName(stack)
+      case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName)
 
 object Extern:
   def getStringworm(idx: Int) = stringworms(idx)._2
@@ -681,6 +687,7 @@ def init(): Unit =
       case 12 => s"large_${item.color.asString}_bundle") = item
   for (flavor, item) <- stringworms do
     Registries.ITEM(s"stringworm_$flavor") = item
+  Registries.ITEM("stringworm_pigmented") = dyedStringworm
   Registries.ITEM("wizard") = wizard
   //Registries.ITEM("echo") = EchoItem
   ifModLoaded"hexical${
