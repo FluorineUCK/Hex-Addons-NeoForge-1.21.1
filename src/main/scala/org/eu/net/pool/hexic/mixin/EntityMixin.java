@@ -13,20 +13,19 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import static org.eu.net.pool.hexic.WarCrime.VOID_AIR;
+import static org.eu.net.pool.hexic.Interop.VOID_AIR;
 
 @Mixin(Entity.class)
 public abstract class EntityMixin {
     @Unique BlockPos.Mutable hexic$scanPos = new BlockPos.Mutable();
 
-    @Shadow protected abstract boolean doesNotCollide(Box box);
     @Shadow public abstract World getWorld();
     @Shadow public abstract Box getBoundingBox();
     @Shadow private World world;
 
     @Shadow protected abstract void tickInVoid();
 
-    @Inject(at = @At("TAIL"), method = "attemptTickInVoid")
+    @Inject(at = @At("TAIL"), method = {"attemptTickInVoid", "method_31473"}, cancellable = true)
     void attemptTickInVoidBlocks(CallbackInfo ci) {
         Box box = getBoundingBox();
 
@@ -36,6 +35,7 @@ public abstract class EntityMixin {
             if (world.getBlockState(hexic$scanPos).isOf(VOID_AIR)) {
                 tickInVoid();
                 ci.cancel();
+                return;
             }
         }
     }

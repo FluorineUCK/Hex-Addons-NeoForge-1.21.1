@@ -1,7 +1,7 @@
 package org.eu.net.pool.hexic.client
 
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
-import net.fabricmc.fabric.api.datagen.v1.provider.FabricModelProvider
+import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, FabricModelProvider}
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.network.ClientPlayerEntity
@@ -37,6 +37,36 @@ def datagen(gen: FabricDataGenerator): Unit =
         ;
       override def generateItemModels(gen: ItemModelGenerator): Unit =
         gen.register()
+    }
+  pack.addProvider:
+    new FabricLanguageProvider(_) {
+      override def generateTranslations(gen: FabricLanguageProvider.TranslationBuilder): Unit =
+        for (action, name) <- Vector(
+          "nbt/lift1" -> "Byte Purification",
+          "nbt/lift2" -> "Short Purification",
+          "nbt/lift4" -> "Integer Purification",
+          "nbt/lift8" -> "Long Purification",
+          "nbt/liftf" -> "Float Purification",
+          "nbt/liftd" -> "Double Purification",
+          "nbt/literal/collection" -> "Vacant Reflection: Collection",
+          "nbt/literal/list" -> "Vacant Reflection: List",
+          "nbt/literal/array1" -> "Vacant Reflection: Byte Array",
+          "nbt/literal/array2" -> "Vacant Reflection: Short Array",
+          "nbt/literal/array4" -> "Vacant Reflection: Integer Array",
+          "empty_map" -> "Vacant Reflection: Map",
+          "nbt/serialize" -> "Exporter's Purification",
+          "tripwire" -> "Tripwire Reflection",
+          "nbt/deserialize" -> "Importer's Purification",
+          "jvm/class_of_iota" -> "Classifier Purification II",
+          "jvm/class_of_payload" -> "Classifier Purification I",
+          "jvm/newinstance_unboxed" -> "Constructor Purification II",
+          "jvm/newinstance_boxed" -> "Constructor Purification I",
+          "malloc" -> "Allocator's Purification",
+          "free" -> "Deallocator's Gambit",
+          "staffcast_factory" -> "Lani's Lesser Gambit",
+          "metatable" -> "Metatable Exaltation",
+        ) do gen.add(s"hexcasting.action.hexic:$action", name)
+        gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
     }
 
 object inventory_??? extends Inventory:

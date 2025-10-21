@@ -18,12 +18,13 @@ import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
 import at.petrak.hexcasting.xplat.IXplatAbstractions
 import com.chocohead.mm.api.ClassTinkerers
+import com.google.gson.JsonElement
 import com.ibm.icu.util.MeasureUnit
 import com.mojang.brigadier.Command
 import com.mojang.brigadier.arguments.{ArgumentType, StringArgumentType}
 import com.mojang.brigadier.builder.{ArgumentBuilder, LiteralArgumentBuilder, RequiredArgumentBuilder}
 import com.mojang.brigadier.context.CommandContext
-import com.mojang.serialization.{Codec, DynamicOps, Lifecycle}
+import com.mojang.serialization.{Codec, DynamicOps, JsonOps, Lifecycle}
 import com.samsthenerd.inline.api.data.ItemInlineData
 import com.sun.nio.file.ExtendedOpenOption
 import dev.kineticcat.hexportation.fabric.api.casting.iota.{ConduitIota, StorageViewIota}
@@ -32,6 +33,7 @@ import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
 import dev.onyxstudios.cca.api.v3.entity.{EntityComponentFactoryRegistry, EntityComponentInitializer, RespawnCopyStrategy}
 import kotlin.Pair
 import kotlin.text.Charsets
+import miyucomics.hexcellular.{PropertyIota, StateStorage}
 import miyucomics.hexical.features.dyes.DyeIota
 import miyucomics.hexical.features.hopper
 import miyucomics.hexical.features.hopper.targets.SidedInventoryEndpoint
@@ -43,7 +45,8 @@ import net.fabricmc.fabric.api.item.v1.FabricItemSettings
 import net.fabricmc.fabric.api.transfer.v1.fluid.{FluidConstants, FluidVariant}
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.fabricmc.fabric.api.transfer.v1.storage.TransferVariant
-import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction
+import net.fabricmc.fabric.api.transfer.v1.transaction.base.SnapshotParticipant
+import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, TransactionContext}
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.Bootstrap
 import net.minecraft.block.Block
@@ -57,13 +60,14 @@ import net.minecraft.nbt.*
 import net.minecraft.nbt.visitor.StringNbtWriter
 import net.minecraft.registry.tag.TagKey
 import net.minecraft.registry.{MutableRegistry, Registries, Registry, RegistryKey, RegistryKeys, SimpleRegistry}
+import net.minecraft.server.MinecraftServer
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
-import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextContent}
+import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.Vec3d
-import net.minecraft.util.{DyeColor, Formatting, Hand, Identifier, Rarity, Uuids}
+import net.minecraft.util.{DyeColor, Formatting, Hand, Identifier, Rarity, Util, Uuids, WorldSavePath}
 import net.minecraft.world.World
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.common_curses.{CommonCursesKt, SlotAccess, TextManipulator}
@@ -72,12 +76,12 @@ import org.eu.net.pool.hexic.ducks.SimpleRegistryDuck
 import org.objectweb.asm.{ClassWriter, tree}
 import org.objectweb.asm.tree.{ClassNode, InsnList}
 import org.slf4j.{Logger, LoggerFactory}
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
+import org.spongepowered.asm.mixin.injection.callback.{CallbackInfo, CallbackInfoReturnable}
 import ram.talia.hexal.api.casting.iota.{GateIota, MoteIota}
 import ram.talia.moreiotas.api.casting.iota.{EntityTypeIota, IotaTypeIota, ItemStackIota, ItemTypeIota, MatrixIota, StringIota}
 import sun.misc.Unsafe
 
-import java.io.{File, FileNotFoundException, IOException}
+import java.io.{File, FileNotFoundException, FileOutputStream, IOException, InputStream}
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
 import java.nio.file.{Files, Path, StandardOpenOption}
@@ -88,6 +92,7 @@ import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
 import scala.collection.convert.ImplicitConversions.*
 import scala.collection.mutable
 import scala.compiletime.summonFrom
+import scala.concurrent.{Future, Promise}
 import scala.jdk.CollectionConverters.*
 import scala.language.experimental.{macros, saferExceptions}
 import scala.language.{dynamics, existentials, implicitConversions, postfixOps, reflectiveCalls}
@@ -95,6 +100,13 @@ import scala.reflect.{ClassTag, classTag}
 import scala.tools.asm.tree.MethodNode
 import scala.util.{NotGiven, TupledFunction, boundary}
 import scala.util.chaining.given
+import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
+import net.minecraft.util.math.Direction.Axis
+
+import java.util as ju
+import scala.math.Ordered.orderingToOrdered
+import scala.util.CommandLineParser.FromString
+import scala.util.boundary.Label
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -106,7 +118,7 @@ extension (i: Iota)
   def asValue[T: FromIota](idx: Int, expected: => Text): T = summon[FromIota[T]].convert(i).getOrElse(throw MishapInvalidIota(i, idx, expected))
 
 extension (c: NbtCompound)
-  def iota(using ServerWorld): Iota = IotaType.deserializeIota(c, summon)
+  def iota(using ServerWorld): Iota = IotaType.deserialize(c, summon)
 
 given Conversion[(HexDir, String), HexPattern] = t => HexPattern.fromAngles(t._2, t._1)
 
@@ -167,7 +179,7 @@ object Patterns:
         case (img, cont, sound, effects) => OperationResult(img, effects, cont, sound)
   def mkConstAction(argc: Int, mediaCost: Long = 0)(body: (CastingEnvironment, ServerWorld) ?=> Seq[Iota] => Seq[Iota]): Action =
     new ConstMediaAction:
-      import ConstMediaAction.DefaultImpls => d
+      import ConstMediaAction.DefaultImpls as d
       override def getArgc: Int = argc
       override def getMediaCost: Long = mediaCost
       override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
@@ -182,7 +194,7 @@ object Patterns:
 
 inline def unsafe(using u: Unsafe) = u
 
-extension (ctx: StringContext) def ifModLoaded(`then`: Unit, `else`: Unit = {}): Unit =
+extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
   if FabricLoader.getInstance.isModLoaded(ctx.parts(0)) then
     `then`
   else
@@ -292,6 +304,15 @@ private[hexic] object PatternRemapper:
       case (k, v) if ClassTag(action.getClass) <:< k => v
     .getOrElse(pattern)
 
+trait SlotReference:
+  def item(using CastingEnvironment): Item
+  def nbt(using CastingEnvironment): Option[NbtCompound]
+  def count(using CastingEnvironment): Long
+  @throws[Mishap]
+  def nbt_=(using Transaction, CastingEnvironment)(nbt: Option[NbtCompound]): Unit
+  @throws[Mishap]
+  def count_=(using Transaction, CastingEnvironment)(count: Long): Unit
+
 class PlayerWispComponent(val player: PlayerEntity, var wispMedia: Option[Long]) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
     if c.getBoolean("isWisp") then
@@ -315,40 +336,86 @@ extension [S, T <: ArgumentBuilder[S, T]] (builder: T)
   def literal(name: String)(body: LiteralArgumentBuilder[S] => Unit): T = builder.`then`(LiteralArgumentBuilder.literal[S](name).tap(body))
   def argument(name: String, typ: ArgumentType[?])(body: RequiredArgumentBuilder[S, ?] => Unit): T = builder.`then`(RequiredArgumentBuilder.argument(name, typ).tap(body))
 
+extension (i: InputStream)
+  def onDisk(prefix: String, suffix: String): Path =
+    val tmpFile = Files.createTempFile(prefix, suffix)
+    tmpFile.toFile.deleteOnExit()
+    i.transferTo(FileOutputStream(tmpFile.toFile))
+    tmpFile
+
+lazy val kuboExe: Option[Path] = boundary:
+  val os = Util.getOperatingSystem match
+    case Util.OperatingSystem.LINUX => "linux"
+    case Util.OperatingSystem.WINDOWS => "windows"
+    case Util.OperatingSystem.OSX => "darwin"
+    case o =>
+      summon[Logger].warn(s"Unsupported operating system: $o")
+      boundary.break(None)
+  val arch = System.getProperty("os.arch").toLowerCase match
+    case a if a.contains("amd64") || a.contains("x86_64") => "amd64"
+    case a if a.contains("aarch64") || a.contains("arm64") => "arm64"
+    case a if a.contains("x86") || a.contains("i386") => "386"
+    case a =>
+      summon[Logger].warn(s"Unsupported architecture: $a")
+      boundary.break(None)
+  val tmpFile = Files.createTempFile("ipfs", ".exe")
+  tmpFile.toFile.deleteOnExit()
+  try
+    tmpFile.getClass.getResourceAsStream(s"vendor/hexic/ipfs.$os.$arch.exe").transferTo(FileOutputStream(tmpFile.toFile))
+    Some(tmpFile)
+  catch
+    case e: Exception =>
+      summon[Logger].warn("Failed to extract kubo executable", e)
+      Files.deleteIfExists(tmpFile)
+      boundary.break(None)
+
+lazy val kuboConfigTemplate: Path = ().getClass.getResourceAsStream(s"assets/hexic/kubo-config.json").onDisk("config", ".json")
+
+def startKubo(using server: MinecraftServer)(using CanThrow[IOException]): Unit =
+  // get the world's save path + /.ipfs
+  val path = server.getSavePath(WorldSavePath.ROOT).resolve(".ipfs")
+  val builder = ProcessBuilder()
+    .directory(path.toFile)
+    .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+    .redirectError(ProcessBuilder.Redirect.INHERIT)
+  builder.environment().put("IPFS_PATH", path.toAbsolutePath.toString)
+  builder.command(kuboExe.getOrElse(throw IOException("Failed to start kubo; see logs for details")).toAbsolutePath.toString, "daemon", "--init=true", s"--init-config=${kuboConfigTemplate.toAbsolutePath}", "--migrate=true", "--enable-gc=true")
+
 lazy val iotaTypeRegistry = IXplatAbstractions.INSTANCE.getIotaTypeRegistry
 lazy val actionRegistry = IXplatAbstractions.INSTANCE.getActionRegistry
 
+trait ServerAware[T <: IotaType[?]]:
+  type Iota = T match { case IotaType[t] => t }
+  def setServer(iota: Iota, server: String): Unit
+
+given [T <: java.lang.Enum[T]: ClassTag as ct] => FromString[T]:
+  override def fromString(s: String): T = Enum.valueOf[T](ct.runtimeClass.asInstanceOf[Class[T]], s)
+
 def init(): Unit =
-  WarCrime.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
-  val funny = allocUninitializedInstance[String]
-  println(funny)
-  println("I will now print 24 integers.")
-  val p = Pointer.alloc[Int](24)
-  for i <- 0 until 24 do
-    println(s"${i}: ${(p + i).value}")
-  p.free()
-  try
-    System.getProperties.load(Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8))
+  Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
+  try System.getProperties.load(Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8))
   catch
-    case _: FileNotFoundException => ;
-    case i: IOException =>
-      summon[Logger].warn("Failed to read properties", i)
+    case _: FileNotFoundException =>
+    case i: IOException => summon[Logger].warn("Failed to read properties", i)
   HexRegistries.IOTA_TYPE("location") = LocationIota
-  HexRegistries.IOTA_TYPE("text") = TextIota
   HexRegistries.IOTA_TYPE("nbt") = NbtIota
   HexRegistries.IOTA_TYPE("variant") = VariantIota
   HexRegistries.IOTA_TYPE("stack") = StackIota
   HexRegistries.IOTA_TYPE("map") = MapIota
+  HexRegistries.IOTA_TYPE("tripwire") = TripwireIota.getType
+  for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do HexRegistries.IOTA_TYPE(s"meta/$i") = c
   HexRegistries.IOTA_TYPE("jvm/class") = ClassIota
   HexRegistries.IOTA_TYPE("jvm/pointer") = PointerIota
-  Registries.ITEM("echo") = EchoItem
-  ifModLoaded"hexical${
-    for
-      HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
-      ConduitIota <- classNamed("dev.kineticcat.hexportation.fabric.api.casting.iota.ConduitIota")
-      registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint").asInstanceOf[Option[ClassTag[? <: (() => Unit)]]]
-    do
-      registerHopperEndpoint.runtimeClass.newInstance().asInstanceOf[() => Unit]()
+  //Registries.ITEM("echo") = EchoItem
+  ifModLoaded"hexent${
+    ifModLoaded"hexical${
+      for
+        HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
+        ConduitIota <- classNamed("dev.kineticcat.hexportation.fabric.api.casting.iota.ConduitIota")
+        registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint").asInstanceOf[Option[ClassTag[? <: (() => Unit)]]]
+      do
+        registerHopperEndpoint.runtimeClass.newInstance().asInstanceOf[() => Unit]()
+    }"
   }"
   def mkNbtLiftAction[T: FromIota](lift: T => NbtElement, expected: Identifier) =
     Patterns.mkConstAction(1):
@@ -381,11 +448,15 @@ def init(): Unit =
     Patterns.mkLiteral(NbtIota(NbtIntArray(Array[Int]())))
   Patterns.register("nbt/literal/array4", (HexDir.EAST, "eedwaqqewww")):
     Patterns.mkLiteral(NbtIota(NbtLongArray(Array[Long]())))
-  Patterns.register("empty_map", (HexDir.EAST, "dqdwdqd")):
-    Patterns.mkLiteral(MapIota())
-  Patterns.register("nbt/serialize", nw"edwaq"):
-    Patterns.mkConstAction(1):
-      case Seq(x: Iota) => Seq(IotaType.serialize(x))
+  ifModLoaded"hexa${
+    Patterns.register("empty_map", (HexDir.EAST, "dqdwdqd")):
+      Patterns.mkLiteral(MapIota())
+    Patterns.register("nbt/serialize", nw"edwaq"):
+      Patterns.mkConstAction(1):
+        case Seq(x: Iota) => Seq(IotaType.serialize(x))
+    Patterns.register("tripwire", w"edewqwaqede"):
+      Patterns.mkLiteral(TripwireIota)
+  }"
   Patterns.register("nbt/deserialize", (HexDir.NORTH_WEST, "edwaqa")):
     Patterns.mkConstAction(1):
       case Seq(data: NbtIota) =>
@@ -554,37 +625,6 @@ def init(): Unit =
         ),
     )
   })
-  Registry.register(HexRegistries.ARITHMETIC, "text": Identifier, {
-    import Arithmetic.*
-    arith("text",
-      ADD -> ((a: TextIota, b: TextIota) => TextIota(a.text + b.text)),
-      APPEND -> ((a: TextIota, b: TextIota) => TextIota(a.text + b.text)),
-      CONS -> ((a: TextIota, b: TextIota) => TextIota(b.text + a.text)),
-      INDEX -> ((a: TextIota, idx: DoubleIota) =>
-        val ord = a.text.asOrderedText
-        val n = idx `asIntOrThrow` 0
-        boundary:
-          ord.accept: (i, s, c) =>
-            if i == n then
-              boundary break TextIota(Text.literal(c.toChar.toString) setStyle s)
-            else
-              true
-          NullIota()
-      ),
-      SLICE -> ((a: TextIota, min: DoubleIota, max: DoubleIota) =>
-        val ord = a.text.asOrderedText
-        val range = min.asIntOrThrow(1) to max.asIntOrThrow(0)
-        val out = mutable.ArrayBuffer[(Style, Char)]()
-        boundary:
-          ord.accept: (i, s, c) =>
-            if range contains i then
-              out.add(s -> c.toChar)
-            else
-              true
-          NullIota()
-      ),
-    )
-  })
   Registry.register(HexRegistries.ARITHMETIC, "maps": Identifier, {
     import Arithmetic.*
     arith("map",
@@ -592,40 +632,40 @@ def init(): Unit =
       SUB -> ((a: MapIota, b: MapIota) => a -- b),
       ABS -> ((a: MapIota) => DoubleIota(a.map.size)),
       INDEX -> ((a: MapIota, k: Iota) => a(k)),
-      UNAPPEND -> ((a: MapIota) => a.last.pipe(p => Seq(p._1, p._2)).prepended(a.init)),
+      UNAPPEND -> ((a: MapIota) => a.last.pipe(p => Seq(p._1, p._2)) prepended a.init),
       INDEX_OF -> ((a: MapIota, v: Iota) =>
         val c = IotaType.serialize(v)
         a.update(_.filter(_._2 == c))),
       REMOVE -> ((a: MapIota, k: Iota) => a - k),
       REPLACE -> ((a: MapIota, k: Iota, v: Iota) => a + (k -> v)),
-      UNCONS -> ((a: MapIota) => a.head.pipe(p => Seq(p._1, p._2)).prepended(a.tail)),
+      UNCONS -> ((a: MapIota) => a.head.pipe(p => Seq(p._1, p._2)) prepended a.tail),
       AND -> ((a: MapIota, b: MapIota) => a & b),
       OR -> ((a: MapIota, b: MapIota) => b ++ a),
       XOR -> ((a: MapIota, b: MapIota) => a ^ b),
       GREATER -> ((a: MapIota, b: MapIota) => a.map.containsAll(b.map) && a.map != b.map),
       LESS -> ((a: MapIota, b: MapIota) => b.map.containsAll(a.map) && a.map != b.map),
-      GREATER_EQ -> ((a: MapIota, b: MapIota) => a.map.containsAll(b.map)),
-      LESS_EQ -> ((a: MapIota, b: MapIota) => b.map.containsAll(a.map)),
+      GREATER_EQ -> ((a: MapIota, b: MapIota) => a.map containsAll b.map),
+      LESS_EQ -> ((a: MapIota, b: MapIota) => b.map containsAll a.map),
     )
   })
   HexRegistries.ARITHMETIC("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
       .requires(c => c.hasPermissionLevel(2) || (c.getPlayer != null && c.getPlayer.isCreative))
-      .`then`(RequiredArgumentBuilder.argument("type", WarCrime.reat(r, HexRegistries.IOTA_TYPE))
+      .`then`(RequiredArgumentBuilder.argument("type", Interop.reat(r, HexRegistries.IOTA_TYPE))
         .`then`(RequiredArgumentBuilder.argument[ServerCommandSource, NbtElement]("data", NbtElementArgumentType.nbtElement())
           .executes(c =>
-            val t = WarCrime.gre[IotaType[?]](c, "type", HexRegistries.IOTA_TYPE)
-            val d = NbtElementArgumentType.getNbtElement(c, "data")
+            val t = Interop.gre[IotaType[?]](c, "type", HexRegistries.IOTA_TYPE)
+            val d = NbtElementArgumentType getNbtElement(c, "data")
             val p = c.getSource.getPlayer
             if p == null then
               throw CommandException("Command must be run by a player")
             try
-              t.value.deserialize(d, c.getSource.getWorld) match
+              t.value deserialize(d, c.getSource.getWorld) match
                 case null => throw CommandException("Iota did not accept the given data")
                 case r: Iota =>
-                  p.gimmeIota(r)
-                  c.getSource.sendFeedback(() => Text.translatable("Pushed %s to stack", try r.display catch case x: (Exception | Error) => x.getMessage), true)
+                  p gimmeIota r
+                  c.getSource sendFeedback(() => Text.translatable("Pushed %s to stack", try r.display catch case x: (Exception | Error) => x.getMessage), true)
                   1
                 case x => throw CommandException(s"${x} is not an iota")
             catch
@@ -638,7 +678,7 @@ def init(): Unit =
             val p = c.getSource.getPlayer
             if p == null then
               throw CommandException("Command must be run by a player")
-            val r = EntityIota(EntityArgumentType.getEntity(c, "entity")).tap(p.gimmeIota)
+            val r = EntityIota(EntityArgumentType getEntity(c, "entity")) tap p.gimmeIota
             c.getSource.sendFeedback(() => Text.translatable("Pushed %s to stack", r.display), true)
             1
           ).build()
@@ -730,57 +770,89 @@ def init(): Unit =
         ).build()
       )
       c.build())
-  extension (ctx: StringContext) def jvm() = e"aqqqqqdeeweweweweeaaedeqedee${ctx.s()}"
-  Registries.BLOCK("void_air") = WarCrime.VOID_AIR
-  Patterns.register("jvm/class_of_iota", jvm"aeeee"):
-    Patterns.mkConstAction(1):
-      case Seq(x: Iota) => Seq(ClassIota()(using ClassTag(x.getClass)))
-  Patterns.register("jvm/class_of_payload", jvm"dqqqq"):
-    Patterns.mkConstAction(1):
-      case Seq(x: Iota) =>
-        val f = classOf[Iota].getDeclaredField("payload")
-        f.setAccessible(true)
-        val payload = f.get(x)
-        Seq(ClassIota()(using ClassTag(payload.getClass)))
-  Patterns.register("jvm/newinstance_unboxed", jvm"aeeeedw"):
-    Patterns.mkConstAction(1):
-      case Seq(x@ClassIota()) =>
-        Seq(allocUninitializedInstance[x.T](using x.tag).asInstanceOf[Iota])
-  Patterns.register("jvm/newinstance_boxed", jvm"dqqqqaw"):
-    Patterns.mkConstAction(1):
-      case Seq(x@ClassIota()) =>
-        Seq(ObjectIota(allocUninitializedInstance[x.T](using x.tag).asInstanceOf[AnyRef]))
-  Patterns.register("malloc", jvm"wwaa"):
-    Patterns.mkConstAction(1):
-      case Seq(x: DoubleIota) =>
-        Seq(PointerIota(Pointer.alloc[Byte](x.getDouble.round)))
-  Patterns.register("free", jvm"wwdd"):
-    Patterns.mkConstAction(1):
-      case Seq(PointerIota(p)) =>
-        p.free()
-        Seq()
-  Patterns.register("soulprint_bypass", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
-    Patterns.mkAction: (img, cont) =>
-      summon[CastingEnvironment].getCastingEntity match
-        case caster: ServerPlayerEntity =>
-          val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
-          val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
-          staffcast.setImage(img)
-          HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
-          val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
-          vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
-          (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
-        case _ => throw MishapBadCaster()
+  Registries.BLOCK("void_air") = Interop.VOID_AIR
+  ifModLoaded"infinite-hexxy${
+    extension (ctx: StringContext) def jvm() = e"aqqqqqdeeweweweweeaaedeqedee${ctx.s()}"
+    Patterns.register("jvm/class_of_iota", jvm"aeeee"):
+      Patterns.mkConstAction(1):
+        case Seq(x: Iota) => Seq(ClassIota()(using ClassTag(x.getClass)))
+    Patterns.register("jvm/class_of_payload", jvm"dqqqq"):
+      Patterns.mkConstAction(1):
+        case Seq(x: Iota) =>
+          val f = classOf[Iota].getDeclaredField("payload")
+          f.setAccessible(true)
+          val payload = f.get(x)
+          given ClassTag[payload.type] = ClassTag(payload.getClass)
+          Seq(ClassIota[payload.type]())
+    Patterns.register("jvm/newinstance_unboxed", jvm"aeeeedw"):
+      Patterns.mkConstAction(1):
+        case Seq(x@ClassIota()) =>
+          Seq(allocUninitializedInstance[x.T](using x.tag).asInstanceOf[Iota])
+    Patterns.register("jvm/newinstance_boxed", jvm"dqqqqaw"):
+      Patterns.mkConstAction(1):
+        case Seq(x@ClassIota()) =>
+          Seq(ObjectIota(allocUninitializedInstance[x.T](using x.tag).asInstanceOf[AnyRef]))
+    Patterns.register("malloc", jvm"wwaa"):
+      Patterns.mkConstAction(1):
+        case Seq(x: DoubleIota) =>
+          Seq(PointerIota(Pointer.alloc[Byte](x.getDouble.round)))
+    Patterns.register("free", jvm"wwdd"):
+      Patterns.mkConstAction(1):
+        case Seq(PointerIota(p)) =>
+          p.free()
+          Seq()
+  }"
+  ifModLoaded"hexa${
+    Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
+      Patterns.mkAction: (img, cont) =>
+        summon[CastingEnvironment].getCastingEntity match
+          case caster: ServerPlayerEntity =>
+            val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
+            val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
+            staffcast.setImage(img)
+            HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
+            val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
+            vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
+            (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
+          case _ => throw MishapBadCaster()
+    Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
+      Patterns.mkConstAction(4):
+        case Seq(userdata, display, isIota[Vec3Iota, 1](color), isIota[PropertyIota, 0](metatable)) =>
+          val r = clamp(color.getVec3.x)(0.0, 1.0).*(5).round.toInt
+          assume(0 until 6 contains r)
+          val g = clamp(color.getVec3.y)(0.0, 1.0).*(5).round.toInt
+          assume(0 until 6 contains g)
+          val b = clamp(color.getVec3.z)(0.0, 1.0).*(5).round.toInt
+          assume(0 until 6 contains b)
+          Seq:
+            val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
+            ty.Instance(userdata, display.display, metatable.getName)
+  }"
   SlotAccess.playerInventory.register: (player, slot, stack) =>
     player.getComponent(PlayerWispComponent.key).wispMedia match
       case Some(_) => SlotAccess.LOCK_AND_DROP
       case None => SlotAccess.ALLOW
-//  Patterns.register("", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
-//    ???
-//  Patterns.register("soulprint_bypass", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
-//    ???
-//  Patterns.register("soulprint_bypass", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
-//    ???-
+
+def assume(cond: Boolean, msg: => String = "assumption failed"): Unit = if !cond then panic(msg)
+
+def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
+  assume(max > min)
+  if x < min then min
+  else if x > max then max
+  else x
+
+object isIota:
+  def unapply[T <: Iota: IotaType as ty: ClassTag, I <: Int: Const as i](iota: Iota): Some[T] =
+    iota match
+      case iota: T => Some(iota)
+      case _ => throw MishapInvalidIota(iota, i, ty.typeName)
+
+given IotaType[PropertyIota] = PropertyIota.TYPE
+given IotaType[Vec3Iota] = Vec3Iota.TYPE
+
+case class Const[T](value: T)
+inline given [T <: Singleton] => Const[T] = Const[T](compiletime.constValue[T])
+given [T] => Conversion[Const[T], T] = _.value
 
 private[hexic] class ComponentInit extends EntityComponentInitializer:
   override def registerEntityComponentFactories(using EntityComponentFactoryRegistry): Unit =
@@ -861,18 +933,29 @@ object elementTag:
       case _: NbtList => summon[ClassTag[NbtElement]]
   def unapply[T <: NbtElement](l: AbstractNbtList[T]): Some[ClassTag[T]] = Some(elementTag(l))
 
-class SyspropConfig(prefix: String) extends Dynamic:
-  def selectDynamic(k: String): String =
-    System.getProperty(if prefix == "" then k else s"$prefix.$k", "")
-  def updateDynamic(k: String, v: String): Unit =
-    System.setProperty(if prefix == "" then k else s"$prefix.$k", v)
-
-type Config = SyspropConfig {
-  def accelerateEntities: String
-}
-def config = SyspropConfig("hexic").asInstanceOf[Config]
+private[hexic] object cfg:
+  def apply[T: FromString as t](key: String): Option[T] =
+    sys.props.get(key).map(t.fromString)
+  def modFlag(mod: String, key: String): Boolean = FabricLoader.getInstance.isModLoaded(mod) && cfg[Boolean](s"$mod.$key").contains(true)
+  def update[T](key: String, value: T): Unit =
+    sys.props(key) = value.toString
 
 def eq[T: ClassTag, U: ClassTag] = summon[ClassTag[T]] == summon[ClassTag[U]]
+
+object Droplet extends Item(Item.Settings()):
+  def apply(fluid: Fluid, nbt: Option[NbtCompound] = None): ItemVariant =
+    ItemVariant.of(Droplet, NbtCompound().tap: c =>
+      c.putString("id", Registries.FLUID.getId(fluid).toString)
+      nbt.foreach(c.put("nbt", _))
+    )
+
+case class TransactionalValue[@specialized T](private var state: T) extends SnapshotParticipant[T]:
+  override def createSnapshot(): T = state
+  override def readSnapshot(snapshot: T): Unit = state = snapshot
+  def value: T = state
+  def value_=(v: T)(using tx: TransactionContext): Unit =
+    updateSnapshots(tx)
+    state = v
 
 object iotaLike:
   def unapply[T: FromIota](iota: Iota): Option[T] = summon[FromIota[T]].convert(iota)
@@ -1018,20 +1101,81 @@ class IotaComponent[R: Codec](val id: Identifier):
         case _: RuntimeException => None
     else
       None
+
   def update(target: Iota, value: Option[R])(using ServerWorld): target.type =
     val data: NbtCompound = target
     value.fold(data.remove(id.toString))(data.put(id.toString, _))
-    (data: Iota | Null) match {
+    (data: Iota | Null) match
       case iota: target.type => iota
       case _ => panic("Iota changed types or became null during serialization")
-    }
 
-@tailrec
-def panic(reason: String): Nothing =
-  Bootstrap.SYSOUT.println(s"thread '${Thread.currentThread.getName}' panicked at '$reason'")
-  Bootstrap.SYSOUT.flush()
-  Runtime.getRuntime.halt(101)
-  panic(reason)
+inline given DynamicOps[JsonElement] = JsonOps.COMPRESSED
+extension [T: DynamicOps as t] (x: T) def convertDynamic[R: DynamicOps as r]: R = t.convertTo(r, x)
+
+given (vm: CastingVM) => CastingEnvironment = vm.getEnv
+given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
+
+abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleton, userdata: Iota, override val display: Text, metatable: String) extends Iota(iotaType, (userdata, display, metatable)):
+  override def subIotas(): lang.Iterable[Iota] = util.List.of(userdata)
+  override def toleratesOther(that: Iota): Boolean = that match
+    case AbstractMetatableIota(_, u, _, m) => metatable == m && Iota.tolerates(userdata, u)
+    case _ => Iota.tolerates(userdata, that)
+  override def serialize(): NbtElement = NbtCompound().tap: c =>
+    c.put("userdata", IotaType.serialize(userdata))
+    c.put("display",  Text.Serializer.toJsonTree(display).convertDynamic)
+    c.put("metatable", metatable)
+  def meta(using world: ServerWorld): MapIota =
+    StateStorage.Companion.getProperty(world, metatable) match
+      case m: MapIota => m
+      case i => throw MishapBadMetatable(metatable, i)
+  def meta_=(using world: ServerWorld)(x: MapIota): Unit =
+    StateStorage.Companion.setProperty(world, metatable, x)
+  override def isTruthy: Boolean = panic("isTruthy")
+  override def executable: Boolean = true
+  def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): CastResult =
+    PatternIota(se"deaqq").execute(CastingVM(image.withStack(_ :+ meta.get(PatternIota(key)).getOrElse(PatternIota(key))), summon), summon, continuation)
+  override def execute(using vm: CastingVM, world: ServerWorld, continuation: SpellContinuation): CastResult = callMetamethod(se"deaqq")(vm.getImage, continuation)
+  class MishapBadMetatable(name: String, value: Iota) extends Mishap():
+    override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.translatable("hexic.bad_metatable", name, value.display)
+    override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.GRAY)
+    override def execute(env: CastingEnvironment, ctx: Context, stack: ju.List[Iota]): Unit =
+      stack(stack.length - 1) = GarbageIota()
+      StateStorage.Companion.setProperty(env.getWorld, name, GarbageIota())
+
+private[hexic] object metatableHook:
+  extension (p: PatternIota) def executeHook(using Label[CastResult], ServerWorld)(vm: CastingVM, continuation: SpellContinuation): Unit =
+    vm.getImage.getStack.lastOption match
+      case Some(m: AbstractMetatableIota) =>
+        for x <- m.meta.get(p) do
+          // this is probably cursed
+          vm.setImage(vm.getImage.withStack(_.init :+ m.userdata :+ x))
+          boundary.break(PatternIota(se"deaqq").execute(vm, summon, continuation))
+      case _ =>
+
+case class MetatableIotaType private[hexic](override val color: Int) extends IotaType[AbstractMetatableIota]:
+  class Instance(userdata: Iota, display: Text, metatable: String) extends AbstractMetatableIota(MetatableIotaType.this, userdata, display, metatable)
+  override def deserialize(tag: NbtElement, world: ServerWorld): Instance =
+    val c = tag.downcast[NbtCompound]
+    Instance(
+      userdata = IotaType.deserialize(c.get("userdata").downcast[NbtCompound], world),
+      display = Text.Serializer.fromJson(c.get("display").convertDynamic: JsonElement),
+      metatable = c.get("metatable").downcast[NbtString].asString,
+    )
+  override def display(tag: NbtElement): Text = Text.Serializer.fromJson(tag.downcast[NbtCompound].get("display").convertDynamic: JsonElement)
+
+object MetatableIotaType:
+  val validValues = Seq(0x0, 0x3, 0x6, 0x9, 0xC, 0xF)
+  val colors: (Int, Int, Int) :> MetatableIotaType = (for r <- validValues; g <- validValues; b <- validValues yield (r, g, b) -> MetatableIotaType((r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b)).toMap
+  println(s"Metatables: $colors")
+
+object TripwireIota extends Iota(new IotaType[TripwireIota.type]:
+  override def deserialize(tag: NbtElement, world: ServerWorld): TripwireIota.type = TripwireIota
+  override def color: Int = 0xba4216
+  override def display(tag: NbtElement): Text = Text.translatable("hexic.tripwire")
+, Object()):
+  override def isTruthy: Boolean = true
+  override def toleratesOther(that: Iota): Boolean = eq(that)
+  override def serialize(): NbtElement = NbtEnd.INSTANCE
 
 case class LocationIota(vec: Vec3d, dim: Option[RegistryKey[World]]) extends Vec3Iota(vec), IotaTypeHint:
   override def serialize: NbtElement = NbtCompound().tap(_.put("vec", super.serialize())).tap(n => dim.map(v => n.putString("dim", v.getValue.toString)))
@@ -1105,22 +1249,6 @@ private def normalize(obj: Any)(using u: Unsafe): Long =
   else
     u.getLong(obj, 8L)
 
-//noinspection UnstableApiUsage
-inline def transaction[R](body: Transaction ?=> R): R =
-  given tx: Transaction = summonFrom:
-    case outer: Transaction => Transaction.openNested(outer)
-    case _ if !Transaction.isOpen => Transaction.openOuter()
-  try
-    body
-  finally
-    tx.close()
-
-def test(): Unit =
-  var t: Transaction = null
-  transaction:
-    t = summon
-  println(t)
-
 def expNotation[T](n: T)(using num: Integral[T]) =
   toExp(n)() match
     case (v, Some(d)) => s"${v}${x10(d)}"
@@ -1131,17 +1259,8 @@ given DynamicOps[NbtElement] = NbtOps.INSTANCE
 
 given IotaType[DoubleIota] = DoubleIota.TYPE
 given IotaType[StringIota] = StringIota.TYPE
-given IotaType[TextIota] = TextIota
 given IotaType[LocationIota] = LocationIota
 given IotaType[NbtIota] = NbtIota
-
-case class TextIota(text: Text) extends Iota(TextIota, text):
-  override def isTruthy = true
-  override def toleratesOther(i: Iota): Boolean = i match
-    case t: TextIota => text == t.text
-    case t: StringIota => text.getString == t.getString
-    case _ => false
-  override def serialize: NbtElement = text
 
 case class ClassIota[_T: ClassTag]() extends Iota(ClassIota, summon[ClassTag[_T]]):
   type T = _T
@@ -1352,17 +1471,17 @@ object registerHopperEndpoint extends (() => Unit):
 extension [A, B] (p: (A, B))
   infix def both[R, S](f: (A => R) & (B => S)): (R, S) = (f(p._1), f(p._2))
 case class MapIota(map: Map[NbtCompound, NbtCompound] = Map())(using val world: ServerWorld) extends Iota(MapIota, map):
-  def get(key: Iota): Option[Iota] = map.get(IotaType.serialize(key)).map(IotaType.deserializeIota(_, summon))
+  def get(key: Iota): Option[Iota] = map.get(IotaType.serialize(key)).map(IotaType.deserialize(_, summon))
   def apply(key: Iota): Iota = get(key) getOrElse NullIota()
   def -(keys: Iota*): MapIota = MapIota(map -- (keys map IotaType.serialize))
   def --(other: MapIota): MapIota = MapIota(map -- other.map.keys)
   def +(pairs: (Iota, Iota)*): MapIota = MapIota(map ++ pairs.map(_ both IotaType.serialize))
   def ++(other: MapIota): MapIota = MapIota(map ++ other.map)
   def update(f: map.type => Map[NbtCompound, NbtCompound]): MapIota = MapIota(map pipe f)
-  def head: (Iota, Iota) = map.head both(IotaType.deserializeIota(_, summon))
+  def head: (Iota, Iota) = map.head both(IotaType.deserialize(_, summon))
   def tail: MapIota = MapIota(map.tail)
   def init: MapIota = MapIota(map.init)
-  def last: (Iota, Iota) = map.last both(IotaType.deserializeIota(_, summon))
+  def last: (Iota, Iota) = map.last both(IotaType.deserialize(_, summon))
   def &(other: MapIota): MapIota = MapIota(map.filter(_._1 pipe other.map.contains))
   def ^(other: MapIota): MapIota = mutable.Map[NbtCompound, NbtCompound]().tap(m =>
     m.addAll(map)
@@ -1420,14 +1539,3 @@ object NbtIota extends IotaType[NbtIota]:
   def color: Int = Formatting.DARK_AQUA.getColorValue
   def deserialize(using NbtElement, ServerWorld): NbtIota = NbtIota(summon)
   def display(e: NbtElement): Text = Text.literal(StringNbtWriter()(e)).styled(_.withColor(color))
-//object NbtIotaButOpaque extends IotaType[NbtIotaButOpaque]:
-//  def name: Text = ("NBT": MutableText).styled(_.withColor(color))
-//  def color: Int = Formatting.DARK_AQUA.getColorValue
-//  def deserialize(using NbtElement, ServerWorld): NbtIota = NbtIota(summon)
-//  def display(e: NbtElement): Text = Text.literal(StringNbtWriter()(e)).styled(_.withColor(color))
-object TextIota extends IotaType[TextIota]:
-  def color(): Int = Vec3Iota.TYPE.color()
-  def deserialize(using NbtElement, ServerWorld): TextIota = TextIota(summon[NbtElement])
-  def display(using NbtElement): Text =
-    given ServerWorld = null
-    deserialize.text

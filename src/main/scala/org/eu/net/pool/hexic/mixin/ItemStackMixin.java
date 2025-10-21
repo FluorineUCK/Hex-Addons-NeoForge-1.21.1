@@ -22,7 +22,7 @@ public class ItemStackMixin {
         }
     }
 
-    @WrapOperation(method = "writeNbt", at = @At(value = "INVOKE", target = "Lnet/minecraft/nbt/NbtCompound;putByte(Ljava/lang/String;B)V"))
+    @WrapOperation(method = {"writeNbt", "method_7953"}, at = @At(value = "INVOKE", target = "Lnet/minecraft/nbt/NbtCompound;putByte(Ljava/lang/String;B)V"))
     void eatsYourByteCutely(NbtCompound instance, String key, byte value, Operation<Void> original) {
         instance.putInt(key, count);
     }

@@ -8,15 +8,16 @@
     "AirBlockMixin",
     "CastingVMMixin",
     "EntityMixin",
-    "IotaMixin",
-    "IotaTypeMixin",
+    "HopperEndpointRegistryMixin",
     "ItemMixin",
     "ItemStackMixin",
-    "OpTickMixin",
-    "OpTickMixin$SpellMixin",
+    "MediafiedItemManagerIndexMixin",
     "PacketByteBufMixin",
+    "PatternIotaMixin",
     "PhantomEntityMixin",
-    "SimpleRegistryMixin"
+    "SimpleRegistryMixin",
+    "hexent.OpTickMixin",
+    "hexent.OpTickMixin$SpellMixin"
   ],
   "injectors": {
     "defaultRequire": 1

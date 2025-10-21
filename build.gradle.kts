@@ -1,10 +1,12 @@
-import kotlin.random.Random
+import de.undercouch.gradle.tasks.download.Download
+import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 
 plugins {
     id("fabric-loom") version "1.10-SNAPSHOT"
     id("scala")
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
+    id("de.undercouch.download") version "5.6.0"
 }
 
 version = project.property("mod_version") as String
@@ -46,6 +48,17 @@ fabricApi {
     }
 }
 
+//tasks.register<Download>("fetchHexxy4") {
+//    src("https://github.com/chloetax/hexxy4/archive/@.tar.gz")
+//    dest("$buildDir/hexxy4.tgz")
+//    overwrite(true)
+//}
+//
+//tasks.register<Sync>("hexxy4") {
+//    from(tarTree("$buildDir/hexxy4.tgz"))
+//    into("$buildDir/hexxy4")
+//}
+
 repositories {
     mavenLocal()
     mavenCentral()
@@ -67,14 +80,23 @@ repositories {
     maven { url = uri("https://maven.terraformersmc.com/releases") }
     maven { url = uri("https://mvn.devos.one/snapshots/") }
     maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
+//    flatDir { this. = uri("https://raw.githubusercontent.com/chloetax/hexxy4/HEAD") }
 }
 
 data class Addon(val id: String, val name: String, val version: String, val hexicVersion: String, val description: String) {
     val camelCased = id.replace(Regex("-(\\w)")) { it.groups[1]!!.value.uppercase() }
 }
 
+val hexcasting get() = if (Math.random() < 0.5) "Hex Casting" else "Hexcasting"
+
+val allJars by tasks.register("allJars") {
+    dependsOn("build")
+}
+
 for (addon in listOf(
-    Addon("infinite-hexxy", "Infinite Hexxy", "0.1.0", "0.2.0", "Exposes patterns to Hex Casting that it... probably shouldn't have.")
+    Addon("infinite-hexxy", "Infinite Hexxy", "0.1.0", "0.2.0", "Exposes patterns to $hexcasting that it... probably shouldn't have."),
+    Addon("hexent", "Hexent", "0.1.0", "0.2.0", "Various changes and bugfixes to other $hexcasting addons' patterns."),
+    Addon("hexa", "Hexa", "0.1.0", "0.2.0", "Utilities for more intuitive $hexcasting spells."),
 )) {
     val jarTask by tasks.register<Jar>("${addon.camelCased}Jar") {
         archiveBaseName = addon.id
@@ -102,6 +124,7 @@ for (addon in listOf(
             rename { "fabric.mod.json" }
         }
     }
+    allJars.dependsOn(jarTask)
     publishing {
         publications {
             create<MavenPublication>("maven${addon.camelCased.replaceFirstChar { it.uppercase() }}Java") {
@@ -110,6 +133,67 @@ for (addon in listOf(
                     group = rootProject.group
                 }
             }
+        }
+    }
+}
+
+run {
+    val buildKubo by tasks.register("kubo")
+    val outRoot = file("$buildDir/kubo")
+	fun kuboTask(os: String, arch: String, external: Boolean = false, parent: Task = buildKubo) {
+		val task = tasks.register<Exec>("kubo${os.uppercaseFirstChar()}${arch.uppercaseFirstChar()}") {
+			inputs.dir("vendor/kubo")
+			workingDir = file("vendor/kubo")
+			doFirst {
+				if (!outRoot.exists()) {
+					check(outRoot.mkdirs())
+				}
+			}
+			if (!external) environment("CGO_ENABLED", "0")
+			environment("GOOS", os)
+			environment("GOARCH", arch)
+			val out = outRoot.resolve("ipfs.$os.$arch.exe")
+			commandLine("go", "build", "-o", out.absoluteFile, "github.com/ipfs/kubo/cmd/ipfs")
+			outputs.file(out)
+		}
+		parent.dependsOn(task)
+	}
+	fun kuboTasks(os: String, vararg arches: String, external: Boolean = false) {
+        val archTask by tasks.register("kubo${os.uppercaseFirstChar()}")
+		for (arch in arches) {
+			kuboTask(os, arch, external=external, parent=archTask)
+		}
+        buildKubo.dependsOn(archTask)
+	}
+	kuboTasks("linux", "386", "amd64", "arm", "arm64", "mips", "mips64", "mips64le", "mipsle", "ppc64", "ppc64le", "riscv64", "s390x")
+	kuboTasks("windows", "386", "amd64", "arm", "arm64")
+    kuboTasks("darwin", "amd64")
+
+    tasks.register("cleanKubo") {
+        onlyIf { outRoot.exists() }
+        doLast {
+            if (outRoot.exists()) {
+                check(outRoot.deleteRecursively())
+            }
+        }
+    }
+
+    tasks.processResources {
+//        dependsOn(buildKubo)
+//        inputs.dir("$buildDir/kubo")
+//        from(outRoot) {
+//            into("vendor/hexic/")
+//        }
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs.clear();
+        }
+        scala {
+            srcDirs += file("src/main/java");
         }
     }
 }
@@ -131,15 +215,18 @@ dependencies {
     //modCompileOnly("at.petra-k.hexcasting:hexcasting-common-$minecraft_version:0.11.2+fork-SNAPSHOT")
     include(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2+fork-SNAPSHOT")!!)
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
-    include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
+    include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation("maven.modrinth:hexcassettes:1.1.4")
     modImplementation("maven.modrinth:spasm:0.2.2")
+//    modImplementation("maven.modrinth:slate-works:1.0.5")
     modCompileOnly("miyucomics.hexical:hexical:main-SNAPSHOT")
     modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") }
     modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") }
+    modImplementation("maven.modrinth:hexcellular:1.0.4")
+    modImplementation("miyucomics.hexpose:hexpose:1.0.0")
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     val cardinal_version = "5.2.3"
@@ -150,6 +237,8 @@ dependencies {
     modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")
     modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")
     modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
+    include(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
+    include(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
 }
 
 tasks.processResources {
@@ -178,14 +267,16 @@ tasks.withType<JavaCompile>().configureEach {
 }
 
 tasks.withType<ScalaCompile>().configureEach {
-    scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature"))
+    scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature", "-Ycc-debug"))
 }
+
+loom.mixin.useLegacyMixinAp = false
 
 tasks.jar {
     from("LICENSE") {
         rename { "${it}_${project.base.archivesName}" }
     }
-    duplicatesStrategy = DuplicatesStrategy.WARN
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 // configure the maven publication
