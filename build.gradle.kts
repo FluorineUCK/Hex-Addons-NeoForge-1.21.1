@@ -94,8 +94,6 @@ val allJars by tasks.register("allJars") {
 
 for (addon in listOf(
     Addon("infinite-hexxy", "Infinite Hexxy", "0.1.0", "0.2.0", "Exposes patterns to $hexcasting that it... probably shouldn't have."),
-    Addon("hexent", "Hexent", "0.1.0", "0.2.0", "Various changes and bugfixes to other $hexcasting addons' patterns."),
-    Addon("hexa", "Hexa", "0.1.0", "0.2.0", "Utilities for more intuitive $hexcasting spells."),
 )) {
     val jarTask by tasks.register<Jar>("${addon.camelCased}Jar") {
         archiveBaseName = addon.id
