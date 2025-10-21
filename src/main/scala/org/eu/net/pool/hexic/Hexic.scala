@@ -4,33 +4,40 @@ package org.eu.net.pool.hexic
 import at.petrak.hexcasting.api.casting.ActionRegistryEntry
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
-import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction}
+import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, SpecialHandler}
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
-import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, SpellContinuation}
-import at.petrak.hexcasting.api.casting.eval.{CastingEnvironment, OperationResult}
+import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, SpellContinuation}
+import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, OperationResult}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota, MishapOthersName}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapInvalidIota, MishapOthersName}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.HexUtils
 import at.petrak.hexcasting.common.lib.HexRegistries
+import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
+import at.petrak.hexcasting.xplat.IXplatAbstractions
 import com.chocohead.mm.api.ClassTinkerers
 import com.ibm.icu.util.MeasureUnit
 import com.mojang.brigadier.Command
-import com.mojang.brigadier.arguments.StringArgumentType
-import com.mojang.brigadier.builder.{LiteralArgumentBuilder, RequiredArgumentBuilder}
+import com.mojang.brigadier.arguments.{ArgumentType, StringArgumentType}
+import com.mojang.brigadier.builder.{ArgumentBuilder, LiteralArgumentBuilder, RequiredArgumentBuilder}
 import com.mojang.brigadier.context.CommandContext
-import com.mojang.serialization.{Codec, DynamicOps}
+import com.mojang.serialization.{Codec, DynamicOps, Lifecycle}
 import com.samsthenerd.inline.api.data.ItemInlineData
 import com.sun.nio.file.ExtendedOpenOption
 import dev.kineticcat.hexportation.fabric.api.casting.iota.{ConduitIota, StorageViewIota}
+import dev.onyxstudios.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
+import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
+import dev.onyxstudios.cca.api.v3.entity.{EntityComponentFactoryRegistry, EntityComponentInitializer, RespawnCopyStrategy}
+import kotlin.Pair
 import kotlin.text.Charsets
 import miyucomics.hexical.features.dyes.DyeIota
 import miyucomics.hexical.features.hopper
 import miyucomics.hexical.features.hopper.targets.SidedInventoryEndpoint
 import miyucomics.hexical.features.hopper.{HopperDestination, HopperEndpoint, HopperEndpointRegistry, HopperEndpointResolver, HopperSource}
 import miyucomics.hexical.features.pigments.PigmentIota
+import net.fabricmc.fabric.api.`object`.builder.v1.block.FabricBlockSettings
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings
 import net.fabricmc.fabric.api.transfer.v1.fluid.{FluidConstants, FluidVariant}
@@ -39,6 +46,7 @@ import net.fabricmc.fabric.api.transfer.v1.storage.TransferVariant
 import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.Bootstrap
+import net.minecraft.block.Block
 import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType}
 import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
@@ -48,7 +56,7 @@ import net.minecraft.item.{Item, ItemStack}
 import net.minecraft.nbt.*
 import net.minecraft.nbt.visitor.StringNbtWriter
 import net.minecraft.registry.tag.TagKey
-import net.minecraft.registry.{Registries, Registry, RegistryKey, RegistryKeys}
+import net.minecraft.registry.{MutableRegistry, Registries, Registry, RegistryKey, RegistryKeys, SimpleRegistry}
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
@@ -57,10 +65,14 @@ import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.Vec3d
 import net.minecraft.util.{DyeColor, Formatting, Hand, Identifier, Rarity, Uuids}
 import net.minecraft.world.World
+import org.eu.net.pool.common_curses.client.CommonCursesClientKt
+import org.eu.net.pool.common_curses.{CommonCursesKt, SlotAccess, TextManipulator}
 import org.eu.net.pool.hexic
+import org.eu.net.pool.hexic.ducks.SimpleRegistryDuck
 import org.objectweb.asm.{ClassWriter, tree}
 import org.objectweb.asm.tree.{ClassNode, InsnList}
 import org.slf4j.{Logger, LoggerFactory}
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
 import ram.talia.hexal.api.casting.iota.{GateIota, MoteIota}
 import ram.talia.moreiotas.api.casting.iota.{EntityTypeIota, IotaTypeIota, ItemStackIota, ItemTypeIota, MatrixIota, StringIota}
 import sun.misc.Unsafe
@@ -127,8 +139,15 @@ given [T: Outcome]: Outcome[Seq[T]] = (res, value) => res -> Outcome(value*)
 //  override def ->:
 
 extension [T] (r: Registry[T])
-  def update(key: Identifier, value: T) =
-    Registry.register(r, key, value)
+  def apply(key: Identifier | RegistryKey[?] | Int) =
+    key match
+      case i: Identifier => r.get(i)
+      case i: Int => r.get(i)
+      case k: RegistryKey[?] => r.get(k.asInstanceOf[RegistryKey[T]])
+  def update(key: Identifier | RegistryKey[?], value: T) =
+    key match
+      case i: Identifier => Registry.register(r, i, value)
+      case k: RegistryKey[?] => Registry.register(r, k.asInstanceOf[RegistryKey[T]], value)
 
 case class :?[T, G](value: T)(using val proof: G)
 object Proven:
@@ -140,10 +159,12 @@ object Proven:
 import Proven.given
 
 object Patterns:
-  def mkAction(body: (CastingEnvironment, ServerWorld) ?=> (CastingImage, SpellContinuation) => (CastingImage, SpellContinuation, EvalSound, Seq[OperatorSideEffect])): Action =
+  def mkAction(body: (CastingEnvironment, ServerWorld) ?=> (CastingImage, SpellContinuation) => (OperationResult | CastResult | (CastingImage, SpellContinuation, EvalSound, Seq[OperatorSideEffect]))): Action =
     (env: CastingEnvironment, image: CastingImage, cont: SpellContinuation) =>
-      val ret: (CastingImage, SpellContinuation, EvalSound, Seq[OperatorSideEffect]) = body(using env, env.getWorld)(image, cont)
-      OperationResult(newImage = ret._1, sideEffects = ret._4, newContinuation = ret._2, sound = ret._3)
+      body(using env, env.getWorld)(image, cont) match
+        case res: OperationResult => res
+        case res: CastResult => OperationResult(res.getNewData, res.getSideEffects, res.getContinuation, res.getSound)
+        case (img, cont, sound, effects) => OperationResult(img, effects, cont, sound)
   def mkConstAction(argc: Int, mediaCost: Long = 0)(body: (CastingEnvironment, ServerWorld) ?=> Seq[Iota] => Seq[Iota]): Action =
     new ConstMediaAction:
       import ConstMediaAction.DefaultImpls => d
@@ -161,7 +182,7 @@ object Patterns:
 
 inline def unsafe(using u: Unsafe) = u
 
-extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
+extension (ctx: StringContext) def ifModLoaded(`then`: Unit, `else`: Unit = {}): Unit =
   if FabricLoader.getInstance.isModLoaded(ctx.parts(0)) then
     `then`
   else
@@ -229,6 +250,73 @@ def runInstrs(instrs: InsnList) =
   val id = "_runnable" + UUID.randomUUID().toString.replace("-", "")
   ClassTinkerers.define(id, writer toByteArray)
   classNamed(id).get.runtimeClass.newInstance.asInstanceOf[Runnable].run()
+
+private[hexic] object PatternRemapper:
+  lazy val remappedPatterns: Map[ClassTag[?], HexPattern] =
+    val file = Path.of("config/remapped_patterns.lst")
+    if Files.exists(file) then
+      Files.readAllLines(file).zipWithIndex.flatMap: t =>
+        boundary:
+          val (p, i) = t
+          if p.isBlank then boundary.break(None)
+          val lines = p.split(' ')
+          if lines.length != 3 then
+            summon[Logger].warn(s"Error on line ${i+1} of pattern remappings: expected 2 fields but got ${lines.length}")
+            boundary.break(None)
+          val Array(cls, dir, pat) = lines
+          val tag = classNamed(cls).getOrElse:
+            summon[Logger].warn(s"Error on line ${i+1} of pattern remappings: cannot find action '$cls' (make sure you use the class name, not the identifier!)")
+            boundary.break(None)
+          val dirValue =
+            try
+              HexDir.valueOf(dir)
+            catch
+              case e: IllegalArgumentException =>
+                summon[Logger].warn(s"Error on line ${i+1} of pattern remappings: direction '$dir' is not a valid HexDir", e)
+                boundary.break(None)
+          val pattern =
+            try
+              HexPattern.fromAngles(pat, dirValue)
+            catch
+              case e: Exception =>
+                summon[Logger].warn(s"Error on line ${i+1} of pattern remappings: anglesig '$pat' cannot be parsed", e)
+                boundary.break(None)
+          Some:
+            (tag, pattern)
+      .toMap
+    else
+      Map.empty
+
+  def remap(pattern: HexPattern, action: Action) =
+    remappedPatterns.collectFirst:
+      case (k, v) if ClassTag(action.getClass) <:< k => v
+    .getOrElse(pattern)
+
+class PlayerWispComponent(val player: PlayerEntity, var wispMedia: Option[Long]) extends Component, AutoSyncedComponent:
+  override def readFromNbt(c: NbtCompound): Unit =
+    if c.getBoolean("isWisp") then
+      wispMedia = Some(c.getLong("media"))
+    else
+      wispMedia = None
+
+  override def writeToNbt(c: NbtCompound): Unit =
+    wispMedia match
+      case None =>
+        c.putBoolean("isWisp", false)
+      case Some(media) =>
+        c.putBoolean("isWisp", true)
+        c.putLong("media", media)
+object PlayerWispComponent:
+  val key: ComponentKey[PlayerWispComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerWispComponent])
+  private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
+    fac.registerForPlayers(key, PlayerWispComponent(_, None), RespawnCopyStrategy.LOSSLESS_ONLY)
+
+extension [S, T <: ArgumentBuilder[S, T]] (builder: T)
+  def literal(name: String)(body: LiteralArgumentBuilder[S] => Unit): T = builder.`then`(LiteralArgumentBuilder.literal[S](name).tap(body))
+  def argument(name: String, typ: ArgumentType[?])(body: RequiredArgumentBuilder[S, ?] => Unit): T = builder.`then`(RequiredArgumentBuilder.argument(name, typ).tap(body))
+
+lazy val iotaTypeRegistry = IXplatAbstractions.INSTANCE.getIotaTypeRegistry
+lazy val actionRegistry = IXplatAbstractions.INSTANCE.getActionRegistry
 
 def init(): Unit =
   WarCrime.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
@@ -523,7 +611,7 @@ def init(): Unit =
   HexRegistries.ARITHMETIC("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
-      .requires(_.hasPermissionLevel(2))
+      .requires(c => c.hasPermissionLevel(2) || (c.getPlayer != null && c.getPlayer.isCreative))
       .`then`(RequiredArgumentBuilder.argument("type", WarCrime.reat(r, HexRegistries.IOTA_TYPE))
         .`then`(RequiredArgumentBuilder.argument[ServerCommandSource, NbtElement]("data", NbtElementArgumentType.nbtElement())
           .executes(c =>
@@ -555,6 +643,35 @@ def init(): Unit =
             1
           ).build()
       ).build())
+    d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("playerwisp").pipe: c =>
+      c.argument("target", EntityArgumentType.players()): c =>
+        c.literal("make"): c =>
+          c.executes: (ctx: CommandContext[ServerCommandSource]) =>
+            val player = ctx.getSource.getPlayer
+            player.getComponent(PlayerWispComponent.key).wispMedia = Some(-1)
+            PlayerWispComponent.key.sync(player)
+            1
+        c.literal("unmake"): c =>
+          c.executes: (ctx: CommandContext[ServerCommandSource]) =>
+            val player = ctx.getSource.getPlayer
+            player.getComponent(PlayerWispComponent.key).wispMedia = None
+            PlayerWispComponent.key.sync(player)
+            1
+        c.literal("media"): c =>
+          c.literal("add"): c =>
+            c.executes: (ctx: CommandContext[ServerCommandSource]) =>
+              ???
+          c.literal("set"): c =>
+            c.executes: (ctx: CommandContext[ServerCommandSource]) =>
+              ???
+      // only rasonable to query one player
+      c.argument("target", EntityArgumentType.players()): c =>
+        c.literal("media"): c =>
+          c.literal("query"): c =>
+            c.executes: (ctx: CommandContext[ServerCommandSource]) =>
+              ???
+      c.build()
+    )
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("property").pipe: c =>
       c.`then`(LiteralArgumentBuilder.literal("get")
         .`then`(RequiredArgumentBuilder.argument("property", StringArgumentType.string())
@@ -614,6 +731,7 @@ def init(): Unit =
       )
       c.build())
   extension (ctx: StringContext) def jvm() = e"aqqqqqdeeweweweweeaaedeqedee${ctx.s()}"
+  Registries.BLOCK("void_air") = WarCrime.VOID_AIR
   Patterns.register("jvm/class_of_iota", jvm"aeeee"):
     Patterns.mkConstAction(1):
       case Seq(x: Iota) => Seq(ClassIota()(using ClassTag(x.getClass)))
@@ -641,8 +759,48 @@ def init(): Unit =
       case Seq(PointerIota(p)) =>
         p.free()
         Seq()
+  Patterns.register("soulprint_bypass", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
+    Patterns.mkAction: (img, cont) =>
+      summon[CastingEnvironment].getCastingEntity match
+        case caster: ServerPlayerEntity =>
+          val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
+          val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
+          staffcast.setImage(img)
+          HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
+          val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
+          vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
+          (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
+        case _ => throw MishapBadCaster()
+  SlotAccess.playerInventory.register: (player, slot, stack) =>
+    player.getComponent(PlayerWispComponent.key).wispMedia match
+      case Some(_) => SlotAccess.LOCK_AND_DROP
+      case None => SlotAccess.ALLOW
+//  Patterns.register("", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
+//    ???
+//  Patterns.register("soulprint_bypass", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
+//    ???
+//  Patterns.register("soulprint_bypass", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
+//    ???-
+
+private[hexic] class ComponentInit extends EntityComponentInitializer:
+  override def registerEntityComponentFactories(using EntityComponentFactoryRegistry): Unit =
+    PlayerWispComponent.register
+
+opaque type Attrition = Unit
+object Attrition extends Registrar[Attrition]("attrition")
 
 type subtypes[T, R <: T] = T
+//case class StaffcastFrame(owner: ServerPlayerEntity, oldImage: CastingImage) extends ContinuationFrame:
+//  override def getType: ContinuationFrame.Type[StaffcastFrame] = StaffcastFrame
+//  override def breakDownwards(list: util.List[? <: Iota]): Pair[lang.Boolean, util.List[Iota]] = ???
+//  override def evaluate(rest: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
+//    HexCardinalComponents.STAFFCAST_IMAGE.get(owner).setImage(oldImage)
+//    HexCardinalComponents.STAFFCAST_IMAGE.sync(owner)
+//    CastResult(NullIota(), rest)
+//  override def serializeToNBT: NbtCompound = ???
+//  override def size: Int = 1
+//object StaffcastFrame extends ContinuationFrame.Type[StaffcastFrame]:
+//  def deserializeFromNBT(data: NbtCompound, world: ServerWorld): StaffcastFrame = ???
 
 val fadedScrolls: TagKey[ActionRegistryEntry] = TagKey.of(HexRegistries.ACTION, "faded_scrolls")
 
@@ -721,10 +879,9 @@ object iotaLike:
 
 object itsGiving:
   inline transparent def unapply[T](x: Any): Option[(x.type, T)] =
-    summonFrom {
+    summonFrom:
       case y: T => Some((x, y))
       case _ => None
-    }
 
 //noinspection UnstableApiUsage
 object MediaVariant extends TransferVariant[MediaVariant.type]:

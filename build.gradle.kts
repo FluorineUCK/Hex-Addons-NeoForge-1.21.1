@@ -69,6 +69,51 @@ repositories {
     maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
 }
 
+data class Addon(val id: String, val name: String, val version: String, val hexicVersion: String, val description: String) {
+    val camelCased = id.replace(Regex("-(\\w)")) { it.groups[1]!!.value.uppercase() }
+}
+
+for (addon in listOf(
+    Addon("infinite-hexxy", "Infinite Hexxy", "0.1.0", "0.2.0", "Exposes patterns to Hex Casting that it... probably shouldn't have.")
+)) {
+    val jarTask by tasks.register<Jar>("${addon.camelCased}Jar") {
+        archiveBaseName = addon.id
+        archiveVersion = addon.version
+        from("addon/${addon.name}")
+        from(resources.text.fromString("""
+            {
+              "schemaVersion": 1,
+              "id": "${addon.id}",
+              "version": "${addon.version}",
+              "name": "${addon.name}",
+              "description": "${addon.description}",
+              "authors": [
+                "PoolloverNathan"
+              ],
+              "contact": {},
+              "license": "GPL-3.0",
+              "icon": "assets/hexic/${addon.id}.png",
+              "environment": "*",
+              "depends": {
+                "hexic": ">=${addon.hexicVersion}"
+              }
+            }
+        """.trimIndent())) {
+            rename { "fabric.mod.json" }
+        }
+    }
+    publishing {
+        publications {
+            create<MavenPublication>("maven${addon.camelCased.replaceFirstChar { it.uppercase() }}Java") {
+                artifactId = addon.id
+                artifact(jarTask) {
+                    group = rootProject.group
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft("com.mojang:minecraft:${project.property("minecraft_version")}")
@@ -80,6 +125,7 @@ dependencies {
     val minecraft_version = "1.20.1"
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
     modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
+    include(modApi("org.eu.net.pool:common-curses:1.1.5-SNAPSHOT")!!)
     include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
     include(api("org.scala-lang:scala-library:2.13.6")!!)
     //modCompileOnly("at.petra-k.hexcasting:hexcasting-common-$minecraft_version:0.11.2+fork-SNAPSHOT")
@@ -115,6 +161,11 @@ tasks.processResources {
     filesMatching("fabric.mod.json") {
         expand(project.properties)
     }
+}
+
+tasks.withType<AbstractArchiveTask> {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }
 
 tasks.withType<JavaCompile>().configureEach {

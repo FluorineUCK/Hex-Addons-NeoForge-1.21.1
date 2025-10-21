@@ -4,8 +4,10 @@
   "package": "org.eu.net.pool.hexic.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "ActionRegistryEntryMixin",
     "AirBlockMixin",
     "CastingVMMixin",
+    "EntityMixin",
     "IotaMixin",
     "IotaTypeMixin",
     "ItemMixin",
@@ -13,7 +15,8 @@
     "OpTickMixin",
     "OpTickMixin$SpellMixin",
     "PacketByteBufMixin",
-    "PhantomEntityMixin"
+    "PhantomEntityMixin",
+    "SimpleRegistryMixin"
   ],
   "injectors": {
     "defaultRequire": 1
