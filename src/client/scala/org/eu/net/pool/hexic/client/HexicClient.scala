@@ -17,10 +17,11 @@ import net.minecraft.client.gui.widget.TextFieldWidget
 import net.minecraft.client.network.{ClientPlayNetworkHandler, ClientPlayerEntity}
 import net.minecraft.client.render.model.json
 import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator, ModelIds, Models, TextureKey, TextureMap}
-import net.minecraft.data.server.recipe.RecipeJsonProvider
+import net.minecraft.data.server.recipe.{RecipeJsonProvider, ShapedRecipeJsonBuilder}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.inventory.Inventory
-import net.minecraft.item.{Item, ItemStack}
+import net.minecraft.item.{Item, ItemStack, Items}
+import net.minecraft.recipe.book.RecipeCategory
 import net.minecraft.registry.{MutableRegistry, Registries, RegistryKeys, RegistryWrapper}
 import net.minecraft.screen.slot.Slot
 import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
@@ -189,7 +190,14 @@ def datagen(gen: FabricDataGenerator): Unit =
   pack.addProvider:
     new FabricRecipeProvider(_):
       override def generate(consumer: Consumer[RecipeJsonProvider]): Unit =
-        ;
+        for case item@MediaBundle(color, 6) <- MediaBundle.items do
+          ShapedRecipeJsonBuilder(RecipeCategory.TOOLS, item, 1)
+            .group(" s ")
+            .group("waw")
+            .group(" w ")
+            .input('s', Items.STRING)
+            .input('w', Mediaweave.colors(color))
+            .input('a', Items.AMETHYST_SHARD)
   pack.addProvider:
     new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
