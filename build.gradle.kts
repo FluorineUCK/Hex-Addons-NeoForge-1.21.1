@@ -403,19 +403,19 @@ open class Hexdoc: Exec() {
             commandLine = listOf("env", "hexdoc") + hexdocArgs
         }
 
-    @OutputDirectory
+    @Internal
     var docsPrefix = project.file(".")
 }
 val Hexdoc.docsRoot get() = file("$docsPrefix/v/${if (release) "$version/1.1" else "latest/${p.change_id}"}")
 fun Hexdoc.cleanPrefix() {
     doFirst {
-        docsRoot.deleteRecursively()
+        docsPrefix.deleteRecursively()
     }
 }
 fun Hexdoc.processOutput() {
     doLast {
         for (f in docsRoot.walk()) {
-            if (f.isFile) {
+            if (f.isFile && !f.name.endsWith(".png")) {
                 f.writeText(includeContent(f.readText()))
             }
         }
@@ -433,7 +433,7 @@ val wheelPath = file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
 tasks.register<Hexdoc>("hexdoc") {
     dependsOn("processResources")
     cleanPrefix()
-    docsPrefix = file("_site/dst/docs")
+    docsPrefix = file("_site/src/docs")
     hexdocArgs = listOf("build", "--branch", p.change_id)
     if (release) hexdocArgs += "--release"
     processOutput()
@@ -458,17 +458,24 @@ tasks.register<Exec>("publishToPypi") {
 tasks.named("publish") {
     dependsOn("publishToPypi")
 }
-tasks.register<Zip>("processWheel") {
-    dependsOn("wheel")
+val processWheel by tasks.register<Zip>("processWheel") {
+    dependsOn(wheel)
     from(zipTree(wheelPath))
     eachFile {
         if (!name.endsWith(".png")) {
             filter(::includeContent)
-            filter { it.replace(contentRoot, "https://codeberg.org/PoolloverNathan/hexic/raw/commit/${p.commit_id}") }
+            filter { it.replace(contentRoot, "https://example.com/PoolloverNathan/hexic/${p.commit_id}") }
         }
     }
     destinationDirectory = mergeHexdoc.docsRoot
     archiveFileName = wheelPath.name
+}
+
+tasks.register("docs") {
+    dependsOn(mergeHexdoc, processWheel)
+    doLast {
+        println("https://hexic.pool.net.eu.org/${mergeHexdoc.docsRoot.relativeTo(mergeHexdoc.docsPrefix)}/en_us")
+    }
 }
 
 // configure the maven publication
@@ -477,11 +484,6 @@ publishing {
         create<MavenPublication>("mavenJava") {
             artifactId = project.property("archives_base_name") as String
             from(components["java"])
-            artifact(file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")) {
-                builtBy(wheel)
-                classifier = "hexdoc-py3-none-any"
-                extension = "whl"
-            }
         }
     }
 
