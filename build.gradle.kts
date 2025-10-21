@@ -344,6 +344,22 @@ tasks.register<Exec>("hexdoc") {
     environment["GITHUB_SHA"] = stdout.toString()
     commandLine("env", "hexdoc", "build")
 }
+tasks.register<Exec>("mergeHexdoc") {
+    dependsOn("hexdoc")
+    environment["GITHUB_PAGES_URL"] = ""
+    environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
+    val stdout = `java.io`.ByteArrayOutputStream()
+    exec {
+        commandLine("git", "rev-parse", "HEAD")
+        standardOutput = stdout;
+    }
+    environment["GITHUB_SHA"] = stdout.toString()
+    commandLine("env", "hexdoc", "merge")
+}
+tasks.register<Exec>("wheel") {
+    commandLine("uv", "build")
+    outputs.file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
+}
 
 // configure the maven publication
 publishing {
@@ -351,6 +367,10 @@ publishing {
         create<MavenPublication>("mavenJava") {
             artifactId = project.property("archives_base_name") as String
             from(components["java"])
+            artifact(file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")) {
+                classifier = "hexdoc"
+                extension = "whl"
+            }
         }
     }
 

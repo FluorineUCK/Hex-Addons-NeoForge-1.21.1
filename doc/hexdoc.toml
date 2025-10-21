@@ -4,11 +4,13 @@ default_lang = "en_us"
 default_branch = "main"
 
 resource_dirs = [
-    #"resources",
+    "resources",
     "../build/resources/main",
     { modid="hexcasting" },
     { modid="minecraft" },
     { modid="hexdoc" },
+    { modid="moreiotas" },
+    { modid="hexal" },
 ]
 
 [extra.hexcasting]
@@ -20,7 +22,7 @@ path = "../build/patterns.csv"
 regex = "{^_pattern_regex}"
 
 [textures]
-missing = ["hexic:preferred_mediaweave"]
+missing = ["hexic:preferred_mediaweave", "minecraft:chest"]
 
 [template]
 include = ["hexic", "hexcasting", "hexdoc"]

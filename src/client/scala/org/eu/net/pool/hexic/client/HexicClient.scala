@@ -160,6 +160,8 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexic.media.external", "Media")
         gen.add("hexic.media.internal", "Trinkets")
         gen.add(wizard, "Wizard")
+        gen.add("hexdoc.hexic.title", "Hexic")
+        gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
   pack.addProvider:
     new FabricRecipeProvider(_):
       override def generate(consumer: Consumer[RecipeJsonProvider]): Unit =
