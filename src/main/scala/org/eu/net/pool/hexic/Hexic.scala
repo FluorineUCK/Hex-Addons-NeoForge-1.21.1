@@ -377,22 +377,24 @@ lazy val kuboExe: Option[Path] = boundary:
 
 lazy val kuboConfigTemplate: Path = ().getClass.getResourceAsStream(s"assets/hexic/kubo-config.json").onDisk("config", ".json")
 
-def unsafeSelectable(x: AnyRef) =
-  val u = summon[Unsafe]
-  new Selectable:
-    def selectDynamic(name: String): Selectable =
-      MethodHandles.lookup
-    def applyDynamic(name: String, params: Class[?]*)(args: Any*): Selectable = ???
-
-def startKubo(using server: MinecraftServer)(using CanThrow[IOException]): Unit =
-  // get the world's save path + /.ipfs
-  val path = server.getSavePath(WorldSavePath.ROOT).resolve(".ipfs")
-  val builder = ProcessBuilder()
-    .directory(path.toFile)
-    .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-    .redirectError(ProcessBuilder.Redirect.INHERIT)
-  builder.environment().put("IPFS_PATH", path.toAbsolutePath.toString)
-  builder.command(kuboExe.getOrElse(throw IOException("Failed to start kubo; see logs for details")).toAbsolutePath.toString, "daemon", "--init=true", s"--init-config=${kuboConfigTemplate.toAbsolutePath}", "--migrate=true", "--enable-gc=true")
+def startKubo(path: File)(using CanThrow[IOException]): Unit =
+  ProcessBuilder()
+  `directory` path
+  `redirectOutput` ProcessBuilder.Redirect.INHERIT
+  `redirectError` ProcessBuilder.Redirect.INHERIT
+  `tap` (_.environment.put("IPFS_PATH", path.getAbsolutePath))
+  `command` (kuboExe.get.toAbsolutePath.toString, "daemon", "--init=true", s"--init-config=${kuboConfigTemplate.toAbsolutePath}", "--migrate=true", "--enable-gc=true")
+  `pipe` (_.start)
+  `ensuring` (_.supportsNormalTermination)
+  `tap` locally: p =>
+    p.onExit.thenAccept: p =>
+      if p.exitValue != 0 then sys.exit(p.exitValue)
+    sys.runtime.addShutdownHook:
+      Thread:
+        locally: () =>
+          p.destroy()
+          p.waitFor()
+        : Runnable
 
 lazy val iotaTypeRegistry = IXplatAbstractions.INSTANCE.getIotaTypeRegistry
 lazy val actionRegistry = IXplatAbstractions.INSTANCE.getActionRegistry
