@@ -1,6 +1,10 @@
 import de.undercouch.gradle.tasks.download.Download
+import groovy.json.JsonSlurper
+import org.eu.net.pool.mc_plugin.Environment
 import org.gradle.api.publish.maven.internal.publication.MavenPomInternal
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
+import kotlin.io.path.exists
+import kotlin.io.path.readText
 
 plugins {
     id("fabric-loom") version "1.10-SNAPSHOT"
@@ -8,6 +12,7 @@ plugins {
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
     id("de.undercouch.download") version "5.6.0"
+    id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
 version = project.property("mod_version") as String
@@ -208,50 +213,55 @@ sourceSets {
     }
 }
 
+val modDepends: Configuration by configurations.creating {
+    isTransitive = false
+    isCanBeResolved = true
+}
+
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft("com.mojang:minecraft:${project.property("minecraft_version")}")
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
-    include(modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")!!)
-    include(modImplementation("net.fabricmc:fabric-language-kotlin:1.13.4+kotlin.2.2.0")!!)
+    modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
+    modImplementation("net.fabricmc:fabric-language-kotlin:1.13.4+kotlin.2.2.0")
 
     val minecraft_version = "1.20.1"
-    include(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
-    include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")!!)
-    include(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)
-    include(modApi("org.eu.net.pool:common-curses:1.1.5-SNAPSHOT")!!)
+    modDepends(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
+    modDepends(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")!!)
+    modDepends(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)
+    modDepends(include(modApi("org.eu.net.pool:common-curses:1.1.5-SNAPSHOT")!!)!!)
     include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
     include(api("org.scala-lang:scala-library:2.13.6")!!)
     //modCompileOnly("at.petra-k.hexcasting:hexcasting-common-$minecraft_version:0.11.2+fork-SNAPSHOT")
-    include(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2+fork-SNAPSHOT")!!)
-    include(modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")!!)
-    include(modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")!!)
-    include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
-    include(modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")!!)
-    include(modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")!!)
-    include(modImplementation("maven.modrinth:hexcassettes:1.1.4")!!)
-    include(modImplementation("maven.modrinth:spasm:0.2.2")!!)
+    modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2+fork-SNAPSHOT")
+    modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
+    modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
+    modDepends(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
+    modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
+    modDepends(modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")!!)
+    modDepends(modImplementation("maven.modrinth:hexcassettes:1.1.4")!!)
+    modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
-    include(modCompileOnly("miyucomics.hexical:hexical:main-SNAPSHOT")!!)
-    include(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") }!!)
-    include(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") }!!)
-    include(modImplementation("maven.modrinth:hexcellular:1.0.4")!!)
-    include(modImplementation("maven.modrinth:jsonpatcher:1.0.0-beta.4+mc.1.20.1")!!)
-    include(implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3")!!) // trans maven.modrinth:jsonpatcher
-    include(modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0")!!) // trans maven.modrinth:jsonpatcher
-    include(modImplementation("miyucomics.hexpose:hexpose:1.0.0")!!)
+    modCompileOnly("miyucomics.hexical:hexical:main-SNAPSHOT")
+    modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") })
+    modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") })
+    modDepends(modImplementation("maven.modrinth:hexcellular:1.0.4")!!)
+    modDepends(modImplementation("maven.modrinth:jsonpatcher:1.0.0-beta.4+mc.1.20.1")!!)
+    modDepends(implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3")!!) // trans maven.modrinth:jsonpatcher
+    modDepends(modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0")!!) // trans maven.modrinth:jsonpatcher
+    modDepends(modImplementation("miyucomics.hexpose:hexpose:1.0.0")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     val cardinal_version = "5.2.3"
-    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")!!)
-    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")!!)
-    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")!!)
-    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")!!)
-    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")!!)
-    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")!!)
-    include(modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")!!)
-    include(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
-    include(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
+    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")!!)
+    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")!!)
+    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")!!)
+    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")!!)
+    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")!!)
+    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")!!)
+    modDepends(modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")!!)
+    modDepends(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
+    modDepends(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
 
     modRuntimeOnly("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
 }
@@ -283,8 +293,42 @@ tasks.processResources {
     inputs.property("loader_version", project.property("loader_version"))
     filteringCharset = "UTF-8"
 
-    filesMatching("fabric.mod.json") {
-        expand(project.properties)
+    preprocessor {
+        fabricMod("hexic", version as String) {
+            name = "Hexic"
+            description = "Miscellaneous neat features and QoL patterns for Hex Casting."
+            license = "GPL-3.0"
+            icon = "assets/hexic/icon.png"
+
+            author("PoolloverNathan")
+
+            for (p in modDepends.resolve()) {
+                val root =
+                    if (p.isDirectory) p.toPath()
+                    else if (p.name.endsWith(".jar")) `java.nio.file`.FileSystems.newFileSystem(p.toPath()).rootDirectories.single()
+                    else continue
+                val fmj = root.resolve("fabric.mod.json")
+                if (fmj.exists()) {
+                    val json = JsonSlurper().parse(fmj) as Map<String, Any>
+                    depends(json["id"].toString(), ">=${json["version"]}")
+                } else {
+                    println("Attempt to add dependency '$p' to modDepends, which is not a Fabric mod.")
+                }
+            }
+
+            entrypoint("org.eu.net.pool.hexic.Hexic\$package::init")
+            entrypoint("org.eu.net.pool.hexic.client.HexicClient\$package::init", Environment.Client)
+            entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client.HexicClient\$package::datagen")
+            entrypoint("mm:early-risers", "org.eu.net.pool.hexic.EarlyRiser\$package::warCrimes")
+            entrypoint("cardinal-components", "org.eu.net.pool.hexic.ComponentInit")
+            mixins("hexic.mixins.json")
+            mixins("hexic.client.mixins.json", Environment.Client)
+            custom {
+                array("cardinal-components") {
+                    put("hexic:player_wisp")
+                }
+            }
+        }
     }
 
     dependsOn(cloth)
