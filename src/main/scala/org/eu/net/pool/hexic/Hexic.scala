@@ -62,7 +62,7 @@ import net.minecraft.registry.tag.TagKey
 import net.minecraft.registry.{MutableRegistry, Registries, Registry, RegistryKey, RegistryKeys, SimpleRegistry}
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.command.ServerCommandSource
-import net.minecraft.server.network.ServerPlayerEntity
+import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntity}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
@@ -101,6 +101,9 @@ import scala.tools.asm.tree.MethodNode
 import scala.util.{NotGiven, TupledFunction, boundary}
 import scala.util.chaining.given
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.PlayChannelHandler
+import net.fabricmc.fabric.api.networking.v1.{FabricPacket, PacketSender, PacketType, ServerPlayNetworking}
+import net.minecraft.network.PacketByteBuf
 import net.minecraft.util.math.Direction.Axis
 
 import java.util as ju
@@ -109,6 +112,9 @@ import scala.util.CommandLineParser.FromString
 import scala.util.boundary.Label
 
 given Logger = LoggerFactory.getLogger("hexic")
+
+val fabric = FabricLoader.getInstance
+val isDev = fabric.isDevelopmentEnvironment
 
 extension (i: Iota)
   def asIotaType[T <: Iota: ClassTag](idx: Int, expected: => Text): T = i match
@@ -161,14 +167,14 @@ extension [T] (r: Registry[T])
       case i: Identifier => Registry.register(r, i, value)
       case k: RegistryKey[?] => Registry.register(r, k.asInstanceOf[RegistryKey[T]], value)
 
-case class :?[T, G](value: T)(using val proof: G)
-object Proven:
+class :?[T, G](private val value: T)(using private val proof: G)
+object :? :
   given wrap[T, G](using G): Conversion[T, T :? G] = x => :?(x)
   given unwrap[T, G]: Conversion[T :? G, T] = _.value
   given prove[T, G]: Conversion[(G ?=> T) :? G, T] = x => x.value(using x.proof)
   given unneeded[T, G]: Conversion[T, G ?=> T] with
     override def apply(x: T): G ?=> T = _ ?=> x
-import Proven.given
+import :?.given
 
 object Patterns:
   def mkAction(body: (CastingEnvironment, ServerWorld) ?=> (CastingImage, SpellContinuation) => (OperationResult | CastResult | (CastingImage, SpellContinuation, EvalSound, Seq[OperatorSideEffect]))): Action =
@@ -195,7 +201,7 @@ object Patterns:
 inline def unsafe(using u: Unsafe) = u
 
 extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
-  if FabricLoader.getInstance.isModLoaded(ctx.parts(0)) then
+  if isDev || fabric.isModLoaded(ctx.parts(0)) then
     `then`
   else
     `else`
@@ -313,7 +319,7 @@ trait SlotReference:
   @throws[Mishap]
   def count_=(using Transaction, CastingEnvironment)(count: Long): Unit
 
-class PlayerWispComponent(val player: PlayerEntity, var wispMedia: Option[Long]) extends Component, AutoSyncedComponent:
+class PlayerInfoComponent(val player: PlayerEntity, var wispMedia: Option[Long] = None, var murmur: Option[String] = None) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
     if c.getBoolean("isWisp") then
       wispMedia = Some(c.getLong("media"))
@@ -327,10 +333,10 @@ class PlayerWispComponent(val player: PlayerEntity, var wispMedia: Option[Long])
       case Some(media) =>
         c.putBoolean("isWisp", true)
         c.putLong("media", media)
-object PlayerWispComponent:
-  val key: ComponentKey[PlayerWispComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerWispComponent])
+object PlayerInfoComponent:
+  val key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
-    fac.registerForPlayers(key, PlayerWispComponent(_, None), RespawnCopyStrategy.LOSSLESS_ONLY)
+    fac.registerForPlayers(key, PlayerInfoComponent(_), RespawnCopyStrategy.LOSSLESS_ONLY)
 
 extension [S, T <: ArgumentBuilder[S, T]] (builder: T)
   def literal(name: String)(body: LiteralArgumentBuilder[S] => Unit): T = builder.`then`(LiteralArgumentBuilder.literal[S](name).tap(body))
@@ -371,6 +377,13 @@ lazy val kuboExe: Option[Path] = boundary:
 
 lazy val kuboConfigTemplate: Path = ().getClass.getResourceAsStream(s"assets/hexic/kubo-config.json").onDisk("config", ".json")
 
+def unsafeSelectable(x: AnyRef) =
+  val u = summon[Unsafe]
+  new Selectable:
+    def selectDynamic(name: String): Selectable =
+      MethodHandles.lookup
+    def applyDynamic(name: String, params: Class[?]*)(args: Any*): Selectable = ???
+
 def startKubo(using server: MinecraftServer)(using CanThrow[IOException]): Unit =
   // get the world's save path + /.ipfs
   val path = server.getSavePath(WorldSavePath.ROOT).resolve(".ipfs")
@@ -391,6 +404,13 @@ trait ServerAware[T <: IotaType[?]]:
 given [T <: java.lang.Enum[T]: ClassTag as ct] => FromString[T]:
   override def fromString(s: String): T = Enum.valueOf[T](ct.runtimeClass.asInstanceOf[Class[T]], s)
 
+case class Mediaweave(color: DyeColor) extends Item(Item.Settings())
+object Mediaweave:
+  val colors: DyeColor :> Mediaweave = DyeColor.values().map(c => c -> Mediaweave(c)).toMap
+  val tag: TagKey[Item] = TagKey.of(Registries.ITEM, "mediaweaves")
+
+val wizard = Item(Item.Settings().rarity(Rarity.EPIC).maxCount(1))
+
 def init(): Unit =
   Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
   try System.getProperties.load(Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8))
@@ -406,6 +426,9 @@ def init(): Unit =
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do HexRegistries.IOTA_TYPE(s"meta/$i") = c
   HexRegistries.IOTA_TYPE("jvm/class") = ClassIota
   HexRegistries.IOTA_TYPE("jvm/pointer") = PointerIota
+  for (color, item) <- Mediaweave.colors do
+    Registries.ITEM(s"${color.asString}_mediaweave") = item
+  Registries.ITEM("wizard") = wizard
   //Registries.ITEM("echo") = EchoItem
   ifModLoaded"hexent${
     ifModLoaded"hexical${
@@ -688,14 +711,14 @@ def init(): Unit =
         c.literal("make"): c =>
           c.executes: (ctx: CommandContext[ServerCommandSource]) =>
             val player = ctx.getSource.getPlayer
-            player.getComponent(PlayerWispComponent.key).wispMedia = Some(-1)
-            PlayerWispComponent.key.sync(player)
+            player.getComponent(PlayerInfoComponent.key).wispMedia = Some(-1)
+            PlayerInfoComponent.key.sync(player)
             1
         c.literal("unmake"): c =>
           c.executes: (ctx: CommandContext[ServerCommandSource]) =>
             val player = ctx.getSource.getPlayer
-            player.getComponent(PlayerWispComponent.key).wispMedia = None
-            PlayerWispComponent.key.sync(player)
+            player.getComponent(PlayerInfoComponent.key).wispMedia = None
+            PlayerInfoComponent.key.sync(player)
             1
         c.literal("media"): c =>
           c.literal("add"): c =>
@@ -810,6 +833,21 @@ def init(): Unit =
             val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
             val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
             staffcast.setImage(img)
+            val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
+            try
+              vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
+            finally
+              staffcast.setImage(oldImage)
+              HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
+            (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
+          case _ => throw MishapBadCaster()
+    Patterns.register("staffcast_factory/lazy", ne"waqqqqqeaqeaeaeaeaeq"):
+      Patterns.mkAction: (img, cont) =>
+        summon[CastingEnvironment].getCastingEntity match
+          case caster: ServerPlayerEntity =>
+            val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
+            val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
+            staffcast.setImage(img)
             HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
             val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
             vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
@@ -827,11 +865,21 @@ def init(): Unit =
           Seq:
             val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
             ty.Instance(userdata, display.display, metatable.getName)
+    Patterns.register("murmur", e"wwaqwa"):
+      Patterns.mkLiteral:
+        locally(summon[CastingEnvironment]).getCastingEntity match
+          case null => throw MishapBadCaster()
+          case p: ServerPlayerEntity => p.getComponent(PlayerInfoComponent.key).murmur.fold(NullIota())(StringIota.make)
+          case _ => throw MishapBadCaster()
   }"
   SlotAccess.playerInventory.register: (player, slot, stack) =>
-    player.getComponent(PlayerWispComponent.key).wispMedia match
+    player.getComponent(PlayerInfoComponent.key).wispMedia match
       case Some(_) => SlotAccess.LOCK_AND_DROP
       case None => SlotAccess.ALLOW
+  ServerPlayNetworking.registerGlobalReceiver("murmur", (_, player, _, buf, _) =>
+    val in = Option.when(buf.readBoolean())(buf.readString())
+    if isDev then println(s"${player.getName.getString} murmurs: $in")
+    player.getComponent(PlayerInfoComponent.key).murmur = in)
 
 def assume(cond: Boolean, msg: => String = "assumption failed"): Unit = if !cond then panic(msg)
 
@@ -856,7 +904,7 @@ given [T] => Conversion[Const[T], T] = _.value
 
 private[hexic] class ComponentInit extends EntityComponentInitializer:
   override def registerEntityComponentFactories(using EntityComponentFactoryRegistry): Unit =
-    PlayerWispComponent.register
+    PlayerInfoComponent.register
 
 opaque type Attrition = Unit
 object Attrition extends Registrar[Attrition]("attrition")
@@ -936,7 +984,7 @@ object elementTag:
 private[hexic] object cfg:
   def apply[T: FromString as t](key: String): Option[T] =
     sys.props.get(key).map(t.fromString)
-  def modFlag(mod: String, key: String): Boolean = FabricLoader.getInstance.isModLoaded(mod) && cfg[Boolean](s"$mod.$key").contains(true)
+  def modFlag(mod: String, key: String): Boolean = fabric.isModLoaded(mod) && cfg[Boolean](s"$mod.$key").contains(true)
   def update[T](key: String, value: T): Unit =
     sys.props(key) = value.toString
 

@@ -12,6 +12,8 @@
     "ItemMixin",
     "ItemStackMixin",
     "MediafiedItemManagerIndexMixin",
+    "OpEdifySaplingMixin",
+    "OpEdifySaplingMixin$Spell",
     "PacketByteBufMixin",
     "PatternIotaMixin",
     "PhantomEntityMixin",
