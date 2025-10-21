@@ -30,7 +30,7 @@ import java.util.List;
 
 import static net.minecraft.item.Items.ECHO_SHARD;
 
-@Mixin(CastingVM.class)
+@Mixin(value = CastingVM.class, remap = false)
 public abstract class CastingVMMixin {
     @Shadow private @Final CastingEnvironment env;
     abstract @Shadow public Pair<List<NbtCompound>, @Nullable NbtCompound> generateDescs();

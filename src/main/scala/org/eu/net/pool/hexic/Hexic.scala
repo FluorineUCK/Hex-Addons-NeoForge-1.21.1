@@ -4,12 +4,14 @@ package org.eu.net.pool.hexic
 import at.petrak.hexcasting.api.casting.ActionRegistryEntry
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
-import at.petrak.hexcasting.api.casting.castables.ConstMediaAction
+import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction}
+import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastingEnvironment, OperationResult}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.{MishapInvalidIota, MishapOthersName}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota, MishapOthersName}
+import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.HexUtils
 import at.petrak.hexcasting.common.lib.HexRegistries
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
@@ -21,18 +23,26 @@ import com.mojang.brigadier.context.CommandContext
 import com.mojang.serialization.{Codec, DynamicOps}
 import com.samsthenerd.inline.api.data.ItemInlineData
 import com.sun.nio.file.ExtendedOpenOption
+import dev.kineticcat.hexportation.fabric.api.casting.iota.{ConduitIota, StorageViewIota}
 import kotlin.text.Charsets
+import miyucomics.hexical.features.dyes.DyeIota
+import miyucomics.hexical.features.hopper
+import miyucomics.hexical.features.hopper.targets.SidedInventoryEndpoint
+import miyucomics.hexical.features.hopper.{HopperDestination, HopperEndpoint, HopperEndpointRegistry, HopperEndpointResolver, HopperSource}
+import miyucomics.hexical.features.pigments.PigmentIota
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings
 import net.fabricmc.fabric.api.transfer.v1.fluid.{FluidConstants, FluidVariant}
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.fabricmc.fabric.api.transfer.v1.storage.TransferVariant
+import net.fabricmc.fabric.api.transfer.v1.transaction.Transaction
 import net.minecraft.Bootstrap
 import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType}
 import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.Fluid
-import net.minecraft.item.Item
+import net.minecraft.inventory.SidedInventory
+import net.minecraft.item.{Item, ItemStack}
 import net.minecraft.nbt.*
 import net.minecraft.nbt.visitor.StringNbtWriter
 import net.minecraft.registry.{Registries, Registry, RegistryKey, RegistryKeys}
@@ -42,26 +52,27 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextContent}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.Vec3d
-import net.minecraft.util.{Formatting, Hand, Identifier, Rarity, Uuids}
+import net.minecraft.util.{DyeColor, Formatting, Hand, Identifier, Rarity, Uuids}
 import net.minecraft.world.World
 import org.eu.net.pool.hexic
 import org.slf4j.{Logger, LoggerFactory}
-import ram.talia.moreiotas.api.casting.iota.StringIota
+import ram.talia.hexal.api.casting.iota.{GateIota, MoteIota}
+import ram.talia.moreiotas.api.casting.iota.{EntityTypeIota, IotaTypeIota, ItemStackIota, ItemTypeIota, MatrixIota, StringIota}
 
 import java.io.{File, FileNotFoundException, IOException}
 import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.UUID
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
-import scala.annotation.{experimental, showAsInfix, tailrec, unused}
+import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
 import scala.collection.convert.ImplicitConversions.*
 import scala.collection.mutable
 import scala.compiletime.summonFrom
 import scala.jdk.CollectionConverters.*
-import scala.language.experimental.{macros, saferExceptions}
+import scala.language.experimental.{captureChecking, macros, saferExceptions}
 import scala.language.{dynamics, existentials, implicitConversions, reflectiveCalls}
 import scala.reflect.ClassTag
-import scala.util.boundary
+import scala.util.{NotGiven, TupledFunction, boundary}
 import scala.util.chaining.given
 
 given Logger = LoggerFactory.getLogger("hexic")
@@ -76,6 +87,69 @@ extension (i: Iota)
 extension (c: NbtCompound)
   def iota(using ServerWorld): Iota = IotaType.deserializeIota(c, summon)
 
+given Conversion[(HexDir, String), HexPattern] = t => HexPattern.fromAngles(t._2, t._1)
+
+case class Box[T](var value: T)
+
+trait Gives[C[_]]:
+  type T: C
+  def value: T
+
+given [C[_], T_](using C[T_]): Conversion[T_, Gives[C]] with
+  override def apply(x: T_) : Gives[C] = new Gives[C]:
+    type T = T_
+    def value: T_ = x
+
+trait Outcome[-T]:
+  def apply(res: OperationResult, value: T): OperationResult
+object Outcome:
+  def apply(xs: Gives[Outcome]*): Gives[Outcome] = ???
+  def apply[T: Outcome](xs: T*): OperationResult => OperationResult = res => res.->(xs*)
+extension (op: OperationResult)
+  def ->[T: Outcome](xs: T*): OperationResult =
+    xs.foldLeft(op)(summon[Outcome[T]](_, _))
+
+given Outcome[OperationResult => OperationResult] = (res, f) => f(res)
+given [T: Outcome]: Outcome[Seq[T]] = (res, value) => res -> Outcome(value*)
+
+//given Outcome[Seq[Iota]]:
+//  override def ->:(res: OperationResult): OperationResult = ???
+//given Outcome[Iota]:
+//  override def ->:
+
+extension [T] (r: Registry[T])
+  def update(key: Identifier, value: T) =
+    Registry.register(r, key, value)
+
+case class :?[T, G](value: T)(using val proof: G)
+object Proven:
+  given wrap[T, G](using G): Conversion[T, T :? G] = x => :?(x)
+  given unwrap[T, G]: Conversion[T :? G, T] = _.value
+  given prove[T, G]: Conversion[(G ?=> T) :? G, T] = x => x.value(using x.proof)
+  given unneeded[T, G]: Conversion[T, G ?=> T] with
+    override def apply(x: T): G ?=> T = _ ?=> x
+import Proven.given
+
+object Patterns:
+  def mkAction(body: (CastingEnvironment, ServerWorld) ?-> (CastingImage, SpellContinuation) -> (CastingImage, SpellContinuation, EvalSound, Seq[OperatorSideEffect])): Action^{body} =
+    (env: CastingEnvironment, image: CastingImage, cont: SpellContinuation) =>
+      val ret: (CastingImage, SpellContinuation, EvalSound, Seq[OperatorSideEffect]) = body(using env, env.getWorld)(image, cont)
+      OperationResult(newImage = ret._1, sideEffects = ret._4, newContinuation = ret._2, sound = ret._3)
+  def mkConstAction(argc: Int, mediaCost: Long = 0)(body: (CastingEnvironment, ServerWorld) ?-> Seq[Iota] -> Seq[Iota]): Action^{body} =
+    new ConstMediaAction:
+      import ConstMediaAction.DefaultImpls => d
+      override def getArgc: Int = argc
+      override def getMediaCost: Long = mediaCost
+      override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
+        body(using castingEnvironment, castingEnvironment.getWorld)(list.toSeq)
+      override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
+      override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
+  def mkLiteral(value: (CastingEnvironment, ServerWorld) ?=> Iota): Action =
+    mkConstAction(0): (args: Seq[Iota]) =>
+      args :+ value
+  def register(id: Identifier, pattern: HexPattern)(body: Action): Unit =
+    HexRegistries.ACTION(id) = ActionRegistryEntry(pattern, body)
+
 def init(): Unit =
   WarCrime.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
   try
@@ -84,130 +158,67 @@ def init(): Unit =
     case _: FileNotFoundException => ;
     case i: IOException =>
       summon[Logger].warn("Failed to read properties", i)
-  Registry.register(HexRegistries.IOTA_TYPE, "location": Identifier, LocationIota)
-  Registry.register(HexRegistries.IOTA_TYPE, "text": Identifier, TextIota)
-  Registry.register(HexRegistries.IOTA_TYPE, "nbt": Identifier, NbtIota)
-  Registry.register(HexRegistries.IOTA_TYPE, "variant": Identifier, VariantIota)
-  Registry.register(HexRegistries.IOTA_TYPE, "stack": Identifier, StackIota)
-  Registry.register(HexRegistries.IOTA_TYPE, "map": Identifier, MapIota)
-  Registry.register(Registries.ITEM, "echo": Identifier, EchoItem)
-  Registry.register(HexRegistries.ACTION, "nbt/serialize": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaq", HexDir.NORTH_WEST), new ConstMediaAction:
-    import ConstMediaAction.DefaultImpls => d
-    override def getArgc: Int = 1
-    override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] = util.List.of(NbtIota(list.get(0)))
-    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-  ))
-  Registry.register(HexRegistries.ACTION, "nbt/lift1": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaqw", HexDir.NORTH_WEST), new ConstMediaAction:
-    import ConstMediaAction.DefaultImpls => d
-    override def getArgc: Int = 1
-    override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
-      util.List.of:
-        list(0) match
-          case iotaLike[Byte](b) => NbtIota(NbtByte.of(b))
-          case iotaLike[Array[Byte]](b) => NbtIota(NbtByteArray(b))
-          case iota => throw MishapInvalidIota.of(iota, 0, ("byte": Identifier).toString)
-    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-  ))
-  Registry.register(HexRegistries.ACTION, "nbt/lift2": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaqww", HexDir.NORTH_WEST), new ConstMediaAction:
-    import ConstMediaAction.DefaultImpls => d
-    override def getArgc: Int = 1
-    override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
-      util.List.of:
-        list(0) match
-          case iotaLike[Short](b) => NbtIota(NbtShort.of(b))
-          case iota => throw MishapInvalidIota.of(iota, 0, ("short": Identifier).toString)
-    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-  ))
-  Registry.register(HexRegistries.ACTION, "nbt/lift4": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaqwww", HexDir.NORTH_WEST), new ConstMediaAction:
-    import ConstMediaAction.DefaultImpls => d
-    override def getArgc: Int = 1
-    override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
-      util.List.of:
-        list(0) match
-          case iotaLike[Int](b) => NbtIota(NbtInt.of(b))
-          case iotaLike[Array[Int]](b) => NbtIota(NbtIntArray(b))
-          case iota => throw MishapInvalidIota.of(iota, 0, ("int": Identifier).toString)
-    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-  ))
-  Registry.register(HexRegistries.ACTION, "nbt/lift8": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaqwwww", HexDir.NORTH_WEST), new ConstMediaAction:
-    import ConstMediaAction.DefaultImpls => d
-    override def getArgc: Int = 1
-    override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
-      util.List.of:
-        list(0) match
-          case iotaLike[Long](b) => NbtIota(NbtLong.of(b))
-          case iotaLike[Array[Long]](b) => NbtIota(NbtLongArray(b))
-          case iota => throw MishapInvalidIota.of(iota, 0, ("long": Identifier).toString)
-    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-  ))
-  Registry.register(HexRegistries.ACTION, "nbt/liftf": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaqwaa", HexDir.NORTH_WEST), new ConstMediaAction:
-    import ConstMediaAction.DefaultImpls => d
-    override def getArgc: Int = 1
-    override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
-      util.List.of:
-        list(0) match
-          case iotaLike[Float](b) => NbtIota(NbtFloat.of(b))
-          case iota => throw MishapInvalidIota.of(iota, 0, ("float": Identifier).toString)
-    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-  ))
-  Registry.register(HexRegistries.ACTION, "nbt/liftd": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaqwaawaa", HexDir.NORTH_WEST), new ConstMediaAction:
-    import ConstMediaAction.DefaultImpls => d
-    override def getArgc: Int = 1
-    override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
-      util.List.of:
-        list(0) match
-          case iotaLike[Double](b) => NbtIota(NbtDouble.of(b))
-          case iota => throw MishapInvalidIota.of(iota, 0, ("double": Identifier).toString)
-    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-  ))
-  def literal(id: Identifier, pattern: HexPattern, value: ServerWorld?=> Iota) =
-    Registry.register(HexRegistries.ACTION, id, ActionRegistryEntry(pattern, new ConstMediaAction:
-      import ConstMediaAction.DefaultImpls => d
-      override def getArgc: Int = 0
-      override def getMediaCost: Long = 0
-      override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
-        given ServerWorld = castingEnvironment.getWorld
-        util.List.of(value)
-      override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-      override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-    ))
-  literal("nbt/literal/collection", HexPattern.fromAngles("qqddqdewqaeaaee", HexDir.EAST), NbtIota(NbtCompound()))
-  literal("nbt/literal/list", HexPattern.fromAngles("eedwaqq", HexDir.EAST), NbtIota(NbtList()))
-  literal("nbt/literal/array1", HexPattern.fromAngles("eedwaqqe", HexDir.EAST), NbtIota(NbtByteArray(Array[Byte]())))
-  literal("nbt/literal/array2", HexPattern.fromAngles("eedwaqqew", HexDir.EAST), NbtIota(NbtIntArray(Array[Int]())))
-  literal("nbt/literal/array4", HexPattern.fromAngles("eedwaqqewww", HexDir.EAST), NbtIota(NbtLongArray(Array[Long]())))
-  literal("empty_map", HexPattern.fromAngles("dqdwdqd", HexDir.EAST), MapIota())
-  Registry.register(HexRegistries.ACTION, "nbt/deserialize": Identifier, ActionRegistryEntry(HexPattern.fromAngles("edwaqa", HexDir.NORTH_WEST), new ConstMediaAction:
-    import ConstMediaAction.DefaultImpls => d
-    override def getArgc: Int = 1
-    override def getMediaCost: Long = 0
-    override def execute(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): util.List[Iota] =
-      given ServerWorld = castingEnvironment.getWorld
-      val iota = list.get(0).asIotaType[NbtIota](0, Text.literal("an ").append(Text.literal("NBT compound").styled(_.withColor(NbtIota.color)))).data.asInstanceOf[NbtCompound].iota
-      iota match
-        case p: EntityIota => p.getEntity match
-          case t: PlayerEntity if t != castingEnvironment.getCastingEntity =>
-            throw MishapOthersName(t)
+  HexRegistries.IOTA_TYPE("location") = LocationIota
+  HexRegistries.IOTA_TYPE("text") = TextIota
+  HexRegistries.IOTA_TYPE("nbt") = NbtIota
+  HexRegistries.IOTA_TYPE("variant") = VariantIota
+  HexRegistries.IOTA_TYPE("stack") = StackIota
+  HexRegistries.IOTA_TYPE("map") = MapIota
+  Registries.ITEM("echo") = EchoItem
+  for
+    HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
+    ConduitIota <- classNamed("dev.kineticcat.hexportation.fabric.api.casting.iota.ConduitIota")
+    registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint").asInstanceOf[Option[ClassTag[? <: (() => Unit)]]]
+  do
+    registerHopperEndpoint.runtimeClass.newInstance().asInstanceOf[() => Unit]()
+  def mkNbtLiftAction[T: FromIota](lift: T => NbtElement, expected: Identifier) =
+    Patterns.mkConstAction(1):
+      case Seq(iotaLike[T](x)) => Seq(NbtIota(lift(x)))
+      case Seq(x) => throw MishapInvalidIota.of(x, 0, expected.toString)
+  def mkNbtLiftArrayAction[T: FromIota](lift: T => NbtElement, liftArray: Array[T] => NbtElement, expected: Identifier)(using FromIota[Array[T]]) =
+    Patterns.mkConstAction(1):
+      case Seq(iotaLike[T](x)) => Seq(NbtIota(lift(x)))
+      case Seq(iotaLike[Array[T]](x)) => Seq(NbtIota(liftArray(x)))
+      case Seq(x) => throw MishapInvalidIota.of(x, 0, expected.toString)
+  Patterns.register("nbt/lift1", (HexDir.NORTH_WEST, "edwaqw")):
+    mkNbtLiftArrayAction[Byte](NbtByte.of, (b => NbtByteArray(b)): Array[Byte] => NbtElement, "byte")
+  Patterns.register("nbt/lift2", (HexDir.NORTH_WEST, "edwaqww")):
+    mkNbtLiftAction[Short](NbtShort.of, "short")
+  Patterns.register("nbt/lift4", (HexDir.NORTH_WEST, "edwaqwww")):
+    mkNbtLiftArrayAction[Int](NbtInt.of, (b: Array[Int]) => NbtIntArray(b), "int")
+  Patterns.register("nbt/lift8", (HexDir.NORTH_WEST, "edwaqwwww")):
+    mkNbtLiftArrayAction[Long](NbtLong.of, (b: Array[Long]) => NbtLongArray(b), "long")
+  Patterns.register("nbt/liftf", (HexDir.NORTH_WEST, "edwaqwaa")):
+    mkNbtLiftAction[Float](NbtFloat.of, "float")
+  Patterns.register("nbt/lift8", (HexDir.NORTH_WEST, "edwaqwwww")):
+    mkNbtLiftAction[Double](NbtDouble.of, "double")
+  Patterns.register("nbt/literal/collection", (HexDir.EAST, "qqddqdewqaeaaee")):
+    Patterns.mkLiteral(NbtIota(NbtCompound()))
+  Patterns.register("nbt/literal/list", (HexDir.EAST, "eedwaqq")):
+    Patterns.mkLiteral(NbtIota(NbtList()))
+  Patterns.register("nbt/literal/array1", (HexDir.EAST, "eedwaqqe")):
+    Patterns.mkLiteral(NbtIota(NbtByteArray(Array[Byte]())))
+  Patterns.register("nbt/literal/array2", (HexDir.EAST, "eedwaqqew")):
+    Patterns.mkLiteral(NbtIota(NbtIntArray(Array[Int]())))
+  Patterns.register("nbt/literal/array4", (HexDir.EAST, "eedwaqqewww")):
+    Patterns.mkLiteral(NbtIota(NbtLongArray(Array[Long]())))
+  Patterns.register("empty_map", (HexDir.EAST, "dqdwdqd")):
+    Patterns.mkLiteral(MapIota())
+  Patterns.register("nbt/deserialize", (HexDir.NORTH_WEST, "edwaqa")):
+    Patterns.mkConstAction(1):
+      case Seq(data: NbtIota) =>
+        val env = summon[CastingEnvironment]
+        given ServerWorld = env.getWorld
+        val iota = data.data.asInstanceOf[NbtCompound].iota
+        iota match
+          case p: EntityIota => p.getEntity match
+            case t: PlayerEntity if t != env.getCastingEntity =>
+              throw MishapOthersName(t)
+            case _ =>
           case _ =>
-        case _ =>
-      util.List.of(iota)
-    override def executeWithOpCount(list: util.List[? <: Iota], castingEnvironment: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, list, castingEnvironment)
-    override def operate(castingEnvironment: CastingEnvironment, castingImage: CastingImage, spellContinuation: SpellContinuation): OperationResult = d.operate(this, castingEnvironment, castingImage, spellContinuation)
-  ))
+        Seq(iota)
+      case Seq(x) =>
+        throw MishapInvalidIota(x, 0, Text.literal("an ").append(Text.literal("NBT compound").styled(_.withColor(NbtIota.color))))
   Registry.register(HexRegistries.ARITHMETIC, "nbt": Identifier, {
     import Arithmetic.*
     given Conversion[NbtIota, NbtElement] = _.data
@@ -415,12 +426,7 @@ def init(): Unit =
       LESS_EQ -> ((a: MapIota, b: MapIota) => b.map.containsAll(a.map)),
     )
   })
-  Registry.register(HexRegistries.ARITHMETIC, "null_abs": Identifier, {
-    import Arithmetic.*
-    arith("null_abs",
-      ABS -> ((a: NullIota) => DoubleIota(0)),
-    )
-  })
+  HexRegistries.ARITHMETIC("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
       .requires(_.hasPermissionLevel(2))
@@ -513,14 +519,6 @@ def init(): Unit =
         ).build()
       )
       c.build())
-  Registry.register(HexRegistries.ACTION, "fuck_you": Identifier, ActionRegistryEntry(HexPattern.fromAngles("qqaddaaddaqqqwwaadada", HexDir.NORTH_EAST), new ConstMediaAction {
-    import ConstMediaAction.DefaultImpls as d
-    def execute(stack: util.List[? <: Iota], env: CastingEnvironment): util.List[Iota] = ???
-    def executeWithOpCount(stack: util.List[? <: Iota], env: CastingEnvironment): ConstMediaAction.CostMediaActionResult = d.executeWithOpCount(this, stack, env)
-    def getArgc: Int = 1
-    def getMediaCost: Long = 0
-    def operate(env: CastingEnvironment, image: CastingImage, cont: SpellContinuation): OperationResult = d.operate(this, env, image, cont)
-  }))
 
 extension (text: Text)
   def +(other: Text) = Text.literal("").append(text).append(other)
@@ -664,6 +662,15 @@ given Conversion[NbtByteArray, Array[Byte]] = _.getByteArray
 given Conversion[NbtIntArray, Array[Int]] = _.getIntArray
 given Conversion[NbtLongArray, Array[Long]] = _.getLongArray
 
+case class MishapWrongDimensionKiddo(val dim1: RegistryKey[World], val dim2: RegistryKey[World]) extends Mishap:
+  override def accentColor(using CastingEnvironment, Mishap.Context): FrozenPigment = dyeColor(DyeColor.MAGENTA)
+  override def errorMessage(using CastingEnvironment, Mishap.Context): Text =
+    val env = summon[CastingEnvironment]
+    val color = env.getPigment.getColorProvider.getColor(0, Vec3d.ZERO)
+    val mind = t"Mind".styled(_ `withColor` color)
+    t"My ${mind} cannot think in ${dim1.getValue `toTranslationKey` "dimension"} and ${dim2.getValue `toTranslationKey` "dimension"} at once"
+  override def execute(using CastingEnvironment, Mishap.Context, util.List[Iota]): Unit = ???
+
 trait Tagged[+F[_ <: U @uncheckedVariance], +U]:
   type T <: U: ClassTag
   val value: F[T]
@@ -746,42 +753,71 @@ object LocationIota extends IotaType[LocationIota]:
     case d: NbtCompound => Vec3Iota.TYPE.display(d.get("vec"))
     case _ => null
 
-case class StackIota[T](stack: VariantIota[T], count: Long) extends Iota(StackIota, stack):
+case class StackIota[T](stack: VariantIota[T], count: BigInt) extends Iota(StackIota, stack):
   export stack.given ClassTag[T]
   override def isTruthy: Boolean = ???
   override def toleratesOther(that: Iota): Boolean = that match
     case s: StackIota[?] => stack == s.stack && count == s.count
     case _ => false
-  override def serialize: NbtElement = stack.serialize |- (_.asInstanceOf[NbtCompound].putLong("n", count))
+  override def serialize: NbtElement = stack.serialize |- (_.asInstanceOf[NbtCompound].putByteArray("n", count.toByteArray))
 object StackIota extends IotaType[StackIota[?]]:
   def color: Int = 0xa34646
   def deserialize(using NbtElement, ServerWorld): StackIota[?] =
     val c: NbtCompound = HexUtils.downcast(summon, NbtCompound.TYPE)
-    StackIota(VariantIota.deserialize, c.getLong("n"))
+    StackIota(VariantIota.deserialize, c.getByteArray("n")|>(BigInt(_)))
   def display(e: NbtElement): Text =
     val c = HexUtils.downcast(e, NbtCompound.TYPE)
-    VariantIota.parseVariant(c).fold(NullIota.DISPLAY)(t => t"${t}x${c.getLong("n")}")
+    VariantIota.parseVariant(c).fold(NullIota.DISPLAY)(t => BigInt(c.getByteArray("n"))|>t._1.display)
 inline def repeat[T](inline value: T, inline cond: T => Boolean)(inline body: T => T): T =
   var current = value
   while (cond(current)) current = body(current)
   current
 
-def toExp(value: Long, trigger: Long = 1000000, max: Long = 1000): (Long, Option[Long]) =
+def toExp[T](value: T)(using num: Integral[T])(trigger: T = num.fromInt(1000000), max: T = num.fromInt(1000)): (T, Option[Int]) =
+  import num.given
   if value >= trigger then
     // someone needs to stop you
     var d = 0
     val r =
       repeat(value, _ >= max): n =>
         d += 1
-        n / 10
-    (value, Some(d))
+        n / num.fromInt(10)
+    (r, Some(d))
   else
     (value, None)
 
-def x10(power: Long) = "x10" + power.toString.map(c => "⁰¹²³⁴⁵⁶⁷⁸⁹"(c - '0'))
+def x10[T: Numeric](power: T) = "x10" + (power.toString: String).map((c: Char) => "⁰¹²³⁴⁵⁶⁷⁸⁹".charAt(c - '0'))
 
-def expNotation(n: Long) =
-  toExp(n) match
+//noinspection UnstableApiUsage
+trait MediaContainer:
+  def -=(using Transaction)(amount: Long): Boolean
+  def +=(using Transaction)(amount: Long): Boolean
+  def current(using Transaction): Long
+  def max(using Transaction): Long
+trait MediaContainerProvider:
+  @targetName("hexic$MediaContainerProvider$Context")
+  type Context: ClassTag;
+  @targetName("hexic$MediaContainerProvider$getMediaContainer")
+  def getMediaContainer(c: Context): Option[MediaContainer]
+
+//noinspection UnstableApiUsage
+inline def transaction[R](body: Transaction^ ?=> R): R =
+  given tx: Transaction = summonFrom:
+    case outer: Transaction => Transaction.openNested(outer)
+    case _ if !Transaction.isOpen => Transaction.openOuter()
+  try
+    body
+  finally
+    tx.close()
+
+def test(): Unit =
+  var t: Transaction = null
+  transaction:
+    t = summon
+  println(t)
+
+def expNotation[T](n: T)(using num: Integral[T]) =
+  toExp(n)() match
     case (v, Some(d)) => s"${v}${x10(d)}"
     case (v, None) => v.toString
 
@@ -825,12 +861,12 @@ case class VariantIota[T: ClassTag](data: TransferVariant[T], key: RegistryKey[V
     |- (_.putString("type", key.getValue.toString))
 //noinspection UnstableApiUsage
 object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reader]("transfer_variants"):
-  type Reader = NbtCompound => Option[VariantIota.TaggedVariant]
+  type Reader = NbtCompound -> Option[VariantIota.TaggedVariant]
   trait TaggedVariant:
     type T: ClassTag
     def variant: TransferVariant[T]
     def display: Text
-    def display(count: Long): Text =
+    def display(count: BigInt): Text =
       t"${display}x${expNotation(count)}"
   def color: Int = 0x720a0a
   private[hexic] def parseVariant(c: NbtCompound): Option[(TaggedVariant, RegistryKey[Reader])] =
@@ -868,7 +904,7 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
         type T = Fluid
         def variant: TransferVariant[Fluid] = s
         def display: MutableText = t"${s.getFluid.getDefaultState.getBlockState.getBlock.getName}: ${ItemInlineData.make(s.getFluid.getBucketItem.getDefaultStack)}"
-        override def display(count: Long): Text =
+        override def display(count: BigInt): Text =
           val buckets = count / FluidConstants.BUCKET
           // small quantities of liquid value using millibuckets
           if buckets < 100 then
@@ -883,6 +919,37 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
       def variant: MediaVariant.type = MediaVariant
       def display: Text = Text.literal("Media").styled(_.withColor(0x74b3f2)))
   )
+
+def classNamed(name: String): Option[ClassTag[?]] =
+  try
+    Some(ClassTag(Class.forName(name)))
+  catch
+    case _: ClassNotFoundException => None
+
+object registerHopperEndpoint extends (() => Unit):
+  def apply(): Unit =
+    HopperEndpointRegistry.INSTANCE.register: (iota: Iota, env: CastingEnvironment, slot: Integer) =>
+      given world: ServerWorld = env.getWorld
+      iota match
+        case c: ConduitIota =>
+          val conduit = c.getConduit
+          val source: Option[HopperSource] = world.getBlockEntity(conduit.source()) match
+            case s: SidedInventory => Some(SidedInventoryEndpoint(s, conduit.sourceDir()))
+            case _ => None
+          val dest: Option[HopperDestination] = world.getBlockEntity(conduit.sink()) match
+            case s: SidedInventory => Some(SidedInventoryEndpoint(s, conduit.sourceDir()))
+            case _ => None
+          (source, dest) match
+            case (None, None) => null
+            case (Some(s), None) => new HopperSource:
+              export s.{getItems, withdraw}
+            case (None, Some(d)) => new HopperDestination:
+              export d.{deposit, simulateDeposit}
+            case (Some(s), Some(d)) => new HopperSource with HopperDestination:
+              export s.{getItems, withdraw}
+              export d.{deposit, simulateDeposit}
+        case _ => null
+
 extension [T] (t: T) def |>[U](f: T => U): U = t.pipe(f)
 extension [T] (t: T) def |-[U](f: T => U): T = t.tap(f)
 extension [A, B] (p: (A, B))

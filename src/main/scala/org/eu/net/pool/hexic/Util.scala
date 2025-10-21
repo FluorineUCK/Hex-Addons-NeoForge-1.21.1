@@ -68,7 +68,7 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
   val ops = xs.map { case '{ ($p: HexPattern) -> $e } => (p, e) }.toMap[Expr[HexPattern], Expr[Any]]
   '{
     new Arithmetic:
-      override def arithName: String = $name
+      override def arithName: String = ""
       override def opTypes: lang.Iterable[HexPattern] = ${ Expr.ofSeq(ops.keys.toSeq) }.asJava
       override def getOperator(pattern: HexPattern): Operator = ${
         Match('pattern.asTerm, ops.map(i =>
