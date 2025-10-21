@@ -15,7 +15,14 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
+
+val release: Boolean = !System.getenv("release").isNullOrEmpty()
+val p = P(project)
+project.ext.set("p", p)
 version = project.property("mod_version") as String
+val py_version: String by project.properties
+val wheelPath = file("dist/hexdoc_hexic-$version.$py_version-py3-none-any.whl")
+if (!release) version = "$version+${p.commit_id.take(7)}"
 group = project.property("maven_group") as String
 
 base {
@@ -314,7 +321,9 @@ tasks.processResources {
             license = "GPL-3.0"
             icon = "assets/hexic/icon.png"
 
-            author("PoolloverNathan")
+            author("PoolloverNathan") {
+                put("discord", "https://discord.com/users/402104961812660226")
+            }
 
             for (p in modDepends.resolve()) {
                 val root =
@@ -351,21 +360,21 @@ tasks.processResources {
     doLast {
         for ((name, color) in colors) {
             exec {
-                commandLine("magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$itemsRoot/${name}_mediaweave.png")
+                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$itemsRoot/${name}_mediaweave.png")
             }
             val bag = downloadedBags[name]!!.dest
             exec {
-                commandLine("magick", bag, "-write", "$itemsRoot/large_${name}_bundle.png", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "$itemsRoot/small_${name}_bundle.png")
+                commandLine("env", "magick", bag, "-write", "$itemsRoot/large_${name}_bundle.png", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "$itemsRoot/small_${name}_bundle.png")
             }
         }
         exec {
-            commandLine("magick", "wizard:", "$itemsRoot/wizard.png")
+            commandLine("env", "magick", "wizard:", "$itemsRoot/wizard.png")
         }
         exec {
-            commandLine("magick", "null:", "$itemsRoot/no.png")
+            commandLine("env", "magick", "null:", "$itemsRoot/no.png")
         }
         exec {
-            commandLine("magick",
+            commandLine("env", "magick",
                 "https://raw.githubusercontent.com/malcolmriley/unused-textures/master/blocks/overlay_rune_0.png",
                 "(",
                     "-clone", "0",
@@ -390,21 +399,21 @@ tasks.processResources {
             "pure" to "u",
         )) {
             exec {
-                commandLine("magick", "$itemsRoot/stringworm.miff", "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
+                commandLine("env", "magick", "$itemsRoot/stringworm.miff", "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
             }
         }
         // people will hate this
         for (i in 0..31) {
             file("$itemsRoot/stringworm_tinted_$i.png").outputStream().use {
                 exec {
-                    commandLine("magick", "$itemsRoot/stringworm.miff", "-fx", "i+j == $i ? u : Transparent", "png:-")
+                    commandLine("env", "magick", "$itemsRoot/stringworm.miff", "-fx", "i+j == $i ? u : Transparent", "png:-")
                     standardOutput = it
                 }
             }
         }
         //file("$itemsRoot/stringworm.miff").delete()
         exec {
-            commandLine("magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
+            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
         }
     }
 
@@ -412,9 +421,9 @@ tasks.processResources {
         if (name.endsWith(".ase")) {
             exec {
                 if (name.endsWith("_*.ase")) {
-                    commandLine("aseprite", "-b", "--split-layers", file, "--save-as", "$destinationDir/${path.replace("_*.ase", "")}_{layer}.png")
+                    commandLine("env", "aseprite", "-b", "--split-layers", file, "--save-as", "$destinationDir/${path.replace("_*.ase", "")}_{layer}.png")
                 } else {
-                    commandLine("aseprite", "-b", file, "--save-as", "$destinationDir/${path.replace(".ase", "")}.png")
+                    commandLine("env", "aseprite", "-b", file, "--save-as", "$destinationDir/${path.replace(".ase", "")}.png")
                 }
             }
             exclude()
@@ -448,8 +457,6 @@ tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.WARN
 }
 
-val py_version: String by project.properties
-
 val wheelFiles by lazy {
     fileTree("_site/dst/docs/v") { include("**/*.whl") }.files
 }
@@ -465,13 +472,13 @@ class P(project: Project) {
 
     val commit_id by lazy {
         getStdout {
-            commandLine("jj", "log", "-r", "@", "--template", "commit_id", "--no-graph")
+            commandLine("env", "jj", "log", "-r", "@", "--template", "commit_id", "--no-graph")
         }
     }
 
     val change_id by lazy {
         getStdout {
-            commandLine("jj", "log", "-r", "@", "--template", "change_id", "--no-graph")
+            commandLine("env", "jj", "log", "-r", "@", "--template", "change_id", "--no-graph")
         }
     }
 
@@ -480,8 +487,6 @@ class P(project: Project) {
     }
 }
 val contentRoot = P.contentRoot
-val p = P(project)
-project.ext.set("p", p)
 
 val wheelFileHashes by lazy {
     wheelFiles.map { it.name to p.getStdout { commandLine("git", "hash-object", "-w", it) } }
@@ -501,8 +506,6 @@ val wheelCommit by lazy {
 tasks.register<Exec>("pushWheels") {
     commandLine("git", "push", "origin", "+$wheelCommit:refs/heads/wheels")
 }
-
-val release: Boolean = !System.getenv("release").isNullOrEmpty()
 
 open class Hexdoc: Exec() {
     init {
@@ -556,7 +559,6 @@ fun includeContent(text: String) =
         "data:image/png;base64,$b64"
     }
 
-val wheelPath = file("dist/hexdoc_hexic-$version.$py_version-py3-none-any.whl")
 val syncPip by tasks.register<Exec>("syncPip") {
     doFirst {
         file("doc/src/hexdoc_hexic/__version__.py").writeText("""
@@ -606,11 +608,15 @@ val processWheel by tasks.register<Zip>("processWheel") {
     if (release) {
         archiveFileName = wheelPath.name
     } else {
-        archiveFileName = "hexdoc_hexic-$version.$py_version-${p.commit_id}-py3-none-any.whl"
+        archiveFileName = "hexdoc_hexic-${(version as String).split('+')[0]}.$py_version-${p.commit_id}-py3-none-any.whl"
     }
     doLast {
         println(archivePath)
     }
+}
+
+tasks.withType<Jar> {
+    dependsOn("runDatagen")
 }
 
 tasks.register("docs") {
