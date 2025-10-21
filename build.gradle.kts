@@ -317,14 +317,15 @@ tasks.processResources {
                 "-alpha", "off",
                 "-compose", "copy_opacity",
                 "-composite",
+                "-fx", "u*2",
                 "$itemsRoot/stringworm.miff"
             )
         }
         for ((name, expr) in mapOf(
-            "media" to "u*#74b3f2*2",
-            "hex" to "u*#b38ef3*2",
-            "action" to "u*#fc77be*2",
-            "thing" to "u*#8d6acc*2",
+            "media" to "u*#74b3f2",
+            "hex" to "u*#b38ef3",
+            "action" to "u*#fc77be",
+            "thing" to "u*#8d6acc",
         )) {
             exec {
                 commandLine("magick", "$itemsRoot/stringworm.miff", "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
