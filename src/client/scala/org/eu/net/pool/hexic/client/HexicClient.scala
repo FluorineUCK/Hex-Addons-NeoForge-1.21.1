@@ -160,8 +160,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
-          "variant" -> "Object Variant",
-          "stack" -> "Object Stack",
+          "variant" -> "Concept",
           // infinite hexxy
           "jvm/class" -> "Class",
           "jvm/pointer" -> "Address",
