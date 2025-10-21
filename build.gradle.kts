@@ -362,42 +362,62 @@ tasks.jar {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
-val commit_id by lazy {
-    val stdout = `java.io`.ByteArrayOutputStream()
-    exec {
-        commandLine("jj", "log", "-r", "@", "--template", "commit_id", "--no-graph")
-        standardOutput = stdout;
+class P(project: Project) {
+    val commit_id by lazy {
+        val stdout = `java.io`.ByteArrayOutputStream()
+        project.exec {
+            commandLine("jj", "log", "-r", "@", "--template", "commit_id", "--no-graph")
+            standardOutput = stdout;
+        }
+        stdout.toString()
     }
-    stdout.toString()
-}
 
-val change_id by lazy {
-    val stdout = `java.io`.ByteArrayOutputStream()
-    exec {
-        commandLine("jj", "log", "-r", "@", "--template", "change_id", "--no-graph")
-        standardOutput = stdout;
+    val change_id by lazy {
+        val stdout = `java.io`.ByteArrayOutputStream()
+        project.exec {
+            commandLine("jj", "log", "-r", "@", "--template", "change_id", "--no-graph")
+            standardOutput = stdout;
+        }
+        stdout.toString()
     }
-    stdout.toString()
+
+    companion object {
+        const val contentRoot = "__CONTENT__"
+    }
 }
+val contentRoot = P.contentRoot
+val p = P(project)
+project.ext.set("p", p)
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 
-val contentRoot = "__CONTENT__"
-fun Exec.hexdocTask(prefix: String, vararg args: String) {
-    environment["GITHUB_PAGES_URL"] = "https://hexic.pool.net.eu.org/"
-    environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
-    environment["DEBUG_GITHUBUSERCONTENT"] = contentRoot
-    environment["GITHUB_SHA"] = commit_id
-    commandLine("env", "hexdoc", *args)
-    doFirst {
-        println(commandLine)
+open class Hexdoc: Exec() {
+    init {
+        environment["GITHUB_PAGES_URL"] = "https://hexic.pool.net.eu.org/"
+        environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
+        environment["DEBUG_GITHUBUSERCONTENT"] = P.contentRoot
+        environment["GITHUB_SHA"] = (project.ext["p"] as P).commit_id
     }
+    @Input
+    var hexdocArgs = listOf<String>()
+        set(value) {
+            field = value
+            commandLine = listOf("env", "hexdoc") + hexdocArgs
+        }
+
+    @OutputDirectory
+    var docsPrefix = project.file(".")
+}
+val Hexdoc.docsRoot get() = file("$docsPrefix/v/${if (release) "$version/1.1" else "latest/${p.change_id}"}")
+fun Hexdoc.cleanPrefix() {
+    doFirst {
+        docsRoot.deleteRecursively()
+    }
+}
+fun Hexdoc.processOutput() {
     doLast {
-        val root = file("$prefix/v/${if (release) "$version/1.1" else "latest/$change_id"}")
-        println(root)
-        for (f in root.walk()) {
+        for (f in docsRoot.walk()) {
             if (f.isFile) {
-                println("$f\tcontains=${f.readText().contains(contentRoot)}")
                 f.writeText(includeContent(f.readText()))
             }
         }
@@ -411,23 +431,26 @@ fun includeContent(text: String) =
         "data:image/png;base64,$b64"
     }
 
-tasks.register<Exec>("hexdoc") {
-    doFirst {
-        file("_site/src").deleteRecursively()
-    }
+val wheelPath = file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
+tasks.register<Hexdoc>("hexdoc") {
     dependsOn("processResources")
-    hexdocTask("_site/src/docs", "build", "--branch", change_id)
-    if (release) commandLine(*commandLine.toTypedArray(), "--release")
+    cleanPrefix()
+    docsPrefix = file("_site/dst/docs")
+    hexdocArgs = listOf("build", "--branch", p.change_id)
+    if (release) hexdocArgs += "--release"
+    processOutput()
 }
-tasks.register<Exec>("mergeHexdoc") {
+val mergeHexdoc by tasks.register<Hexdoc>("mergeHexdoc") {
     dependsOn("hexdoc")
-    hexdocTask("_site/dst/docs", "merge")
-    if (release) commandLine(*commandLine.toTypedArray(), "--release")
+    docsPrefix = file("_site/dst/docs")
+    hexdocArgs = listOf("merge")
+    if (release) hexdocArgs += "--release"
+    processOutput()
 }
 val wheel by tasks.register<Exec>("wheel") {
     dependsOn("hexdoc")
     commandLine("env", "uv", "build")
-    outputs.file("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl")
+    outputs.file(wheelPath)
 }
 
 tasks.register<Exec>("publishToPypi") {
@@ -439,15 +462,15 @@ tasks.named("publish") {
 }
 tasks.register<Zip>("processWheel") {
     dependsOn("wheel")
-    from(zipTree("dist/hexdoc_hexic-$version.1.1-py3-none-any.whl"))
+    from(zipTree(wheelPath))
     eachFile {
         if (!name.endsWith(".png")) {
             filter(::includeContent)
-            filter { it.replace(contentRoot, "https://codeberg.org/PoolloverNathan/hexic/raw/commit/$commit_id") }
+            filter { it.replace(contentRoot, "https://codeberg.org/PoolloverNathan/hexic/raw/commit/${p.commit_id}") }
         }
     }
-    archiveFileName = "hexdoc_hexic-$version.1.1-py3-none-any.whl"
-    destinationDirectory = buildDir
+    destinationDirectory = mergeHexdoc.docsRoot
+    archiveFileName = wheelPath.name
 }
 
 // configure the maven publication
