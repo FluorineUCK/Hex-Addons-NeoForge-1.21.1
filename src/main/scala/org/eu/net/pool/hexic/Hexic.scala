@@ -1824,8 +1824,6 @@ def toExp[T](value: T)(using num: Integral[T])(trigger: T = num.fromInt(1000000)
   else
     (value, None)
 
-def x10[T: Numeric](power: T) = "x10" + (power.toString: String).map((c: Char) => "⁰¹²³⁴⁵⁶⁷⁸⁹".charAt(c - '0'))
-
 //noinspection UnstableApiUsage
 trait MediaContainer:
   def -=(using Transaction)(amount: Long): Boolean
@@ -1899,9 +1897,11 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
     def display: Text
   def color: Int = 0x720a0a
   private[hexic] def parseVariant(c: NbtCompound): Option[(TaggedVariant, RegistryKey[Reader])] =
-    Identifier.tryParse(c.getString("type")) match
-      case null => None
-      case i => Option.fromNullable(registry.get(i)).flatMap(_(c)).map((_, RegistryKey.of(VariantIota, i)))
+    for
+      i <- Option(Identifier.tryParse(c.getString("type")))
+      entry <- Option.fromNullable(registry.get(i))
+      parsed <- entry(c)
+    yield (parsed, RegistryKey.of(VariantIota, i))
   end parseVariant
   def deserialize(using NbtElement, ServerWorld): VariantIota[?] | Null =
     summon[NbtElement] match
@@ -1913,9 +1913,7 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
           case None => null
       case _ => null
   end deserialize
-  override def display(e: NbtElement): Text =
-    val c = HexUtils.downcast(e, NbtCompound.TYPE)
-    parseVariant(c).fold(NullIota.DISPLAY)(_._1.display)
+  override def display(e: NbtElement): Text = parseVariant(e.downcast).fold(NullIota.DISPLAY)(_._1.display)
   end display
   registry(Identifier("item")) = c =>
     val s = ItemVariant.fromNbt(c)
