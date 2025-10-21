@@ -9,7 +9,7 @@ import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, Ope
 import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect.DoMishap
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
-import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, SpellContinuation}
+import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, FrameEvaluate, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
@@ -1611,6 +1611,48 @@ def init(): Unit =
         Seq(ListIota(list.indices.filter(!excl.contains(_)).map(list(_)).toSeq.asJava))
       case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
       case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
+  lazy val filterFrameType: ContinuationFrame.Type[FilterFrame] = (c: NbtCompound, world: ServerWorld) =>
+    FilterFrame(
+      stack = c.getList("p", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
+      filter = c.getList("d", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
+      focus = IotaType.deserialize(c.getCompound("f"), world),
+      received = c.getList("k", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
+      remaining = c.getList("r", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
+    )
+  class FilterFrame(stack: Seq[Iota], filter: Seq[Iota], focus: Iota, received: Seq[Iota], remaining: Seq[Iota]) extends ContinuationFrame:
+    override def getType: ContinuationFrame.Type[FilterFrame] = filterFrameType
+    override def evaluate(cont: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
+      val newReceived = vm.getImage.getStack.toSeq match
+        case Seq() => throw MishapNotEnoughArgs(1, 0)
+        case _ :+ x => if x.isTruthy then received :+ focus else received
+      val (newStack, newCont) = remaining match
+        case next +: rest => (stack :+ next, cont.pushFrame(FilterFrame(stack, filter, next, newReceived, rest)).pushFrame(FrameEvaluate(SpellList.LList(0, filter), true)))
+        case Seq() => (stack :+ ListIota(newReceived), cont)
+      CastResult(ListIota(filter), newCont, vm.getImage.withStack(_ => newStack), Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.THOTH)
+    override def serializeToNBT(): NbtCompound = NbtCompound()
+      .tap(_.put("p", seqToNBT(stack.map(IotaType.serialize))))
+      .tap(_.put("k", seqToNBT(received.map(IotaType.serialize))))
+      .tap(_.put("r", seqToNBT(remaining.map(IotaType.serialize))))
+      .tap(_.put("f", IotaType.serialize(focus)))
+      .tap(_.put("d", seqToNBT(filter.map(IotaType.serialize))))
+    override def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(true, this.stack :+ ListIota(received))
+    override def size = 0
+  Patterns.register("grep", ne"qaeaqea"):
+    Patterns.mkAction: (img, cont) =>
+      img.getStack.toSeq match
+        case Seq() => throw MishapNotEnoughArgs(2, 0)
+        case Seq(_) => throw MishapNotEnoughArgs(2, 1)
+        case saved:+(target: ListIota):+(filter: ListIota) =>
+          if filter.isEmpty then (img.withStack(_ :+ ListIota(target.getList.filter(_.isTruthy).toSeq)), cont, HexEvalSounds.THOTH, Seq()) // short-circuit on empty filter
+          else target.getList.toSeq match
+            case first +: rest =>
+              // set up filter, ideally FilterFrame would do this
+              (img.withStack(_ :+ first), cont.pushFrame(FilterFrame(saved, filter.getList.toSeq, first, Seq(), rest)).pushFrame(FrameEvaluate(filter.getList, true)), HexEvalSounds.THOTH, Seq())
+            case _ =>
+              // we can't start a filter with no iota, but it'd always be empty anyway
+              (img.withStack(_ :+ ListIota(Seq())), cont, HexEvalSounds.THOTH, Seq())
+        case saved:+(_: ListIota):+filter => throw MishapInvalidIota.ofType(filter, 1, "list")
+        case saved:+target:+_ => throw MishapInvalidIota.ofType(target, 1, "list")
   Patterns.register("extract", nw"dewaqawed"):
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
@@ -2031,6 +2073,11 @@ object Tagged:
       type T = R
       val value: F[R] = v
   def unapply[F[_ <: R], R](v: Tagged[F, R]): (F[v.T], ClassTag[v.T]) = (v.value, summon)
+
+def seqToNBT(data: Seq[NbtElement]) =
+  val l = NbtList()
+  data.forEach(l.add(_))
+  l
 
 extension [T](l: util.AbstractList[T])
   def apply(n: Int): T = l.get(n)
