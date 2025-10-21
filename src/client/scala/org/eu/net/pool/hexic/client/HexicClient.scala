@@ -65,17 +65,17 @@ def datagen(gen: FabricDataGenerator): Unit =
     new FabricLanguageProvider(_):
       override def generateTranslations(gen: FabricLanguageProvider.TranslationBuilder): Unit =
         for (action, name) <- Vector(
-          "nbt/lift1" -> "Byte Purification",
-          "nbt/lift2" -> "Short Purification",
-          "nbt/lift4" -> "Integer Purification",
-          "nbt/lift8" -> "Long Purification",
-          "nbt/liftf" -> "Float Purification",
-          "nbt/liftd" -> "Double Purification",
-          "nbt/literal/collection" -> "Vacant Reflection: Collection",
-          "nbt/literal/list" -> "Vacant Reflection: List",
-          "nbt/literal/array1" -> "Vacant Reflection: Byte Array",
-          "nbt/literal/array2" -> "Vacant Reflection: Short Array",
-          "nbt/literal/array4" -> "Vacant Reflection: Integer Array",
+          "nbt/lift1" -> "NBT Purification: Byte",
+          "nbt/lift2" -> "NBT Purification: Short",
+          "nbt/lift4" -> "NBT Purification: Integer",
+          "nbt/lift8" -> "NBT Purification: Long",
+          "nbt/liftf" -> "NBT Purification: Float",
+          "nbt/liftd" -> "NBT Purification: Double",
+          "nbt/literal/collection" -> "Vacant Reflection: NBT Collection",
+          "nbt/literal/list" -> "Vacant Reflection: NBT List",
+          "nbt/literal/array1" -> "Vacant Reflection: NBT Byte Array",
+          "nbt/literal/array2" -> "Vacant Reflection: NBT Short Array",
+          "nbt/literal/array4" -> "Vacant Reflection: NBT Integer Array",
           "empty_map" -> "Vacant Reflection: Map",
           "nbt/serialize" -> "Exporter's Purification",
           "tripwire" -> "Tripwire Reflection",
@@ -89,7 +89,18 @@ def datagen(gen: FabricDataGenerator): Unit =
           "staffcast_factory" -> "Lani's Lesser Gambit",
           "staffcast_factory/lazy" -> "Lani's Greater Gambit",
           "metatable" -> "Metatable Exaltation",
+          "murmur" -> "Murmur Reflection"
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
+        for (ty, name) <- Vector(
+          "tripwire" -> "Tripwire",
+          "nbt" -> "Tag",
+          // hexent
+          "variant" -> "Object Variant",
+          "stack" -> "Object Stack",
+          // infinite hexxy
+          "jvm/class" -> "Class",
+          "jvm/pointer" -> "Address",
+        ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
 
         for (color, item) <- Mediaweave.colors do

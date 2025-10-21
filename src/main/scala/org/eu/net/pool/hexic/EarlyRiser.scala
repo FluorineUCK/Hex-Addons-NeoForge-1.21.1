@@ -11,7 +11,7 @@ import org.objectweb.asm.tree.{ClassNode, FieldInsnNode, InsnList, InsnNode, Inv
 
 import java.lang.instrument.ClassFileTransformer
 import java.security.ProtectionDomain
-import org.objectweb.asm.{ClassReader, ClassWriter, Handle, Opcodes, Type}
+import org.objectweb.asm.{Attribute, ClassReader, ClassWriter, Handle, Opcodes, Type}
 
 import java.nio.file.{Files, Path}
 import scala.annotation.{showAsInfix, tailrec}
@@ -190,6 +190,10 @@ def warCrimes(): Unit =
           a.values.get(i+1) match
             case t: Type => a.values.set(i+1, Type.getType(remapDesc(t.getDescriptor)))
             case _ => Object()
+    addTransformer: (name: String, node: ClassNode) =>
+      if node.superName == "at/petrak/hexcasting/api/casting/mishaps/Mishap" then
+        node.interfaces.add("org/eu/net/pool/hexic/HasCodec")
+        madeChanges()
   catch case e: Throwable =>
     e.printStackTrace()
     panic(s"$e")

@@ -80,7 +80,6 @@ repositories {
     maven { url = uri("https://maven.terraformersmc.com/releases") }
     maven { url = uri("https://mvn.devos.one/snapshots/") }
     maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
-//    flatDir { this. = uri("https://raw.githubusercontent.com/chloetax/hexxy4/HEAD") }
 }
 
 data class Addon(val id: String, val name: String, val version: String, val hexicVersion: String, val description: String) {
@@ -137,11 +136,9 @@ for (addon in listOf(
     }
 }
 
-fun download(url: String): Download {
-    val hash = url.hashCode().toUInt().toString(16)
-    val ext = file(url).extension
-    val outPath = file("$buildDir/$hash.$ext")
-    return tasks.register<Download>("download_$hash") {
+fun download(url: String, name: String = file(url).name): Download {
+    val outPath = file("$buildDir/$name")
+    return tasks.register<Download>("download_${file(name).nameWithoutExtension}") {
         src(url)
         dest(outPath)
         overwrite(true)
@@ -215,42 +212,44 @@ dependencies {
     // To change the versions see the gradle.properties file
     minecraft("com.mojang:minecraft:${project.property("minecraft_version")}")
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
-    modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")
-    modImplementation("net.fabricmc:fabric-language-kotlin:1.13.4+kotlin.2.2.0")
+    include(modImplementation("net.fabricmc:fabric-loader:${project.property("loader_version")}")!!)
+    include(modImplementation("net.fabricmc:fabric-language-kotlin:1.13.4+kotlin.2.2.0")!!)
     include(modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")!!)
 
     val minecraft_version = "1.20.1"
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
-    modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
+    include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")!!)
+    include(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)
     include(modApi("org.eu.net.pool:common-curses:1.1.5-SNAPSHOT")!!)
     include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
     include(api("org.scala-lang:scala-library:2.13.6")!!)
     //modCompileOnly("at.petra-k.hexcasting:hexcasting-common-$minecraft_version:0.11.2+fork-SNAPSHOT")
     include(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2+fork-SNAPSHOT")!!)
-    modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
-    modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
+    include(modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")!!)
+    include(modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")!!)
     include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
-    modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
-    modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
-    modImplementation("maven.modrinth:hexcassettes:1.1.4")
-    modImplementation("maven.modrinth:spasm:0.2.2")
+    include(modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")!!)
+    include(modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")!!)
+    include(modImplementation("maven.modrinth:hexcassettes:1.1.4")!!)
+    include(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
-    modCompileOnly("miyucomics.hexical:hexical:main-SNAPSHOT")
-    modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") }
-    modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") }
-    modImplementation("maven.modrinth:hexcellular:1.0.4")
-    modImplementation("miyucomics.hexpose:hexpose:1.0.0")
-    modImplementation("com.github.ramixin:mixson-fabric:v1.4.0")
+    include(modCompileOnly("miyucomics.hexical:hexical:main-SNAPSHOT")!!)
+    include(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.0-6") { exclude("moreiotas") }!!)
+    include(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0-3-skyevg-unofficial") { exclude("hexal") }!!)
+    include(modImplementation("maven.modrinth:hexcellular:1.0.4")!!)
+    include(modImplementation("maven.modrinth:jsonpatcher:1.0.0-beta.4+mc.1.20.1")!!)
+    include(implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3")!!) // trans maven.modrinth:jsonpatcher
+    include(modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0")!!) // trans maven.modrinth:jsonpatcher
+    include(modImplementation("miyucomics.hexpose:hexpose:1.0.0")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     val cardinal_version = "5.2.3"
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")
-    modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
+    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")!!)
+    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")!!)
+    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")!!)
+    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")!!)
+    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")!!)
+    include(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")!!)
+    include(modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")!!)
     include(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
     include(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
 }
