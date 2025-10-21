@@ -1,7 +1,7 @@
 //noinspection NotImplementedCode
 package org.eu.net.pool.hexic
 
-import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, SpellList}
+import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, SpecialHandler}
@@ -11,7 +11,7 @@ import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, Contin
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapInvalidIota, MishapNotEnoughArgs, MishapOthersName}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.{HexUtils, MediaHelper}
 import at.petrak.hexcasting.common.lib.{HexItems, HexRegistries}
@@ -39,7 +39,7 @@ import miyucomics.hexical.features.dyes.DyeIota
 import miyucomics.hexical.features.hopper
 import miyucomics.hexical.features.hopper.targets.SidedInventoryEndpoint
 import miyucomics.hexical.features.hopper.{HopperDestination, HopperEndpoint, HopperEndpointRegistry, HopperEndpointResolver, HopperSource}
-import miyucomics.hexical.features.pigments.PigmentIota
+import miyucomics.hexical.features.pigments.{PigmentIota, PigmentIotaKt}
 import net.fabricmc.fabric.api.`object`.builder.v1.block.FabricBlockSettings
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings
@@ -113,7 +113,7 @@ import scala.util.boundary.Label
 import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
 import at.petrak.hexcasting.api.item.{IotaHolderItem, MediaHolderItem}
 import at.petrak.hexcasting.api.misc.MediaConstants
-import at.petrak.hexcasting.common.items.magic.ItemMediaHolder
+import at.petrak.hexcasting.common.items.magic.{ItemMediaHolder, ItemPackagedHex}
 import at.petrak.hexcasting.common.msgs.MsgNewSpiralPatternsS2C
 import at.petrak.hexcasting.fabric.cc.adimpl.CCMediaHolder
 import kotlin.jvm.internal.DefaultConstructorMarker
@@ -133,6 +133,7 @@ import java.io.OutputStreamWriter
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.minecraft.block.AbstractBlock
+import org.eu.net.pool.hexic.mixin.ItemStackAccess
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -202,10 +203,16 @@ import :?.given
 object Patterns:
   def mkAction(body: (CastingEnvironment, ServerWorld) ?=> (CastingImage, SpellContinuation) => (OperationResult | CastResult | (CastingImage, SpellContinuation, EvalSound, Seq[OperatorSideEffect]))): Action =
     (env: CastingEnvironment, image: CastingImage, cont: SpellContinuation) =>
-      body(using env, env.getWorld)(image, cont) match
-        case res: OperationResult => res
-        case res: CastResult => OperationResult(res.getNewData, res.getSideEffects, res.getContinuation, res.getSound)
-        case (img, cont, sound, effects) => OperationResult(img, effects, cont, sound)
+      try
+        body(using env, env.getWorld)(image, cont) match
+          case res: OperationResult => res
+          case res: CastResult => OperationResult(res.getNewData, res.getSideEffects, res.getContinuation, res.getSound)
+          case (img, cont, sound, effects) => OperationResult(img, effects, cont, sound)
+      catch
+        case _: NotImplementedError => throw MishapTodo()
+        case e: MatchError =>
+          e.printStackTrace()
+          throw MishapInvalidIota(image.getStack.lastOption.getOrElse(throw MishapNotEnoughArgs(1, 0).tap(_.initCause(e))), 0, "unknown").tap(_.initCause(e))
   def mkConstAction(argc: Int, mediaCost: Long = 0)(body: (CastingEnvironment, ServerWorld) ?=> Seq[Iota] => Seq[Iota]): Action =
     new ConstMediaAction:
       import ConstMediaAction.DefaultImpls as d
@@ -218,8 +225,13 @@ object Patterns:
   def mkLiteral(value: (CastingEnvironment, ServerWorld) ?=> Iota): Action =
     mkConstAction(0): (args: Seq[Iota]) =>
       args :+ value
-  def register(id: Identifier, pattern: HexPattern)(body: Action): Unit =
-    actionRegistry(id) = ActionRegistryEntry(pattern, body)
+  def register(id: Identifier, pattern: => HexPattern)(body: => Action): Unit =
+    boundary:
+      val p = try pattern catch case _: NotImplementedError =>
+        given_Logger.warn(s"No pattern for action $id")
+        boundary.break()
+      lazy val b = try body catch case _: NotImplementedError => throw MishapTodo()
+      actionRegistry(id) = ActionRegistryEntry(p, new Action { export b._ })
 
 inline def unsafe(using u: Unsafe) = u
 val hexXplat: IXplatAbstractions = IXplatAbstractions.INSTANCE
@@ -611,15 +623,18 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
   private def showMedia(tag: String, media: Long, maxMedia: Long) = Text.translatable("hexic.media.finite", Text.translatable(s"hexic.media.$tag"), dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.translatable("hexcasting.tooltip.media", dustAmount(maxMedia)).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.literal(PERCENTAGE.format(100.0 * media / maxMedia)+"%").styled(_.withColor(MediaHelper.mediaBarColor(media, maxMedia))))
   private def dustAmount(media: Long) = Text.literal(DUST_AMOUNT.format(media / MediaConstants.DUST_UNIT.toDouble))
 
-val stringworms =
+class Stringworm extends Item(Stringworm.settings)
+object Stringworm:
   val settings = Item.Settings().maxCount(16)
-  Seq("pure", "action", "hex", "media", "thing").map(_ -> new Item(settings))
 
-object dyedStringworm extends Item(Item.Settings().maxCount(16)):
+val stringworms =
+  Seq("pure", "action", "hex", "media", "thing").map(_ -> new Stringworm)
+
+object dyedStringworm extends Stringworm:
   override def getName(stack: ItemStack): Text =
     stack.getSubNbt("pigment") match
       case null => super.getName(stack)
-      case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName)
+      case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName.getString.replace("Pigment", "Stringworm"))
 
 object Extern:
   def getStringworm(idx: Int) = stringworms(idx)._2
@@ -710,14 +725,32 @@ def init(): Unit =
   Registries.ITEM("stringworm_pigmented") = dyedStringworm
   Registries.ITEM("wizard") = wizard
   //Registries.ITEM("echo") = EchoItem
-  ifModLoaded"hexical${
+  if fabric.isModLoaded("hexical") then
     for
       HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
       ConduitIota <- classNamed("dev.kineticcat.hexportation.fabric.api.casting.iota.ConduitIota")
-      registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint").asInstanceOf[Option[ClassTag[? <: (() => Unit)]]]
+      registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint")
     do
       registerHopperEndpoint.runtimeClass.newInstance().asInstanceOf[() => Unit]()
-  }"
+    Patterns.register("dye_offhand", w"eqdeeqdweeqddqdwwdew"):
+      Patterns.mkAction: (img, cont) =>
+        val stack = img.getStack.asScala
+        stack.lastOption.getOrElse(throw MishapNotEnoughArgs(1, 0)) match
+          case p: PigmentIota =>
+            val info = summon[CastingEnvironment].getHeldItemToOperateOn(!_.isEmpty).pipe(Option(_)).getOrElse(throw MishapBadOffhandItem(null, Text.translatable("text.hexic.pigment_holder_item")))
+            (img.withStack(_.init), cont, HexEvalSounds.SPELL, Seq:
+              OperatorSideEffect.AttemptSpell(
+                new RenderedSpell:
+                  override def cast(env: CastingEnvironment): Unit =
+                    info.stack.getItem match
+                      case h: PigmentHolderItem => h.setPigment(info.stack)(p.getPigment)
+                      case _: Stringworm =>
+                        info.stack.setItem(dyedStringworm)
+                        info.stack.getOrCreateNbt().put("pigment", p.getPigment.serializeToNBT)
+                  override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+                , true, true
+              ))
+          case i => throw MishapInvalidIota.ofType(i, 0, "pigment")
   def mkNbtLiftAction[T: FromIota](lift: T => NbtElement, expected: Identifier) =
     Patterns.mkConstAction(1):
       case Seq(iotaLike[T](x)) => Seq(NbtIota(lift(x)))
@@ -1477,6 +1510,13 @@ extension (c: NbtCompound)
   def apply(k: String): NbtElement | Null = c.get(k)
   def update(k: String, v: NbtElement | Null): Unit = c.put(k, v)
 
+trait PigmentHolderItem:
+  this: Item =>
+  def getPigment(stack: ItemStack): FrozenPigment
+  def setPigment(stack: ItemStack)(pigment: FrozenPigment): Unit
+given Conversion[ItemPackagedHex, PigmentHolderItem] = _.asInstanceOf // by mixin
+given Conversion[ItemStack, ItemStackAccess] = _.asInstanceOf // by mixin
+
 given Conversion[Double, DoubleIota] = DoubleIota(_)
 given Conversion[Int, DoubleIota] = DoubleIota(_)
 given Conversion[DoubleIota, Double] = _.getDouble
@@ -1849,12 +1889,12 @@ object registerHopperEndpoint extends (() => Unit):
           (source, dest) match
             case (None, None) => null
             case (Some(s), None) => new HopperSource:
-              export s.{getItems, withdraw}
+              export s._
             case (None, Some(d)) => new HopperDestination:
-              export d.{deposit, simulateDeposit}
+              export d._
             case (Some(s), Some(d)) => new HopperSource with HopperDestination:
-              export s.{getItems, withdraw}
-              export d.{deposit, simulateDeposit}
+              export s._
+              export d._
         case _ => null
 
 extension [A, B] (p: (A, B))

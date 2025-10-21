@@ -100,7 +100,12 @@ def init(): Unit =
   HotbarRendering.Companion.getEvent.register: () =>
     foldLocalPlayer(HotbarRendering.ALL):
       _.getComponent(PlayerInfoComponent.key).wispMedia.fold(HotbarRendering.ALL)(_ => HotbarRendering.NONE)
-  ColorProviderRegistry.ITEM.register((stack, idx) => FrozenPigment.fromNBT(stack.getSubNbt("pigment")).getColorProvider.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0)), dyedStringworm)
+  ColorProviderRegistry.ITEM.register((stack, idx) => boundary:
+    val nbt = stack.getSubNbt("pigment")
+    if nbt == null then boundary.break(0xFFFFFFFF)
+    val prov = FrozenPigment.fromNBT(nbt).getColorProvider
+    prov.getColor(client.world.getTime + client.getTickDelta, Vec3d.fromPolar(idx * 360/32, 0))
+  , dyedStringworm)
   for i <- 0 until 32 do
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
@@ -156,6 +161,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "metatable" -> "Patchwork Exaltation",
           "murmur" -> "Murmur Reflection",
           "reveal" -> "Greater Reveal",
+          "dye_offhand" -> "Externalize Pigment",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
@@ -183,6 +189,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexic.media.finite", "%s: %s/%s (%s)")
         gen.add("hexic.media.external", "Media")
         gen.add("hexic.media.internal", "Trinkets")
+        gen.add("text.hexic.pigment_holder_item", "an item storing a pigment")
         gen.add(wizard, "Wizard")
         gen.add("hexdoc.hexic.title", "Hexic")
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
