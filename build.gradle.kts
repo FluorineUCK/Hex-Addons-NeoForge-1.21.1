@@ -78,7 +78,7 @@ repositories {
     maven { url = uri("https://maven.terraformersmc.com/") }
     maven { url = uri("https://maven.terraformersmc.com/releases") }
     maven { url = uri("https://mvn.devos.one/snapshots/") }
-    maven { url = uri("https://maven-pool-net-eu-org.ipns.dweb.link/") }
+    maven { url = uri("https://maven.pool.net.eu.org/") }
 }
 
 data class Addon(val id: String, val name: String, val version: String, val hexicVersion: String, val description: String) {
@@ -216,6 +216,7 @@ dependencies {
     include(modImplementation("net.fabricmc:fabric-language-scala:${project.properties["scala_loader_version"]}")!!)
 
     val minecraft_version = "1.20.1"
+    include(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
     include(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")!!)
     include(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)
     include(modApi("org.eu.net.pool:common-curses:1.1.5-SNAPSHOT")!!)
@@ -251,6 +252,8 @@ dependencies {
     include(modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")!!)
     include(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
     include(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
+
+    modRuntimeOnly("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
 }
 
 tasks.processResources {

@@ -120,6 +120,7 @@ import net.minecraft.entity.LivingEntity
 import net.minecraft.sound.SoundCategory
 
 import java.util.function.Predicate
+import scala.quoted.Quotes
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -336,6 +337,7 @@ class PlayerInfoComponent(
   var murmur: Option[String] = None,
   var leftWeave: ItemStack = ItemStack.EMPTY,
   var rightWeave: ItemStack = ItemStack.EMPTY,
+  var chatLines: Seq[Text] = Seq(),
 ) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
     if c.getBoolean("isWisp") then
@@ -350,6 +352,7 @@ class PlayerInfoComponent(
       rightWeave = ItemStack.fromNbt(c.getCompound("shr"))
     else
       rightWeave = ItemStack.EMPTY
+    chatLines = c.getList("chat", NbtElement.COMPOUND_TYPE).map(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, _)).map(Text.Serializer.fromJson).toSeq
 
   override def writeToNbt(c: NbtCompound): Unit =
     wispMedia match
@@ -360,6 +363,7 @@ class PlayerInfoComponent(
         c.putLong("media", media)
     if !leftWeave.isEmpty then c.put("shl", NbtCompound().tap(leftWeave.writeNbt))
     if !rightWeave.isEmpty then c.put("shr", NbtCompound().tap(rightWeave.writeNbt))
+    c.put("chat", NbtList().tap(_.addAll(chatLines.map(Text.Serializer.toJsonTree).map(JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, _)))))
 object PlayerInfoComponent:
   val key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
@@ -555,7 +559,7 @@ def init(): Unit =
         Seq(iota)
       case Seq(x) =>
         throw MishapInvalidIota(x, 0, Text.literal("an ").append(Text.literal("NBT compound").styled(_.withColor(NbtIota.color))))
-  Registry.register(HexRegistries.ARITHMETIC, "nbt": Identifier, {
+  Registry.register(hexXplat.getArithmeticRegistry, "nbt": Identifier, {
     import Arithmetic.*
     given Conversion[NbtIota, NbtElement] = _.data
     given Conversion[NbtElement, NbtIota] = NbtIota(_)
@@ -708,7 +712,7 @@ def init(): Unit =
         ),
     )
   })
-  Registry.register(HexRegistries.ARITHMETIC, "maps": Identifier, {
+  Registry.register(hexXplat.getArithmeticRegistry, "maps": Identifier, {
     import Arithmetic.*
     arith("map",
       ADD -> ((a: MapIota, b: MapIota) => a ++ b),
@@ -731,7 +735,7 @@ def init(): Unit =
       LESS_EQ -> ((a: MapIota, b: MapIota) => b.map containsAll a.map),
     )
   })
-  HexRegistries.ARITHMETIC("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
+  hexXplat.getArithmeticRegistry("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
       .requires(c => c.hasPermissionLevel(2) || (c.getPlayer != null && c.getPlayer.isCreative))
@@ -870,11 +874,11 @@ def init(): Unit =
     Patterns.register("jvm/newinstance_unboxed", jvm"aeeeedw"):
       Patterns.mkConstAction(1):
         case Seq(x@ClassIota()) =>
-          Seq(allocUninitializedInstance[x.T](using x.tag).asInstanceOf[Iota])
+          Seq(uninitialized[x.T](using x.tag).asInstanceOf[Iota])
     Patterns.register("jvm/newinstance_boxed", jvm"dqqqqaw"):
       Patterns.mkConstAction(1):
         case Seq(x@ClassIota()) =>
-          Seq(ObjectIota(allocUninitializedInstance[x.T](using x.tag).asInstanceOf[AnyRef]))
+          Seq(ObjectIota(uninitialized[x.T](using x.tag).asInstanceOf[AnyRef]))
     Patterns.register("malloc", jvm"wwaa"):
       Patterns.mkConstAction(1):
         case Seq(x: DoubleIota) =>
@@ -931,6 +935,18 @@ def init(): Unit =
           case null => throw MishapBadCaster()
           case p: ServerPlayerEntity => p.getComponent(PlayerInfoComponent.key).murmur.fold(NullIota())(StringIota.make)
           case _ => throw MishapBadCaster()
+    Patterns.register("reveal", ne"deqed"):
+      Patterns.mkConstAction(1, 0):
+        case Seq(iota: Iota) =>
+          locally(summon[CastingEnvironment]).getCastingEntity match
+            case null => throw MishapBadCaster()
+            case p: ServerPlayerEntity =>
+              p.getComponent(PlayerInfoComponent.key).chatLines = iota match
+                case s: ListIota => s.getList.map(_.display).toSeq
+                case _ => Seq(iota.display)
+              p.syncComponent(PlayerInfoComponent.key)
+              Seq()
+            case _ => throw MishapBadCaster()
   }"
   SlotAccess.playerInventory.register: (player, slot, stack) =>
     player.getComponent(PlayerInfoComponent.key).wispMedia match
@@ -970,7 +986,9 @@ def init(): Unit =
                 override def getPigment: FrozenPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
               val image = CastingImage(Seq(StringIota.make(text)).asJava, 0, Seq().asJava, false, 0, NbtCompound(), null)
               val instrs = s.getList.asScala.toSeq
-              val view = CastingVM(image, env).queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld)
+              val vm = CastingVM(image, env)
+              val view = vm.queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld)
+              println(view)
               val packet = MsgNewSpiralPatternsS2C(player.getUuid, instrs.collect { case p: PatternIota => p.getPattern }.asJava, 140)
               hexXplat.sendPacketToPlayer(player, packet)
               hexXplat.sendPacketTracking(player, packet)
@@ -1396,7 +1414,7 @@ trait MediaContainerProvider:
   @targetName("hexic$MediaContainerProvider$getMediaContainer")
   def getMediaContainer(c: Context): Option[MediaContainer]
 
-def allocUninitializedInstance[T: ClassTag](using u: Unsafe) = u.allocateInstance(summon[ClassTag[T]].runtimeClass).asInstanceOf[T]
+def uninitialized[T: ClassTag](using u: Unsafe) = u.allocateInstance(summon[ClassTag[T]].runtimeClass).asInstanceOf[T]
 
 private def normalize(obj: Any)(using u: Unsafe): Long =
   if u.arrayIndexScale(classOf[Array[Object]]) == 4 then
