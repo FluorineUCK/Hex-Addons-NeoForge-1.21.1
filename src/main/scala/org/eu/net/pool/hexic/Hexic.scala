@@ -1081,7 +1081,7 @@ def init(): Unit =
             HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
           (vm.getImage, cont, HexEvalSounds.HERMES, Seq())
         case _ => throw MishapBadCaster()
-  Patterns.register("staffcast_factory/lazy", ne"waqqqqqeaqeaeaeaeaeq"):
+  Patterns.register("staffcast_factory/lazy", ne"wwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
         case caster: ServerPlayerEntity =>
@@ -1176,6 +1176,7 @@ def init(): Unit =
       val o = OutputStreamWriter(out)
       for ent <- hexXplat.getActionRegistry.getEntrySet.asScala.toSeq.sortBy(_.getKey.getValue.toString) do
         o.write(s"${ent.getKey.getValue},${ent.getValue.prototype.getStartDir},${ent.getValue.prototype.anglesSignature}\n")
+      o.flush()
     finally
       out.close()
       sys.exit(0)
