@@ -7,19 +7,26 @@ import at.petrak.hexcasting.api.casting.arithmetic.predicates.IotaMultiPredicate
 import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastingEnvironment, OperationResult}
-import at.petrak.hexcasting.api.casting.iota.{Iota, IotaType}
+import at.petrak.hexcasting.api.casting.iota.{BooleanIota, Iota, IotaType}
 import at.petrak.hexcasting.api.casting.math.HexPattern
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota}
+import at.petrak.hexcasting.api.pigment.FrozenPigment
+import at.petrak.hexcasting.common.lib.HexItems
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import com.mojang.serialization.{Codec, DynamicOps}
 import net.fabricmc.fabric.api.event.registry.FabricRegistryBuilder
+import net.minecraft.entity.LivingEntity
+import net.minecraft.entity.effect.{StatusEffectInstance, StatusEffects}
 import net.minecraft.nbt.NbtCompound
 import net.minecraft.registry.entry.RegistryEntry
 import net.minecraft.registry.{Registries, Registry, RegistryKey, SimpleRegistry}
 import net.minecraft.server.world.ServerWorld
-import net.minecraft.util.Identifier
+import net.minecraft.text.{MutableText, Text}
+import net.minecraft.util.{DyeColor, Identifier}
 
 import java.{lang, util}
 import scala.annotation.tailrec
+import scala.compiletime.summonFrom
 import scala.jdk.CollectionConverters.given
 import scala.quoted.*
 import scala.util.chaining.given
@@ -73,7 +80,7 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
                     a.foldLeft('{ true }) { (t, v) =>
                       val ValDef(_, ty, _) = v
                       ty.tpe.asType match
-                        case '[typ] => '{ ${t} && i.hasNext && i.next.isInstanceOf[typ] }
+                        case '[ty] => '{ ${t} && i.hasNext && i.next.isInstanceOf[ty] }
                     }.asExprOf[Boolean]
                   }
                 ):
@@ -85,17 +92,43 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
                       Block(a.zipWithIndex.map { p =>
                         val (v@ValDef(n, ty, _), i) = p
                         ty.tpe.asType match
-                          case '[t] => ValDef.copy(v)(n, ty, Some('{ stack(${Expr(i)}).asInstanceOf[t] }.asTerm))
+                          case '[t] =>
+                            ValDef.copy(v)(n, ty, Some(
+                              '{
+                                args(${Expr(i)}) match
+                                  case value: t => value
+                                  case iota => throw MishapInvalidIota(iota, ${ Expr(a.size - i) }, ${ Expr(ty.tpe.toString) }: String)
+                              }.asTerm
+                            ))
                       }, {
-                        r.tpe.asType match
+                        def coer(r: Term): Term = r.tpe.asType match
+                          case '[Nothing] => '{ throw MishapTodo() }.asTerm
                           case '[Seq[Iota]] => '{ OperationResult(img.withStack(s => s.dropRight(${Expr(a.size)}) ++ ${r.asExprOf[Seq[Iota]]}), util.ArrayList[OperatorSideEffect](), cont, HexEvalSounds.NORMAL_EXECUTE) }.asTerm
-                          case _ => report.errorAndAbort(s"Operator return type ${r.tpe.show} is not statically supported", r.pos)
+                          case '[Iota] => coer('{ Seq(${r.asExprOf[Iota]}) }.asTerm)
+                          case '[Boolean] => coer('{ BooleanIota(${r.asExprOf[Boolean]}) }.asTerm)
+                          case _ =>
+                            report.error(s"Operator return type ${r.tpe.show} is not statically supported", r.pos)
+                            '{ ??? }.asTerm
+                        coer(r)
                       }).asExprOf[OperationResult]
                     }
               }.asTerm)
+            case e => report.errorAndAbort("Operator definitions must be lambdas", e.asExprOf[Any])
         ).toList).asExprOf[Operator]
       }
   }.tap(e => report.info(e.show, name.asTerm.pos))
+
+class MishapTodo extends Mishap:
+  override def accentColor(castingEnvironment: CastingEnvironment, context: Mishap.Context): FrozenPigment =
+    castingEnvironment.getPigment
+  override def errorMessage(castingEnvironment: CastingEnvironment, context: Mishap.Context): Text =
+    t"${context.getName}: Pattern ${context.getName} is not yet implemented."
+  override def execute(castingEnvironment: CastingEnvironment, context: Mishap.Context, list: util.List[Iota]): Unit =
+    castingEnvironment.getCastingEntity match
+      case p: LivingEntity => p.addStatusEffect(StatusEffectInstance(StatusEffects.NAUSEA, duration = 30 * 20, amplifier = 0))
+      case null => ()
+
+extension (c: StringContext) def t(args: Any*): MutableText = Text.translatable(c.parts.mkString("%s"), args *)
 
 trait OperationResultFactory[T]:
   def apply(self: T)(op: OperationResult): OperationResult
