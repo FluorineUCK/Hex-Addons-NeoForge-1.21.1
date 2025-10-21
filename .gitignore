@@ -119,3 +119,7 @@ runs/
 !gradle-wrapper.jar
 .bloop/
 .metals/
+*.egg-info
+/src/main/generated
+__pycache__/
+_site/

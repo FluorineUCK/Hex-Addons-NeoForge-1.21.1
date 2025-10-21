@@ -129,6 +129,8 @@ import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.util.function.Predicate
 import scala.quoted.Quotes
+import java.io.Writer
+import java.io.OutputStreamWriter
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -1137,6 +1139,15 @@ def init(): Unit =
             case _ =>
           case null =>
         case _ =>)
+  for path <- sys.env.get("HEXIC_DUMP_PATTERNS") do
+    val out = Files.newOutputStream(Path.of(path))
+    try
+      val o = OutputStreamWriter(out)
+      for ent <- hexXplat.getActionRegistry.getEntrySet.asScala.toSeq.sortBy(_.getKey.getValue.toString) do
+        o.write(s"${ent.getKey.getValue},${ent.getValue.prototype.getStartDir},${ent.getValue.prototype.anglesSignature}\n")
+    finally
+      out.close()
+      sys.exit(0)
 
 def assume(cond: Boolean, msg: => String = "assumption failed"): Unit = if !cond then panic(msg)
 

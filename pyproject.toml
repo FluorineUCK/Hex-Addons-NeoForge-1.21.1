@@ -1,0 +1,10 @@
+[project]
+name = "hexdoc_hexic"
+version = "0.0.0"
+
+[project.entry-points.hexdoc]
+hexic = "hexdoc_hexic._hooks:HexicPlugin"
+
+[tool.setuptools.packages.find]
+where = ["doc/src"]
+include = ["hexdoc_hexic"]
