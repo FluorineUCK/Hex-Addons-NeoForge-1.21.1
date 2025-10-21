@@ -26,6 +26,7 @@ regex = "{^_pattern_regex}"
 missing = ["hexic:preferred_mediaweave", "minecraft:chest"]
 
 [template]
+icon = "../src/main/resources/assets/hexic/icon.png"
 include = ["hexic", "hexcasting", "hexdoc"]
 
 [template.args]
