@@ -8,12 +8,14 @@ from hexdoc.plugin import (
 import hexdoc_hexic
 from importlib.resources import Package
 from typing_extensions import override
+from .__gradle_version__ import *
+from .__version__ import *
 
 class HexicModPlugin(ModPluginWithBook):
     modid = "hexic"
-    full_version = "1.3.0"
-    mod_version = "1.3.0"
-    plugin_version = "1.1"
+    full_version = FULL_VERSION
+    mod_version = MOD_VERSION
+    plugin_version = PY_VERSION
     def resource_dirs(self):
         from ._export import generated
         return generated
