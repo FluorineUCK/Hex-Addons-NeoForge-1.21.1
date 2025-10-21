@@ -12,6 +12,7 @@ resource_dirs = [
     { modid="moreiotas" },
     { modid="hexal" },
 ]
+export_dir = "src/hexdoc_hexic/_export/generated"
 
 [extra.hexcasting]
 # NOTE: "!Raw" means "don't apply variable interpolation to this value"
