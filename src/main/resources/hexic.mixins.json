@@ -5,7 +5,9 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "IotaMixin",
-    "IotaTypeMixin"
+    "IotaTypeMixin",
+    "OpTickMixin",
+    "OpTickMixin$SpellMixin"
   ],
   "injectors": {
     "defaultRequire": 1

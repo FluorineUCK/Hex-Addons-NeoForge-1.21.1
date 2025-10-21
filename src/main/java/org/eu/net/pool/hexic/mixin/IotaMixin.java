@@ -3,6 +3,7 @@ package org.eu.net.pool.hexic.mixin;
 import at.petrak.hexcasting.api.casting.iota.Iota;
 import at.petrak.hexcasting.api.casting.iota.IotaType;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
 import net.minecraft.util.Identifier;
 import org.eu.net.pool.hexic.IotaDuck;
 import org.eu.net.pool.hexic.IotaTypeHint;
@@ -17,10 +18,10 @@ import scala.collection.mutable.Map;
 @Mixin(value = Iota.class, remap = false)
 public class IotaMixin implements IotaDuck {
     @Shadow @Mutable @Final @NotNull protected IotaType<?> type;
-    @Unique private Map<Identifier, NbtCompound> hexic$annotations;
+    @Unique private Map<Identifier, NbtElement> hexic$annotations;
 
     @Override
-    public Map<Identifier, NbtCompound> hexic$getAnnotations() {
+    public Map<Identifier, NbtElement> hexic$getAnnotations() {
         if (hexic$annotations == null) hexic$annotations = new HashMap<>();
         return hexic$annotations;
     }
