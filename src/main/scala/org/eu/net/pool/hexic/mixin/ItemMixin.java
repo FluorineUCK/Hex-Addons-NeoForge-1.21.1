@@ -1,5 +1,6 @@
 package org.eu.net.pool.hexic.mixin;
 
+import at.petrak.hexcasting.api.casting.eval.vm.CastingVM;
 import at.petrak.hexcasting.api.casting.iota.GarbageIota;
 import at.petrak.hexcasting.api.casting.iota.IotaType;
 import at.petrak.hexcasting.api.casting.iota.ListIota;
@@ -54,13 +55,18 @@ public class ItemMixin {
         if (nbt == null) return;
         NbtList patterns = nbt.getList("hexic:memory", NbtElement.COMPOUND_TYPE);
         if (patterns.isEmpty() || world.isClient || !(world instanceof ServerWorld serverWorld && user instanceof ServerPlayerEntity serverPlayer)) return;
-        IXplatAbstractions.INSTANCE.getStaffcastVM(serverPlayer, hand).queueExecuteAndWrapIotas(patterns.stream().map(e -> e instanceof NbtCompound c ? IotaType.deserializeIota(c, serverWorld) : new GarbageIota()).toList(), serverWorld);
+        CastingVM staffcast = IXplatAbstractions.INSTANCE.getStaffcastVM(serverPlayer, hand);
         stack.decrement(1);
         NbtCompound newNbt = nbt.copy();
         newNbt.remove("hexic:memory");
         ItemStack newStack = new ItemStack(ECHO_SHARD);
         if (!newNbt.isEmpty()) newStack.setNbt(newNbt);
-        user.getInventory().offerOrDrop(newStack);
-        cir.setReturnValue(TypedActionResult.consume(stack));
+        try {
+            staffcast.queueExecuteAndWrapIotas(patterns.stream().map(e -> e instanceof NbtCompound c ? IotaType.deserialize(c, serverWorld) : new GarbageIota()).toList(), serverWorld);
+            IXplatAbstractions.INSTANCE.setStaffcastImage(serverPlayer, staffcast.getImage());
+            cir.setReturnValue(TypedActionResult.consume(stack));
+        } finally {
+            user.getInventory().offerOrDrop(newStack);
+        }
     }
 }
