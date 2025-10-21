@@ -198,6 +198,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
         gen.add("itemGroup.hexic.group", "Hexic")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
+        gen.add("text.hexic.or_map", "%s or map")
 
         for (color, item) <- Mediaweave.colors do
           gen.add(item, s"${color.humanName} Mediaweave")

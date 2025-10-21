@@ -759,6 +759,13 @@ private [hexic] object Extern:
           original
         catch case e: MishapInvalidIota =>
           throw MishapInvalidIota(e.getPerpetrator, e.getReverseIdx, t"${e.getExpected} or writer")
+  def splat(original: (args: util.List[Iota], env: CastingEnvironment) => util.List[Iota])(args: util.List[Iota], env: CastingEnvironment): util.List[Iota] =
+    try
+      original(args, env)
+    catch case e: MishapInvalidIota =>
+      args.last match
+        case m: MapIota => m.toList
+        case _ => throw MishapInvalidIota(e.getPerpetrator, e.getReverseIdx, Text.translatable("text.hexic.or_map", e.getExpected)).initCause(e);
 
 val _ =
   Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
@@ -2156,6 +2163,7 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map())(using val world: 
       else
         m += (k -> v)
   ) pipe (_.toMap) pipe (new MapIota(_))
+  def toList: util.List[Iota] = map.flatMap((k, v) => Seq(k: Iota, v: Iota)).toSeq
   override def isTruthy: Boolean = map.nonEmpty
   override def toleratesOther(iota: Iota): Boolean = iota match
     case m: MapIota => map == m.map
