@@ -20,7 +20,7 @@ export_dir = "src/hexdoc_hexic/_export/generated"
 _pattern_regex = { "!Raw"='hexic:(?P<name>.+),(?P<startdir>\w+),(?P<signature>\w+)' }
 
 [[extra.hexcasting.pattern_stubs]]
-path = "../build/patterns.csv"
+path = "../build/datagen/patterns.csv"
 regex = "{^_pattern_regex}"
 
 [textures]
