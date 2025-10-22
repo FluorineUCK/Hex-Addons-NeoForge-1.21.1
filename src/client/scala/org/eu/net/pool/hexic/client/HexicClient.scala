@@ -2,6 +2,7 @@ package org.eu.net.pool.hexic
 package client
 
 import at.petrak.hexcasting.api.item.PigmentItem
+import at.petrak.hexcasting.api.mod.HexTags
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonObject}
@@ -257,6 +258,7 @@ def datagen(gen: FabricDataGenerator): Unit =
     new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
         getOrCreateTagBuilder(Mediaweave.tag).add(Mediaweave.colors.values.toSeq*)
+        getOrCreateTagBuilder(HexTags.Items.STAVES).add(Pen.instances.values.toSeq*)
 
 object inventory_??? extends Inventory:
   override def size(): Int = ???
