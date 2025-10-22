@@ -333,7 +333,7 @@ tasks.processResources {
             entrypoint("org.eu.net.pool.hexic.Hexic\$package::init")
             entrypoint("org.eu.net.pool.hexic.client.HexicClient\$package::init", Environment.Client)
             entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client.HexicClient\$package::datagen")
-            entrypoint("mm:early-risers", "org.eu.net.pool.hexic.EarlyRiser\$package::warCrimes")
+            entrypoint("mm:early_risers", "org.eu.net.pool.hexic.EarlyRiser\$package::warCrimes")
             entrypoint("cardinal-components", "org.eu.net.pool.hexic.ComponentInit")
             mixins("hexic.mixins.json")
             mixins("hexic.client.mixins.json", Environment.Client)
