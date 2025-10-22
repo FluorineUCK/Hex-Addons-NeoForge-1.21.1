@@ -37,13 +37,9 @@ public class ItemMixin {
     void appendTooltip(ItemStack stack, @Nullable World world, List<Text> tooltip, TooltipContext context, CallbackInfo ci) {
         if ((Object) this != ECHO_SHARD) return; {
             NbtCompound tag = stack.getNbt();
-            if (tag == null) return; {
-                NbtElement patterns = tag.get("hexic:memory");
-                MutableText text = (MutableText) ListIota.TYPE.display(patterns);
-                TranslatableTextContent content = (TranslatableTextContent) text.getContent();
-                tooltip.add(Text.literal("Memorized this hex:").styled(s -> s.withColor(0x29dfeb)));
-                tooltip.add((Text) content.getArgs()[0]);
-            }
+            if (tag == null) return;
+            if (tag.contains("hexic:memory", NbtElement.LIST_TYPE))
+                tooltip.add(Text.translatable("hexic.spell_memory").styled(s -> s.withColor(0xfc77be)));
         }
     }
 

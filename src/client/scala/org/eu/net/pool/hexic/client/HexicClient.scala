@@ -211,6 +211,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexic.media.finite", "%s: %s/%s (%s)")
         gen.add("hexic.media.external", "Media")
         gen.add("hexic.media.internal", "Trinkets")
+        gen.add("hexic.spell_memory", "Hex memorized")
         gen.add("text.hexic.pigment_holder_item", "an item storing a pigment")
         gen.add(wizard, "Wizard")
         gen.add("hexdoc.hexic.title", "Hexic")
