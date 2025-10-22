@@ -1,8 +1,10 @@
 package org.eu.net.pool.hexic
 package client
 
+import at.petrak.hexcasting.api.item.PigmentItem
 import at.petrak.hexcasting.api.pigment.FrozenPigment
-import com.google.gson.JsonObject
+import com.google.gson.reflect.TypeToken
+import com.google.gson.{Gson, JsonObject}
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry
@@ -33,7 +35,9 @@ import org.eu.net.pool.common_curses.{HotbarRendering, SlotAccess, TextManipulat
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.hexic.mixin.client.ChatScreenAccess
 
+import java.io.{InputStreamReader, Reader}
 import java.util.function.Consumer
+import scala.collection.JavaConverters.mapAsScalaMapConverter
 import scala.language.experimental.{macros, saferExceptions}
 import scala.util.boundary
 import scala.util.chaining.scalaUtilChainingOps
@@ -204,7 +208,10 @@ def datagen(gen: FabricDataGenerator): Unit =
             case 6 => s"${item.color.humanName} Media Pouch"
             case 12 => s"Large ${item.color.humanName} Media Pouch"
             case _ => s"How Did You Get This ${item.color.humanName} Media Pouch")
-        gen.add(dyedStringworm, "Shimmering %s")
+        val hexLang = Gson().fromJson(InputStreamReader(getClass.getResourceAsStream("/assets/hexcasting/lang/en_us.json")), new TypeToken[java.util.Map[String, String]]() {}).asScala
+        Registries.ITEM.forEach:
+          case p: PigmentItem => gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
+          case e => println(e)
         gen.add("tag.item.hexic.mediaweaves", "Mediaweave")
         gen.add("hexic.media_bundle.items", "%s/%s")
         gen.add("hexic.media.infinite", "%s: %s")
