@@ -731,7 +731,7 @@ object dyedStringworm extends Stringworm:
   override def getName(stack: ItemStack): Text =
     stack.getSubNbt("pigment") match
       case null => super.getName(stack)
-      case n => Text.translatable(getTranslationKey, FrozenPigment.fromNBT(n).item.getName.getString.replace("Pigment", "Stringworm"))
+      case n => Text.translatable("item.hexic.stringworm." + FrozenPigment.fromNBT(n).item.getTranslationKey)
 
 private [hexic] object Extern:
   private [hexic] def getStringworm(idx: Int) = stringworms(Stringworm.flavors(idx))
