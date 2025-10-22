@@ -135,8 +135,8 @@ def datagen(gen: FabricDataGenerator): Unit =
             j.addProperty("parent", "minecraft:item/generated")
             j.add("textures", JsonObject().tap: j =>
               j.addProperty("layer0", "hexic:item/pen_back")
-              j.addProperty("layer1", "hexic:item/pen_cover")
-              j.addProperty("layer2", "hexic:item/pen_overlay")
+              j.addProperty("layer1", "hexic:item/pen_overlay")
+              j.addProperty("layer2", "hexic:item/pen_cover")
             )
           )
         gen.writer.accept(ModelIds.getItemModelId(dyedStringworm), () => JsonObject().tap: j =>
