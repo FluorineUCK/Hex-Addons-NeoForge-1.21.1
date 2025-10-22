@@ -1,6 +1,6 @@
 package org.eu.net.pool.hexic
 
-import com.chocohead.mm.api.ClassTinkerers
+import com.chocohead.mm.api.{ClassTinkerers, EnumAdder}
 import com.google.common.base.Charsets
 
 import java.lang.instrument.Instrumentation
@@ -9,6 +9,7 @@ import net.bytebuddy.agent.ByteBuddyAgent.AttachmentProvider
 import net.bytebuddy.agent.ByteBuddyAgent.AttachmentProvider.Accessor
 import net.minecraft.Bootstrap
 import net.minecraft.item.Item
+import net.minecraft.util.DyeColor
 import org.objectweb.asm.tree.{ClassNode, FieldInsnNode, InsnList, InsnNode, InvokeDynamicInsnNode, LdcInsnNode, MethodInsnNode, MethodNode, MultiANewArrayInsnNode, TypeInsnNode}
 
 import java.lang.instrument.ClassFileTransformer
@@ -152,11 +153,14 @@ extension (x: String)
 def remapDesc(desc: String) = transformedClasses.get(desc).fold(transformedClasses.foldLeft(desc):
   case (desc, (from, TransformedClass(to, _, _))) => desc.replace(s"L$from;", s"L$to;"))(_.newName)
 
+extension (e: EnumAdder) inline def generateAppropriateColors() = ${generateAppropriateColors_impl('e)}
+
 def warCrimes(): Unit =
   try
     ClassTinkerers
       .enumBuilder("at.petrak.hexcasting.api.casting.eval.ResolvedPatternType", Integer.TYPE, Integer.TYPE, java.lang.Boolean.TYPE)
       .addEnum("HEXIC$ECHO_SHARD_ABSORBED", 0x0a5060: Integer, 0x29dfeb: Integer, java.lang.Boolean.TRUE)
+      .generateAppropriateColors()
       .build()
     println(s"Class remappings: $transformedClasses")
     for (k, v) <- transformedClasses do
