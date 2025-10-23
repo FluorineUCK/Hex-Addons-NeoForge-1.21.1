@@ -181,6 +181,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "rotate" -> "Ferris Distillation",
           "take" -> "Retention Distillation",
           "drop" -> "Rejection Distillation",
+          "where" -> "Deductive Purification",
           "whatthefuck" -> "Suffering",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (klass, name) <- Vector(
