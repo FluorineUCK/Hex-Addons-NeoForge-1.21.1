@@ -4,7 +4,7 @@ package org.eu.net.pool.hexic
 import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
-import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, SpecialHandler}
+import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler}
 import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, SpellContinuation}
@@ -223,6 +223,9 @@ object Patterns:
       args :+ value
   def register(id: Identifier, pattern: HexPattern)(body: Action): Unit =
     actionRegistry(id) = ActionRegistryEntry(pattern, body)
+  def arithmetic(id: Identifier, pattern: HexPattern): Unit =
+    Patterns.register(id, pattern):
+      OperationAction(pattern)
 
 inline def unsafe(using u: Unsafe) = u
 val hexXplat: IXplatAbstractions = IXplatAbstractions.INSTANCE
@@ -812,6 +815,8 @@ lazy val itemGroup = FabricItemGroup.builder()
       entries.add(stringworms(f))
   .build()
 
+val goodModulo = nw"eddwaaq"
+
 def init(): Unit =
   given_Logger.info:
     val possible = Seq(
@@ -822,7 +827,7 @@ def init(): Unit =
       "and the ASM stared back.",
       "'put everything in one file', they said",
       "hey did I tell you about the two secret slots in the player preview?",
-      "see line 818 for more information",
+      "see line 823 for more information",
       "no, you cannot flay sheep.",
       "filled with undocumented features! no do not open the bug tracker that's supposed to do that",
       "i bet your game is about to crash",
@@ -957,6 +962,11 @@ def init(): Unit =
         case _ => mishap
   Patterns.register("tripwire", w"edewqwaqede"):
     Patterns.mkLiteral(TripwireIota)
+  Patterns.arithmetic("modulo", goodModulo)
+  Registry.register(hexXplat.getArithmeticRegistry, "goodModulo": Identifier, arith("goodModulo",
+    goodModulo -> ((x: DoubleIota, y: DoubleIota) => Seq(DoubleIota((x.getDouble % y.getDouble + y.getDouble) % y.getDouble))),
+    // TODO: vectors
+  ))
   Patterns.register("spellmind/save", e"aqqqqqeawqwqwqwqwqweawwqwwqwwqwwqwwqwweawwwqwwwqwwwqwwwqwwwqwww"):
     Patterns.mkAction: (img, cont) =>
       ???
