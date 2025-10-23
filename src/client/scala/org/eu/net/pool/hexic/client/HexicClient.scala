@@ -181,7 +181,9 @@ def datagen(gen: FabricDataGenerator): Unit =
           "rotate" -> "Ferris Distillation",
           "take" -> "Retention Distillation",
           "drop" -> "Rejection Distillation",
+          "where" -> "Deductive Purification",
           "whatthefuck" -> "Suffering",
+          "modulo" -> "Modulus Distillation II",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (klass, name) <- Vector(
           "int_or_list" -> "§aint§r or §5[§aint§5]§r",
@@ -228,13 +230,26 @@ def datagen(gen: FabricDataGenerator): Unit =
       override def generate(consumer: Consumer[RecipeJsonProvider]): Unit =
         for case item@MediaBundle(color, 6) <- MediaBundle.items do
           ShapedRecipeJsonBuilder(RecipeCategory.TOOLS, item, 1)
-            .group(" s ")
-            .group("waw")
-            .group(" w ")
+            .pattern(" s ")
+            .pattern("waw")
+            .pattern(" w ")
+            .group("hexic:media_pouch")
             .input('s', Items.STRING)
             .input('w', Mediaweave.colors(color))
             .input('a', Items.AMETHYST_SHARD)
             .criterion("recipe", InventoryChangedCriterion.Conditions.items(Mediaweave.colors(color)))
+            .offerTo(consumer, Registries.ITEM.getId(item))
+        for case (color, item) <- Pen.instances do
+          ShapedRecipeJsonBuilder(RecipeCategory.TOOLS, item, 1)
+            .pattern("w")
+            .pattern("a")
+            .pattern("i")
+            .group("hexic:pen")
+            .input('i', Items.GOLD_NUGGET)
+            .input('w', Mediaweave.colors(color))
+            .input('a', Items.AMETHYST_SHARD)
+            .criterion("recipe", InventoryChangedCriterion.Conditions.items(Mediaweave.colors(color)))
+            .offerTo(consumer, Registries.ITEM.getId(item))
   pack.addProvider:
     new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
