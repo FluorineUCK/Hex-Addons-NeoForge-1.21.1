@@ -182,6 +182,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "take" -> "Retention Distillation",
           "drop" -> "Rejection Distillation",
           "whatthefuck" -> "Suffering",
+          "modulo" -> "Modulus Distillation II",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (klass, name) <- Vector(
           "int_or_list" -> "§aint§r or §5[§aint§5]§r",

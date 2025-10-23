@@ -815,7 +815,7 @@ lazy val itemGroup = FabricItemGroup.builder()
       entries.add(stringworms(f))
   .build()
 
-val goodModulo = nw"eddwaaq"
+val goodModulo = ne"daawdda"
 
 def init(): Unit =
   given_Logger.info:
