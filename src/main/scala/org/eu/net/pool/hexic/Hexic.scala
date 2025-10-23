@@ -937,6 +937,24 @@ def init(): Unit =
   Patterns.register("nbt/serialize", nw"edwaq"):
     Patterns.mkConstAction(1):
       case Seq(x: Iota) => Seq(IotaType.serialize(x))
+  Patterns.register("where", nw"qaeaqwdd"):
+    Patterns.mkConstAction(1): i =>
+      val Seq(x) = i
+      def mishap = throw MishapInvalidIota.ofType(x, 0, "list_int_or_bool")
+      x match
+        case x: ListIota =>
+          Seq(ListIota(
+            x.getList.zipWithIndex.toSeq.flatMap:
+              case (x: BooleanIota, i) =>
+                if x.getBool then
+                  Seq(DoubleIota(i))
+                else
+                  Seq()
+              case (x: DoubleIota, i) =>
+                Iterator continually DoubleIota(i) take iotaInt(x, mishap)
+              case _ => mishap
+          ))
+        case _ => mishap
   Patterns.register("tripwire", w"edewqwaqede"):
     Patterns.mkLiteral(TripwireIota)
   Patterns.register("spellmind/save", e"aqqqqqeawqwqwqwqwqweawwqwwqwwqwwqwwqwweawwwqwwwqwwwqwwwqwwwqwww"):
