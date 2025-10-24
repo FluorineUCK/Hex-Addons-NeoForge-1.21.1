@@ -7,5 +7,5 @@ $pages = arrays.insert($pages, 19, {
   anchor: "hexic:modulo",
   input: "num, num",
   output: "num",
-  text: "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1."
+  text: "book.hexic.page.modulo"
 });

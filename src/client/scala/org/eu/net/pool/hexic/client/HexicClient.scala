@@ -225,6 +225,9 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add(wizard, "Wizard")
         gen.add("hexdoc.hexic.title", "Hexic")
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
+        gen.add("book.hexic.page.dye_offhand", "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.")
+        gen.add("book.hexic.page.modulo", "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.")
+        gen.add("book.hexic.page.murmur", "Adds the phrase on the $(o)tip of my tongue/$ to the stack, regardless of whether I intend to say it.")
   pack.addProvider:
     new FabricRecipeProvider(_):
       override def generate(consumer: Consumer[RecipeJsonProvider]): Unit =

@@ -7,5 +7,5 @@ $pages = arrays.push($pages, {
   anchor: "hexic:dye_offhand",
   input: "pigment",
   output: "",
-  text: "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment."
+  text: "book.hexic.page.dye_offhand"
 });

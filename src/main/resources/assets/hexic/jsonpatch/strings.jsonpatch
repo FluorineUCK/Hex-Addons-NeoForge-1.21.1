@@ -7,5 +7,5 @@ $pages = arrays.insert($pages, 11, {
   anchor: "hexic:murmur",
   input: "",
   output: "str",
-  text: "Adds the phrase on the $(o)tip of my tongue/$ to the stack, regardless of whether I intend to say it."
+  text: "book.hexic.page.murmur"
 });
