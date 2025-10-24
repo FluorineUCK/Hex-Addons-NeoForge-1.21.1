@@ -5,10 +5,7 @@ import net.minecraft.item.Item;
 import net.minecraft.registry.SimpleDefaultedRegistry;
 import net.minecraft.util.DyeColor;
 import net.minecraft.util.Identifier;
-import org.eu.net.pool.hexic.Extern;
-import org.eu.net.pool.hexic.Mediaweave;
-import org.eu.net.pool.hexic.Mediaweave$;
-import org.eu.net.pool.hexic.MediaBundle;
+import org.eu.net.pool.hexic.*;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -32,6 +29,9 @@ public class SimpleDefaultedRegistryMixin {
     private MediaBundle hexic$preferredBundle(int size) {
         return MediaBundle.apply(hexic$preferred(), size);
     }
+    private Pen hexic$preferredPen() {
+        return Pen.apply(hexic$preferred());
+    }
 
     private Item hexic$preferredStringworm() {
         long n = MinecraftClient.getInstance().getSession().getUuidOrNull().getLeastSignificantBits();
@@ -48,6 +48,7 @@ public class SimpleDefaultedRegistryMixin {
         if (par1 != null && par1.getNamespace().equals("hexic") && par1.getPath().equals("small_preferred_bundle")) cir.setReturnValue(hexic$preferredBundle(6));
         if (par1 != null && par1.getNamespace().equals("hexic") && par1.getPath().equals("large_preferred_bundle")) cir.setReturnValue(hexic$preferredBundle(12));
         if (par1 != null && par1.getNamespace().equals("hexic") && par1.getPath().equals("preferred_stringworm")) cir.setReturnValue(hexic$preferredStringworm());
+        if (par1 != null && par1.getNamespace().equals("hexic") && par1.getPath().equals("preferred_pen")) cir.setReturnValue(hexic$preferredPen());
     }
 
     @Inject(method = "getOrEmpty", at = @At("HEAD"), cancellable = true)
@@ -60,5 +61,7 @@ public class SimpleDefaultedRegistryMixin {
             cir.setReturnValue(Optional.of(hexic$preferredBundle(12)));
         if (id != null && id.getNamespace().equals("hexic") && id.getPath().equals("preferred_stringworm"))
             cir.setReturnValue(Optional.of(hexic$preferredStringworm()));
+        if (id != null && id.getNamespace().equals("hexic") && id.getPath().equals("preferred_pen"))
+            cir.setReturnValue(Optional.of(hexic$preferredPen()));
     }
 }
