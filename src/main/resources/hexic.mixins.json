@@ -1,0 +1,34 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.eu.net.pool.hexic.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "ActionRegistryEntryMixin",
+    "EntityMixin",
+    "HopperEndpointRegistryMixin",
+    "ItemMixin",
+    "ItemPackagedHexMixin",
+    "ItemStackAccess",
+    "ItemStackMixin",
+    "MediafiedItemManagerIndexMixin",
+    "OpEdifySaplingMixin",
+    "OpEdifySaplingMixin$Spell",
+    "OpObservePropertyMixin",
+    "OpSetPropertyMixin",
+    "OpTickMixin",
+    "OpTickMixin$SpellMixin",
+    "PacketByteBufMixin",
+    "PatternIotaMixin",
+    "PhantomEntityMixin",
+    "PlayerInventoryMixin",
+    "SimpleRegistryMixin",
+    "StaffCastEnvMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
