@@ -729,6 +729,8 @@ object MediaBundle:
   private val DUST_AMOUNT = new DecimalFormat("###,###.##")
 val wizard = Item(Item.Settings().rarity(Rarity.EPIC).maxCount(1))
 
+val aLotOfMedia = (200000 /* max phial size */ * 6 /* phials per small pouch */ * 4 /* small pouches per large pouch */ * (36 /* inventory slots */ + 4 /* armor slots */ + 2 /* offhands */) + 20 /* healthcasting */) * MediaConstants.DUST_UNIT
+
 trait HasCodec:
   def getCodec: Codec[? <: this.type]
 given [T <: Mishap] => Conversion[T, HasCodec] = _.asInstanceOf
