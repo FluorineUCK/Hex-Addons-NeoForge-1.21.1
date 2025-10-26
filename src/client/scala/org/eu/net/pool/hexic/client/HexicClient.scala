@@ -117,6 +117,12 @@ def init(): Unit =
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
       json.ItemModelGenerator.LAYERS.add(k)
+  ClientPlayNetworking.registerGlobalReceiver("msg", (_, handler, buf, _) =>
+    val s = buf.readString
+    if s.startsWith("/") then
+      handler.sendChatCommand(s)
+    else
+      handler.sendChatMessage(s))
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
 

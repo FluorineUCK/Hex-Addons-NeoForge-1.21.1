@@ -6,9 +6,10 @@ import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler}
 import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
+import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect.DoMishap
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, SpellContinuation}
-import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult, ResolvedPattern}
+import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapNotEnoughArgs, MishapOthersName}
@@ -102,7 +103,7 @@ import scala.util.{NotGiven, Random, TupledFunction, boundary}
 import scala.util.chaining.given
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.PlayChannelHandler
-import net.fabricmc.fabric.api.networking.v1.{FabricPacket, PacketSender, PacketType, ServerPlayNetworking}
+import net.fabricmc.fabric.api.networking.v1.{FabricPacket, PacketByteBufs, PacketSender, PacketType, ServerPlayNetworking}
 import net.minecraft.network.PacketByteBuf
 import net.minecraft.util.math.Direction.Axis
 
@@ -1487,7 +1488,15 @@ def init(): Unit =
               val instrs = s.getList.asScala.toSeq
               val vm = CastingVM(image, env)
               val view = vm.queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld)
-              println(view)
+              if view.getResolutionType == ResolvedPatternType.EVALUATED then
+                vm.getImage.getStack.lastOption match
+                  case Some(s: StringIota) =>
+                    if s.getString != "" then
+                      ServerPlayNetworking.send(player, "msg", PacketByteBufs.create.tap(_.writeString(s.getString)))
+                  case Some(_: NullIota) | None =>
+                  case Some(x) =>
+                    ServerPlayNetworking.send(player, "msg", PacketByteBufs.create.tap(_.writeString(x.display.getString)))
+                    vm.performSideEffects(Seq(DoMishap(MishapInvalidIota(x, 0, "string"), Mishap.Context(null, null))))
               val packet = MsgNewSpiralPatternsS2C(player.getUuid, instrs.collect { case p: PatternIota => p.getPattern }.asJava, 140)
               hexXplat.sendPacketToPlayer(player, packet)
               hexXplat.sendPacketTracking(player, packet)
