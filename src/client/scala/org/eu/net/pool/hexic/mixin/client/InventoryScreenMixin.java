@@ -46,7 +46,7 @@ public abstract class InventoryScreenMixin extends AbstractInventoryScreen<Scree
             var held = handler.getCursorStack();
             if (lx < 0) {
                 var right = c.rightWeave();
-                if (right.isEmpty() && !held.isEmpty()) {
+                if (right.isEmpty() && !held.isEmpty() && held.getItem() instanceof org.eu.net.pool.hexic.Mediaweave) {
                     c.rightWeave_$eq(held);
                     handler.setCursorStack(ItemStack.EMPTY);
                     flags |= 3;
@@ -57,7 +57,7 @@ public abstract class InventoryScreenMixin extends AbstractInventoryScreen<Scree
                 }
             } else {
                 var left = c.leftWeave();
-                if (left.isEmpty() && !held.isEmpty()) {
+                if (left.isEmpty() && !held.isEmpty() && held.getItem() instanceof org.eu.net.pool.hexic.Mediaweave) {
                     c.leftWeave_$eq(held);
                     handler.setCursorStack(ItemStack.EMPTY);
                     flags |= 7;

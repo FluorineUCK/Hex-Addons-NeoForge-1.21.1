@@ -2,6 +2,7 @@ package org.eu.net.pool.hexic
 package client
 
 import at.petrak.hexcasting.api.item.PigmentItem
+import at.petrak.hexcasting.api.mod.HexTags
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonObject}
@@ -63,7 +64,10 @@ object Hooks:
       val buf = PacketByteBufs.create()
       buf.writeBoolean(currentMurmur.isDefined)
       currentMurmur.foreach(buf.writeString)
-      ClientPlayNetworking.send("murmur", buf)
+      try
+        ClientPlayNetworking.send("murmur", buf)
+      catch
+        case _: IllegalStateException =>
   def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
     foldLocalPlayer(original): p =>
       val c = p.getComponent(PlayerInfoComponent.key)
@@ -117,6 +121,12 @@ def init(): Unit =
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
       json.ItemModelGenerator.LAYERS.add(k)
+  ClientPlayNetworking.registerGlobalReceiver("msg", (_, handler, buf, _) =>
+    val s = buf.readString
+    if s.startsWith("/") then
+      handler.sendChatCommand(s)
+    else
+      handler.sendChatMessage(s))
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
 
@@ -135,8 +145,8 @@ def datagen(gen: FabricDataGenerator): Unit =
             j.addProperty("parent", "minecraft:item/generated")
             j.add("textures", JsonObject().tap: j =>
               j.addProperty("layer0", "hexic:item/pen_back")
-              j.addProperty("layer1", "hexic:item/pen_cover")
-              j.addProperty("layer2", "hexic:item/pen_overlay")
+              j.addProperty("layer1", "hexic:item/pen_overlay")
+              j.addProperty("layer2", "hexic:item/pen_cover")
             )
           )
         gen.writer.accept(ModelIds.getItemModelId(dyedStringworm), () => JsonObject().tap: j =>
@@ -160,8 +170,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           "nbt/literal/collection" -> "Secretary's Reflection: Collection",
           "nbt/literal/list" -> "Secretary's Reflection: Vacant List",
           "nbt/literal/array1" -> "Secretary's Reflection: Vacant Byte Array",
-          "nbt/literal/array2" -> "Secretary's Reflection: Vacant Short Array",
-          "nbt/literal/array4" -> "Secretary's Reflection: Vacant Integer Array",
+          "nbt/literal/array2" -> "Secretary's Reflection: Vacant Integer Array",
+          "nbt/literal/array4" -> "Secretary's Reflection: Vacant Long Array",
           "empty_map" -> "Vacant Reflection: Map",
           "nbt/serialize" -> "Exporter's Purification",
           "tripwire" -> "Tripwire Reflection",
@@ -198,6 +208,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
         gen.add("itemGroup.hexic.group", "Hexic")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
+        gen.add("text.hexic.or_map", "%s or map")
 
         for (color, item) <- Mediaweave.colors do
           gen.add(item, s"${color.humanName} Mediaweave")
@@ -257,6 +268,7 @@ def datagen(gen: FabricDataGenerator): Unit =
     new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
         getOrCreateTagBuilder(Mediaweave.tag).add(Mediaweave.colors.values.toSeq*)
+        getOrCreateTagBuilder(HexTags.Items.STAVES).add(Pen.instances.values.toSeq*)
 
 object inventory_??? extends Inventory:
   override def size(): Int = ???
