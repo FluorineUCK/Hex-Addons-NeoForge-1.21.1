@@ -63,7 +63,10 @@ object Hooks:
       val buf = PacketByteBufs.create()
       buf.writeBoolean(currentMurmur.isDefined)
       currentMurmur.foreach(buf.writeString)
-      ClientPlayNetworking.send("murmur", buf)
+      try
+        ClientPlayNetworking.send("murmur", buf)
+      catch
+        case _: IllegalStateException =>
   def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
     foldLocalPlayer(original): p =>
       val c = p.getComponent(PlayerInfoComponent.key)
