@@ -148,7 +148,7 @@ given [T]: Conversion[RegistryEntry[T], T] = _.value()
 given [T]: Conversion[Registry[T], RegistryKey[? <: Registry[T]]] = _.getKey
 
 given [T <: Iota]: Conversion[T, NbtCompound] = IotaType.serialize(_)
-given ServerWorld => Conversion[NbtCompound, Iota | Null] = IotaType.deserializeIota(_, summon)
+given ServerWorld => Conversion[NbtCompound, Iota | Null] = IotaType.deserialize(_, summon)
 
 given [T: Codec, R: DynamicOps]: Conversion[T, R] = summon[Codec[T]].encodeStart(summon, _).getOrThrow(false, _ => {})
 given [T: Codec, R: DynamicOps]: Conversion[R, T] = summon[Codec[T]].decode(summon, _).getOrThrow(false, _ => {}).getFirst
