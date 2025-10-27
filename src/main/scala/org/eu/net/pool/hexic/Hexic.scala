@@ -542,6 +542,9 @@ extension [T] (x: T | Null)
   inline def ?[R](f: T => R): R | Null = x match
     case null => null
     case x: T => f(x)
+  inline def ??(y: T): T = x match
+    case null => y
+    case x: T => x
 
 case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)):
   override def use(world: World, player: PlayerEntity, hand: Hand): TypedActionResult[ItemStack] =
