@@ -1824,6 +1824,7 @@ abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleto
   def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): CastResult =
     PatternIota(se"deaqq").execute(CastingVM(image.withStack(_ :+ meta.get(PatternIota(key)).getOrElse(PatternIota(key))), summon), summon, continuation)
   override def execute(using vm: CastingVM, world: ServerWorld, continuation: SpellContinuation): CastResult = callMetamethod(se"deaqq")(vm.getImage, continuation)
+  override def size = userdata.size
   class MishapBadMetatable(name: String, value: Iota) extends Mishap():
     override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.translatable("hexic.bad_metatable", name, value.display)
     override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.GRAY)
@@ -2164,6 +2165,7 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map())(using val world: 
     map.toVector.foreach(p => NbtCompound().tap(c =>
       c.put("k", p._1)
       c.put("v", p._2)) tap l.add)
+  override def size = map.toSeq.map(_.size + _.size - 1).sum + 1
 object MapIota extends IotaType[MapIota]:
   def color: Int = 0xb0641c
   def deserialize(using data: NbtElement, world: ServerWorld): MapIota =
