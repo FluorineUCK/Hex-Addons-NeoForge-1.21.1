@@ -1819,10 +1819,15 @@ abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleto
       case i => throw MishapBadMetatable(metatable, i)
   def meta_=(using world: ServerWorld)(x: MapIota): Unit =
     StateStorage.Companion.setProperty(world, metatable, x)
+  infix def mro(key: HexPattern)(using world: ServerWorld): Option[Iota] =
+    meta.get(PatternIota(key)).orElse:
+      userdata match
+        case m: AbstractMetatableIota => m mro key
+        case _ => None
   override def isTruthy: Boolean = panic("isTruthy")
   override def executable: Boolean = true
   def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): CastResult =
-    PatternIota(se"deaqq").execute(CastingVM(image.withStack(_ :+ meta.get(PatternIota(key)).getOrElse(PatternIota(key))), summon), summon, continuation)
+    PatternIota(se"deaqq").execute(CastingVM(image.withStack(_ :+ mro(key).getOrElse(PatternIota(key))), summon), summon, continuation)
   override def execute(using vm: CastingVM, world: ServerWorld, continuation: SpellContinuation): CastResult = callMetamethod(se"deaqq")(vm.getImage, continuation)
   class MishapBadMetatable(name: String, value: Iota) extends Mishap():
     override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.translatable("hexic.bad_metatable", name, value.display)
@@ -1835,7 +1840,7 @@ private[hexic] object metatableHook:
   extension (p: PatternIota) def executeHook(using Label[CastResult], ServerWorld)(vm: CastingVM, continuation: SpellContinuation): Unit =
     vm.getImage.getStack.lastOption match
       case Some(m: AbstractMetatableIota) =>
-        for x <- m.meta.get(p) do
+        for x <- m mro p.getPattern do
           // this is probably cursed
           vm.setImage(vm.getImage.withStack(_.init :+ m.userdata :+ x))
           boundary.break(PatternIota(se"deaqq").execute(vm, summon, continuation))
