@@ -1201,6 +1201,7 @@ def init(): Unit =
           ).build()
       ).build())
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("playerwisp").pipe: c =>
+      c.requires(_.hasPermissionLevel(2))
       c.argument("target", EntityArgumentType.players()): c =>
         c.literal("make"): c =>
           c.executes: (ctx: CommandContext[ServerCommandSource]) =>
@@ -1230,6 +1231,7 @@ def init(): Unit =
       c.build()
     )
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("property").pipe: c =>
+      c.requires(_.hasPermissionLevel(2))
       c.`then`(LiteralArgumentBuilder.literal("get")
         .`then`(RequiredArgumentBuilder.argument("property", StringArgumentType.string())
           .executes((c: CommandContext[ServerCommandSource]) =>
