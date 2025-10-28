@@ -2140,7 +2140,7 @@ object registerHopperEndpoint extends (() => Unit):
 
 extension [A, B] (p: (A, B))
   infix def both[R, S](f: (A => R) & (B => S)): (R, S) = (f(p._1), f(p._2))
-case class MapIota(map: Map[NbtCompound, NbtCompound] = Map())(using val world: ServerWorld) extends Iota(MapIota, map):
+case class MapIota(map: Map[NbtCompound, NbtCompound] = Map(), trusted: Boolean = false)(using val world: ServerWorld) extends Iota(MapIota, map):
   def get(key: Iota): Option[Iota] = map.get(IotaType.serialize(key)).map(IotaType.deserialize(_, summon))
   def apply(key: Iota): Iota = get(key) getOrElse NullIota()
   def -(keys: Iota*): MapIota = MapIota(map -- (keys map IotaType.serialize))
@@ -2172,6 +2172,14 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map())(using val world: 
     map.toVector.foreach(p => NbtCompound().tap(c =>
       c.put("k", p._1)
       c.put("v", p._2)) tap l.add)
+  override def subIotas(): lang.Iterable[Iota] =
+    if trusted then
+      // skip deserialization for performance
+      // this is safe because `trusted` can only be true if truenames have
+      // already been checked, and we override `size`
+      Seq()
+    else
+      toList
 object MapIota extends IotaType[MapIota]:
   def color: Int = 0xb0641c
   def deserialize(using data: NbtElement, world: ServerWorld): MapIota =
@@ -2180,7 +2188,7 @@ object MapIota extends IotaType[MapIota]:
     l.map(o)
       .map(c => ((c("k") pipe o) -> (c("v") pipe o)))
       .toMap[NbtCompound, NbtCompound]
-      .pipe(new MapIota(_))
+      .pipe(new MapIota(_, trusted = true))
   def display(data: NbtElement): Text =
     val items = HexUtils.downcast(data, NbtList.TYPE)
     val output: MutableText = "["
