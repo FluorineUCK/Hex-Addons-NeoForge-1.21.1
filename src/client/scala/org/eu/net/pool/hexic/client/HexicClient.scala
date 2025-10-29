@@ -19,6 +19,8 @@ import net.minecraft.client.gui.screen.ChatScreen
 import net.minecraft.client.gui.widget.TextFieldWidget
 import net.minecraft.client.network.{ClientPlayNetworkHandler, ClientPlayerEntity}
 import net.minecraft.client.render.model.json
+import net.minecraft.client.render.{BufferBuilder, RenderLayer, RenderLayers, VertexConsumer, VertexConsumerProvider}
+import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator, ModelIds, Models, TextureKey, TextureMap}
 import net.minecraft.data.server.recipe.{RecipeJsonProvider, ShapedRecipeJsonBuilder}
 import net.minecraft.entity.player.PlayerEntity
@@ -119,6 +121,33 @@ def init(): Unit =
       json.ItemModelGenerator.LAYERS.add(k)
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
+
+inline def pushMatrices[T](using stack: MatrixStack)(body: => T): T =
+  stack.push()
+  try
+    body
+  finally
+    stack.pop()
+
+case class Lighting(light: Int | (Int, Int), overlay: Int | (Int, Int) = (10, 0)):
+  def write(using buf: VertexConsumer) =
+    light match
+      case (i, j) => buf.light(i, j)
+      case i: Int => buf.light(i)
+    overlay match
+      case (i, j) => buf.overlay(i, j)
+      case i: Int => buf.overlay(i)
+
+def vert(using buf: VertexConsumer, mats: MatrixStack, light: Lighting)(pos: (Float, Float, Float), normal: (Float, Float, Float), uv: (Float, Float)) =
+  buf.vertex(mats.peek.getPositionMatrix, pos._1, pos._2, pos._3)
+     .normal(mats.peek.getNormalMatrix, normal._1, normal._2, normal._3)
+     .texture(uv._1 / 48, uv._2 / 32)
+     .color(1.0f, 1.0f, 1.0f, 1.0f)
+
+
+def verts(using VertexConsumer, MatrixStack, lighting)(verts: Seq[((Float, Float, Float), (Float, Float))], normal: (Float, Float, Float)) =
+  for (pos, uv) <- verts yield
+    vert(pos, normal, uv)
 
 def datagen(gen: FabricDataGenerator): Unit =
   val pack = gen.createPack()
