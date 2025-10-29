@@ -134,6 +134,7 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
 import net.minecraft.block.AbstractBlock
+import net.minecraft.entity.passive.FoxEntity
 import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 
@@ -439,6 +440,7 @@ class PlayerInfoComponent(
   var leftWeave: ItemStack = ItemStack.EMPTY,
   var rightWeave: ItemStack = ItemStack.EMPTY,
   var chatLines: Seq[Text] = Seq(),
+  var foxType: Option[FoxEntity.Type] = None,
 ) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
     if c.getBoolean("isWisp") then
@@ -454,7 +456,10 @@ class PlayerInfoComponent(
     else
       rightWeave = ItemStack.EMPTY
     chatLines = c.getList("chat", NbtElement.COMPOUND_TYPE).map(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, _)).map(Text.Serializer.fromJson).toSeq
-
+    if c.contains("fox", NbtElement.STRING_TYPE) then
+      foxType = Some(FoxEntity.Type.valueOf(c.getString("fox")))
+    else
+      foxType = None
   override def writeToNbt(c: NbtCompound): Unit =
     wispMedia match
       case None =>
@@ -465,8 +470,10 @@ class PlayerInfoComponent(
     if !leftWeave.isEmpty then c.put("shl", NbtCompound().tap(leftWeave.writeNbt))
     if !rightWeave.isEmpty then c.put("shr", NbtCompound().tap(rightWeave.writeNbt))
     c.put("chat", NbtList().tap(_.addAll(chatLines.map(Text.Serializer.toJsonTree).map(JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, _)))))
+    foxType.fold(c.remove("fox"))(f => c.putString("fox", f.name))
 object PlayerInfoComponent:
   val key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
+  given Conversion[PlayerEntity, PlayerInfoComponent] = _.getComponent(key)
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
     fac.registerForPlayers(key, PlayerInfoComponent(_), RespawnCopyStrategy.LOSSLESS_ONLY)
 
@@ -762,7 +769,7 @@ private [hexic] object Extern:
 
 val _ =
   Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
-    val c = p.getComponent(PlayerInfoComponent.key)
+    val c = p: PlayerInfoComponent
     if !c.rightWeave.isEmpty then
       out.add(c.rightWeave)
       c.rightWeave = ItemStack.EMPTY
@@ -816,6 +823,7 @@ lazy val itemGroup = FabricItemGroup.builder()
   .build()
 
 val goodModulo = ne"daawdda"
+val getEntity: PartialFunction[Iota, Entity] = { case e: EntityIota => e.getEntity }
 
 def init(): Unit =
   given_Logger.info:
@@ -1165,6 +1173,34 @@ def init(): Unit =
       GREATER_EQ -> ((a: MapIota, b: MapIota) => a.map containsAll b.map),
       LESS_EQ -> ((a: MapIota, b: MapIota) => b.map containsAll a.map),
     )
+  def fox(tr: PlayerEntity ?=> PartialFunction[Option[FoxEntity.Type], Option[FoxEntity.Type]]): Action =
+    Patterns.mkAction: (img, cont) =>
+      img.getStack.lastOption match
+        case None => throw MishapNotEnoughArgs(1, 0)
+        case Some(getEntity(given ServerPlayerEntity)) =>
+          val c: PlayerInfoComponent = summon[PlayerEntity]
+          c.foxType match
+            case tr(newFoxType) =>
+              OperationResult(img.withStack(_.init), Seq(
+                OperatorSideEffect.ConsumeMedia(MediaConstants.SHARD_UNIT + MediaConstants.DUST_UNIT),
+                OperatorSideEffect.AttemptSpell(
+                  new RenderedSpell:
+                    override def cast(env: CastingEnvironment): Unit =
+                      c.foxType = newFoxType
+                      summon[PlayerEntity].syncComponent(PlayerInfoComponent.key)
+                    override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+                  , true, true)
+              ), cont, HexEvalSounds.SPELL)
+            case _ =>
+              OperationResult(img.withStack(_.init), Seq(), cont, HexEvalSounds.SPELL)
+        case Some(x) => throw MishapInvalidIota(x, 0, "player")
+  Patterns.register("fox", se"wqwqeeeweedqqeqwaeeaw"):
+    fox:
+      case None => Some:
+        val p = summon[PlayerEntity]
+        FoxEntity.Type.fromBiome(p.getWorld.getBiome(p.getBlockPos))
+  Patterns.register("unfox", se"wqwqwqwaeeaw"):
+    fox { case Some(_) => None }
   hexXplat.getArithmeticRegistry("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
