@@ -7,7 +7,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 plugins {
-    id("fabric-loom") version "1.10-SNAPSHOT"
+    id("fabric-loom") version "1.13-SNAPSHOT"
     id("scala")
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
@@ -15,6 +15,25 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
+tasks.named("downloadRenderDoc") {
+    setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
+}
+
+tasks.named("extractRenderDoc") {
+    enabled = false
+}
+
+val erd by tasks.register<Sync>("myExtractRenderDoc") {
+    dependsOn("downloadRenderDoc")
+    from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
+    into("$buildDir/renderdoc")
+}
+
+tasks.named("runClientRenderDoc") {
+    dependsOn(erd)
+}
+
+//tasks.withType<RenderDocR>()
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 val p = P(project)
