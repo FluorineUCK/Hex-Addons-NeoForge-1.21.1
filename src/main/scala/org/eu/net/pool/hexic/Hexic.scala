@@ -1204,13 +1204,13 @@ def init(): Unit =
       c.argument("target", EntityArgumentType.players()): c =>
         c.literal("make"): c =>
           c.executes: (ctx: CommandContext[ServerCommandSource]) =>
-            val player = ctx.getSource.getPlayer
+            val player = EntityArgumentType.getPlayer(ctx, "target")
             player.getComponent(PlayerInfoComponent.key).wispMedia = Some(-1)
             PlayerInfoComponent.key.sync(player)
             1
         c.literal("unmake"): c =>
           c.executes: (ctx: CommandContext[ServerCommandSource]) =>
-            val player = ctx.getSource.getPlayer
+            val player = EntityArgumentType.getPlayer(ctx, "target")
             player.getComponent(PlayerInfoComponent.key).wispMedia = None
             PlayerInfoComponent.key.sync(player)
             1
