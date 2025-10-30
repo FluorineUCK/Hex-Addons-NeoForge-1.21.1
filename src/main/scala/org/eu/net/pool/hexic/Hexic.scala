@@ -1385,7 +1385,7 @@ def init(): Unit =
         assume(0 until 6 contains b)
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
-          ty.Instance(userdata, display.display, metatable.getName)
+          ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
   Patterns.register("rotate", nw"qaeaqweeee"):
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
@@ -1804,19 +1804,20 @@ extension [T: DynamicOps as t] (x: T) def convertDynamic[R: DynamicOps as r]: R 
 given (vm: CastingVM) => CastingEnvironment = vm.getEnv
 given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
 
-abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleton, userdata: Iota, override val display: Text, metatable: String) extends Iota(iotaType, (userdata, display, metatable)):
+abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleton, userdata: Iota, override val display: Text, metatable: String, readonlyMetatable: Boolean) extends Iota(iotaType, (userdata, display, metatable, readonlyMetatable)):
   override def subIotas(): lang.Iterable[Iota] = util.List.of(userdata)
   override def toleratesOther(that: Iota): Boolean = that match
-    case AbstractMetatableIota(_, u, _, m) => metatable == m && Iota.tolerates(userdata, u)
+    case AbstractMetatableIota(_, u, _, m, _) => metatable == m && Iota.tolerates(userdata, u)
     case _ => Iota.tolerates(userdata, that)
   override def serialize(): NbtElement = NbtCompound().tap: c =>
     c.put("userdata", IotaType.serialize(userdata))
     c.put("display",  Text.Serializer.toJsonTree(display).convertDynamic)
     c.put("metatable", metatable)
+    c.putBoolean("ro", readonlyMetatable)
   def meta(using world: ServerWorld): MapIota =
     StateStorage.Companion.getProperty(world, metatable) match
       case m: MapIota => m
-      case i => throw MishapBadMetatable(metatable, i)
+      case i => throw MishapBadMetatable(metatable, i, readonlyMetatable)
   def meta_=(using world: ServerWorld)(x: MapIota): Unit =
     StateStorage.Companion.setProperty(world, metatable, x)
   override def isTruthy: Boolean = panic("isTruthy")
@@ -1824,12 +1825,12 @@ abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleto
   def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): CastResult =
     PatternIota(se"deaqq").execute(CastingVM(image.withStack(_ :+ meta.get(PatternIota(key)).getOrElse(PatternIota(key))), summon), summon, continuation)
   override def execute(using vm: CastingVM, world: ServerWorld, continuation: SpellContinuation): CastResult = callMetamethod(se"deaqq")(vm.getImage, continuation)
-  class MishapBadMetatable(name: String, value: Iota) extends Mishap():
+  class MishapBadMetatable(name: String, value: Iota, readonly: Boolean) extends Mishap():
     override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.translatable("hexic.bad_metatable", name, value.display)
     override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.GRAY)
     override def execute(env: CastingEnvironment, ctx: Context, stack: ju.List[Iota]): Unit =
       stack(stack.length - 1) = GarbageIota()
-      StateStorage.Companion.setProperty(env.getWorld, name, GarbageIota())
+      if !readonly then StateStorage.Companion.setProperty(env.getWorld, name, GarbageIota())
 
 private[hexic] object metatableHook:
   extension (p: PatternIota) def executeHook(using Label[CastResult], ServerWorld)(vm: CastingVM, continuation: SpellContinuation): Unit =
@@ -1842,13 +1843,14 @@ private[hexic] object metatableHook:
       case _ =>
 
 case class MetatableIotaType private[hexic](override val color: Int) extends IotaType[AbstractMetatableIota]:
-  class Instance(userdata: Iota, display: Text, metatable: String) extends AbstractMetatableIota(MetatableIotaType.this, userdata, display, metatable)
+  class Instance(userdata: Iota, display: Text, metatable: String, readonlyMetatable: Boolean) extends AbstractMetatableIota(MetatableIotaType.this, userdata, display, metatable, readonlyMetatable)
   override def deserialize(tag: NbtElement, world: ServerWorld): Instance =
     val c = tag.downcast[NbtCompound]
     Instance(
       userdata = IotaType.deserialize(c.get("userdata").downcast[NbtCompound], world),
       display = Text.Serializer.fromJson(c.get("display").convertDynamic: JsonElement),
       metatable = c.get("metatable").downcast[NbtString].asString,
+      readonlyMetatable = c.getBoolean("ro"),
     )
   override def display(tag: NbtElement): Text = Text.Serializer.fromJson(tag.downcast[NbtCompound].get("display").convertDynamic: JsonElement)
 
