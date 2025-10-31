@@ -136,6 +136,8 @@ import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
 import net.minecraft.block.AbstractBlock
 import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
+import at.petrak.hexcasting.common.casting.actions.eval.OpEval
+import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -1822,8 +1824,9 @@ abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleto
   override def isTruthy: Boolean = panic("isTruthy")
   override def executable: Boolean = true
   def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): CastResult =
-    PatternIota(se"deaqq").execute(CastingVM(image.withStack(_ :+ userdata :+ meta.get(PatternIota(key)).getOrElse(PatternIota(key))), summon), summon, continuation)
-  override def execute(using vm: CastingVM, world: ServerWorld, continuation: SpellContinuation): CastResult = callMetamethod(se"deaqq")(vm.getImage, continuation)
+    val callee = meta.get(PatternIota(key)).getOrElse(PatternIota(key))
+    val result = OpEval.INSTANCE.exec(env, image, continuation, image.getStack.init :+ userdata, callee)
+    CastResult(callee, result.getNewContinuation, result.getNewImage, result.getSideEffects, ResolvedPatternType.EVALUATED, result.getSound)
   class MishapBadMetatable(name: String, value: Iota) extends Mishap():
     override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.translatable("hexic.bad_metatable", name, value.display)
     override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.GRAY)
