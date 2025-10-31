@@ -1819,7 +1819,7 @@ abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleto
       case i => throw MishapBadMetatable(metatable, i)
   def meta_=(using world: ServerWorld)(x: MapIota): Unit =
     StateStorage.Companion.setProperty(world, metatable, x)
-  override def isTruthy: Boolean = panic("isTruthy")
+  override def isTruthy: Boolean = true
   override def executable: Boolean = true
   def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): CastResult =
     PatternIota(se"deaqq").execute(CastingVM(image.withStack(_ :+ meta.get(PatternIota(key)).getOrElse(PatternIota(key))), summon), summon, continuation)
