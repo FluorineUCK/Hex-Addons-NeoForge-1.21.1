@@ -1473,7 +1473,8 @@ def init(): Unit =
         case m@Mediaweave(color) => m.readIotaTag(stack) match
           case t: NbtCompound => IotaType.deserialize(t, player.getServerWorld) match
             case s: ListIota =>
-              val env = new PlayerBasedCastEnv(player,
+              given ServerWorld = env.getWorld
+              lazy val env = new PlayerBasedCastEnv(player,
                 if player.getMainArm match
                   case Arm.LEFT => (flags & 4) != 0
                   case Arm.RIGHT => (flags & 4) == 0
@@ -1483,7 +1484,12 @@ def init(): Unit =
                   if player.isCreative then 0L else extractMediaFromInventory(cost, canOvercast, simulate)
                 override def getCastingHand: Hand = castingHand
                 override def getPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
-              val image = CastingImage(Seq(StringIota.make(text)).asJava, 0, Seq().asJava, false, 0, NbtCompound(), null)
+              val stack =
+                if (flags & 1) != 0 then
+                  Seq.fill(buf.readInt)(buf.readUnlimitedNbt: Iota)
+                else
+                  Seq()
+              val image = CastingImage(stack :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
               val instrs = s.getList.asScala.toSeq
               val vm = CastingVM(image, env)
               val view = vm.queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld)
