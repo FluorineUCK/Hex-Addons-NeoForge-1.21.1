@@ -1832,12 +1832,11 @@ abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleto
       StateStorage.Companion.setProperty(env.getWorld, name, GarbageIota())
 
 private[hexic] object metatableHook:
-  extension (p: PatternIota) def executeHook(using Label[CastResult], ServerWorld)(vm: CastingVM, continuation: SpellContinuation): Unit =
-    vm.getImage.getStack.lastOption match
+  extension (p: PatternIota) def executeHook(using Label[CastResult], ServerWorld)(using vm: CastingVM)(continuation: SpellContinuation): Unit =
+    vm.getStack.lastOption match
       case Some(m: AbstractMetatableIota) =>
         for x <- m.meta.get(p) do
           // this is probably cursed
-          given CastingEnvironment = vm.getEnv
           val result = m.callMetamethod(p.getPattern)(vm.getImage.withStack(_.init), continuation)
           boundary.break(result)
       case _ =>
@@ -1941,6 +1940,10 @@ given IotaType[DoubleIota] = DoubleIota.TYPE
 given IotaType[StringIota] = StringIota.TYPE
 given IotaType[LocationIota] = LocationIota
 given IotaType[NbtIota] = NbtIota
+
+given (vm: CastingVM) => CastingImage = vm.getImage
+given Conversion[CastingVM, CastingImage] = _.getImage
+given Conversion[CastingVM, CastingEnvironment] = _.getEnv
 
 case class ClassIota[_T: ClassTag]() extends Iota(ClassIota, summon[ClassTag[_T]]):
   type T = _T
