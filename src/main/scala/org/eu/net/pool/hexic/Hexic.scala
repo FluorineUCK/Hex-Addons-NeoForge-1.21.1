@@ -1394,9 +1394,9 @@ def init(): Unit =
         var n = d.toInt
         if (d - n).abs > DoubleIota.TOLERANCE then
           throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
-        while n < 0 do n += list.size
-        n %= list.size
-        Seq(ListIota((list.drop(n) ++ list.take(n)).toSeq.asJava))
+        val size = list.size
+        val delta = (n % size + size) % size
+        Seq(ListIota((list.drop(delta) ++ list.take(delta)).toSeq.asJava))
       case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "hexic:int_or_list")
       case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
   Patterns.register("take", nw"qaeaqwd"):
