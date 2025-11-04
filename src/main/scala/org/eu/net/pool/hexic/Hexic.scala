@@ -144,6 +144,8 @@ import at.petrak.hexcasting.api.casting.mishaps.MishapBadEntity
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.decoration.ItemFrameEntity
 import at.petrak.hexcasting.api.casting.castables.SpellAction
+import gay.`object`.ioticblocks.api.IoticBlocksAPI
+import at.petrak.hexcasting.api.casting.mishaps.MishapBadBlock
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -1416,29 +1418,34 @@ def init(): Unit =
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
     Patterns.mkAction: (img, cont) =>
+      def mkResult(pos: => Vec3d, spell: => Unit) =
+        OperationResult(
+          img.withStack(_.init),
+          Seq(
+            OperatorSideEffect.ConsumeMedia(MediaConstants.DUST_UNIT),
+            OperatorSideEffect.AttemptSpell(
+              new RenderedSpell:
+                override def cast(env: CastingEnvironment): Unit =
+                  spell(using env)
+                override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+              , true, true
+            ),
+            OperatorSideEffect.Particles(
+              ParticleSpray(pos, Vec3d(1, 0, 0), 0.25, 3.14, 40)
+            ),
+          ),
+          cont, HexEvalSounds.SPELL
+        )
       img.getStack.lastOption.getOrElse(throw MishapNotEnoughArgs(1, 0)) match
-        case s: Vec3Iota =>
-          ???
+        case s: Vec3Iota if fabric.isModLoaded("ioticblocks") =>
+          val pos = BlockPos.ofFloored(s.getVec3)
+          summon[CastingEnvironment].assertPosInRangeForEditing(pos)
+          val holder = IoticBlocksAPI.INSTANCE.findIotaHolder(summon[CastingEnvironment].getWorld, pos)
+          if holder == null || !holder.writeIota(null, true) then throw MishapBadBlock.of(pos, "hexic:erase")
+          mkResult(pos.toCenterPos, holder.writeIota(null, false))
         case s: EntityIota =>
           summon[CastingEnvironment].assertEntityInRange(s.getEntity)
-          def result(spell: CastingEnvironment ?=> Unit) = 
-            OperationResult(
-              img.withStack(_.init),
-              Seq(
-                OperatorSideEffect.ConsumeMedia(MediaConstants.DUST_UNIT),
-                OperatorSideEffect.AttemptSpell(
-                  new RenderedSpell:
-                    override def cast(env: CastingEnvironment): Unit =
-                      spell(using env)
-                    override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
-                  , true, true
-                ),
-                OperatorSideEffect.Particles(
-                  ParticleSpray(s.getEntity match { case e: ItemEntity => e.getPos.add(0, .375, .0); case e => e.getPos }, Vec3d(1, 0, 0), 0.25, 3.14, 40)
-                ),
-              ),
-              cont, HexEvalSounds.SPELL
-            )
+          def result(spell: CastingEnvironment ?=> Unit) = mkResult(s.getEntity match { case e: ItemEntity => e.getPos.add(0, .375, .0); case e => e.getPos }, spell)
           boundary: outer ?=>
             boundary:
               val item = s.getEntity match
