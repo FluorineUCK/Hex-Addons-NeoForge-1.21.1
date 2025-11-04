@@ -139,6 +139,11 @@ import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+import at.petrak.hexcasting.common.casting.actions.spells.OpErase
+import at.petrak.hexcasting.api.casting.mishaps.MishapBadEntity
+import net.minecraft.entity.ItemEntity
+import net.minecraft.entity.decoration.ItemFrameEntity
+import at.petrak.hexcasting.api.casting.castables.SpellAction
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -1409,6 +1414,44 @@ def init(): Unit =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
+  Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
+    Patterns.mkAction: (img, cont) =>
+      img.getStack.lastOption.getOrElse(throw MishapNotEnoughArgs(1, 0)) match
+        case s: Vec3Iota =>
+          ???
+        case s: EntityIota =>
+          summon[CastingEnvironment].assertEntityInRange(s.getEntity)
+          def result(spell: CastingEnvironment ?=> Unit) = 
+            OperationResult(
+              img.withStack(_.init),
+              Seq(
+                OperatorSideEffect.ConsumeMedia(MediaConstants.DUST_UNIT),
+                OperatorSideEffect.AttemptSpell(
+                  new RenderedSpell:
+                    override def cast(env: CastingEnvironment): Unit =
+                      spell(using env)
+                    override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+                  , true, true
+                ),
+                OperatorSideEffect.Particles(
+                  ParticleSpray(s.getEntity match { case e: ItemEntity => e.getPos.add(0, .375, .0); case e => e.getPos }, Vec3d(1, 0, 0), 0.25, 3.14, 40)
+                ),
+              ),
+              cont, HexEvalSounds.SPELL
+            )
+          boundary: outer ?=>
+            boundary:
+              val item = s.getEntity match
+                case i: ItemEntity => i.getStack
+                case f: ItemFrameEntity => f.getHeldItemStack
+                case _ => boundary.break()
+              val holder = hexXplat.findHexHolder(item)
+              if holder == null || !holder.hasHex then boundary.break()
+              boundary.break(result(holder.clearHex()))(using outer)
+            val holder = hexXplat.findDataHolder(s.getEntity)
+            if holder == null || !holder.writeIota(null, true) then throw MishapBadEntity.of(s.getEntity, "hexic:erase")
+            result(holder.writeIota(null, false))
+        case i => throw MishapInvalidIota(i, 0, ???)
   Patterns.register("rotate", nw"qaeaqweeee"):
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
