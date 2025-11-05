@@ -1457,13 +1457,26 @@ def init(): Unit =
     player.getComponent(PlayerInfoComponent.key).murmur = in)
   ServerPlayNetworking.registerGlobalReceiver("sync_mediaweave", (_, player, _, buf, _) =>
     val flags = buf.readByte()
-    if (flags & 1) != 0 && (flags & 8) == 0 then player.playerScreenHandler.setCursorStack(buf.readItemStack())
-    if (flags & 2) != 0 then
-      val c = player.getComponent(PlayerInfoComponent.key)
+    val c = player.getComponent(PlayerInfoComponent.key)
+    val cursorStack = player.playerScreenHandler.getCursorStack()
+    def currentWeave =
       if (flags & 4) != 0 then
-        c.leftWeave = buf.readItemStack()
+        c.leftWeave
       else
-        c.rightWeave = buf.readItemStack()
+        c.rightWeave
+    lazy val lastWeave = currentWeave
+    if (flags & 1) != 0 && (flags & 8) == 0 then
+      assume(cursorStack.isEmpty, "if this isn't empty, the player's held item gets voided")
+      buf.readItemStack()
+      player.playerScreenHandler.setCursorStack(lastWeave.copyAndEmpty())
+      PlayerInfoComponent.key.sync(player)
+    if (flags & 2) != 0 then
+      buf.readItemStack()
+      assume(currentWeave.isEmpty, "if this isn't empty, an equipped mediaweave gets voided")
+      if (flags & 4) != 0 then
+        c.leftWeave = cursorStack
+      else
+        c.rightWeave = cursorStack
       PlayerInfoComponent.key.sync(player)
     if (flags & 8) != 0 then
       val text = buf.readString()
