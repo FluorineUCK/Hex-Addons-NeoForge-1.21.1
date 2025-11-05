@@ -4,6 +4,7 @@ ADD minimal.nix minimal.nix
 VOLUME /nix/store
 RUN nix-build minimal.nix --extra-substituters https://poollovernathan.cachix.org?trusted=1
 ADD . .
+RUN nix-shell minimal.nix --command 'test -d .jj || { jj git init --colocate; jj edit --ignore-immutable @-; }'
 RUN nix-shell minimal.nix --command 'gradle runDatagen'
 RUN nix-shell minimal.nix --command 'gradle build'
 
