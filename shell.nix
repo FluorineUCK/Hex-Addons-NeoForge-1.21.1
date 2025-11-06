@@ -24,6 +24,7 @@ pkgs.mkShell {
     pkgs.gradle_8
     pkgs.imagemagick
     pkgs.jujutsu
+    pkgs.zulu17
     pkgs.zulu21
     jj.packages.${pkgs.system}.default
   ] ++ (if pkgs.system == "x86_64-linux" then [

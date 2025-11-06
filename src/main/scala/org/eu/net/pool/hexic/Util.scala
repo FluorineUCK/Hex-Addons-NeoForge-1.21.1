@@ -130,10 +130,9 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
   }.tap(e => report.info(e.show, name.asTerm.pos))
 
 class MishapTodo extends Mishap:
-  override def accentColor(castingEnvironment: CastingEnvironment, context: Mishap.Context): FrozenPigment =
-    castingEnvironment.getPigment
+  override def accentColor(castingEnvironment: CastingEnvironment, context: Mishap.Context): FrozenPigment = dyeColor(DyeColor.LIME)
   override def errorMessage(castingEnvironment: CastingEnvironment, context: Mishap.Context): Text =
-    t"${context.getName}: Pattern ${context.getName} is not yet implemented."
+    t"${context.getName}: Pattern is not yet implemented."
   override def execute(castingEnvironment: CastingEnvironment, context: Mishap.Context, list: util.List[Iota]): Unit =
     castingEnvironment.getCastingEntity match
       case p: LivingEntity => p.addStatusEffect(StatusEffectInstance(StatusEffects.NAUSEA, duration = 30 * 20, amplifier = 0))
@@ -148,7 +147,7 @@ given [T]: Conversion[RegistryEntry[T], T] = _.value()
 given [T]: Conversion[Registry[T], RegistryKey[? <: Registry[T]]] = _.getKey
 
 given [T <: Iota]: Conversion[T, NbtCompound] = IotaType.serialize(_)
-given ServerWorld => Conversion[NbtCompound, Iota | Null] = IotaType.deserializeIota(_, summon)
+given ServerWorld => Conversion[NbtCompound, Iota | Null] = IotaType.deserialize(_, summon)
 
 given [T: Codec, R: DynamicOps]: Conversion[T, R] = summon[Codec[T]].encodeStart(summon, _).getOrThrow(false, _ => {})
 given [T: Codec, R: DynamicOps]: Conversion[R, T] = summon[Codec[T]].decode(summon, _).getOrThrow(false, _ => {}).getFirst
