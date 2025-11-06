@@ -79,7 +79,6 @@ import org.slf4j.{Logger, LoggerFactory}
 import org.spongepowered.asm.mixin.injection.callback.{CallbackInfo, CallbackInfoReturnable}
 import ram.talia.hexal.api.casting.iota.{GateIota, MoteIota}
 import ram.talia.moreiotas.api.casting.iota.{EntityTypeIota, IotaTypeIota, ItemStackIota, ItemTypeIota, MatrixIota, StringIota}
-import sun.misc.Unsafe
 
 import java.io.{File, FileNotFoundException, FileOutputStream, IOException, InputStream}
 import java.lang.invoke.MethodHandles
@@ -239,7 +238,6 @@ object Patterns:
     Patterns.register(id, pattern):
       OperationAction(pattern)
 
-inline def unsafe(using u: Unsafe) = u
 val hexXplat: IXplatAbstractions = IXplatAbstractions.INSTANCE
 
 extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
