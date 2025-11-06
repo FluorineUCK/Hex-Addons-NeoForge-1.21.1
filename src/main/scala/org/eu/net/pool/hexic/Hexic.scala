@@ -817,6 +817,11 @@ lazy val itemGroup = FabricItemGroup.builder()
 
 val goodModulo = ne"daawdda"
 
+def memo[T, R](f: T => R, limit: Int = 128): T => R =
+  val cache = new ju.LinkedHashMap[T, R]:
+    override def removeEldestEntry(eldest: ju.Map.Entry[T, R]): Boolean = size > limit
+  cache.computeIfAbsent(_, f(_))
+
 def init(): Unit =
   given_Logger.info:
     val possible = Seq(
