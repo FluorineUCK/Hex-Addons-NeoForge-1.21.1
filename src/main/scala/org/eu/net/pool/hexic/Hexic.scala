@@ -333,69 +333,6 @@ object PropertyAccessIota:
       ) formatted Formatting.GREEN
     override def color: Int = PropertyIota.TYPE.color
 
-class Pointer[T](val address: Long) extends AnyVal:
-  inline def cast[R]: Pointer[R] = Pointer(address)
-  inline def alloc(newSize: Long) = Pointer(unsafe.reallocateMemory(address, newSize))
-  inline def free(): Unit = unsafe.freeMemory(address)
-  inline transparent def value: T =
-    import scala.compiletime._
-    summonFrom:
-      case ev: (Pointer[t] =:= T) => ev(Pointer(unsafe.getAddress(address)))
-      case ev: (Int =:= T) => ev(unsafe.getInt(address))
-      case ev: (Long =:= T) => ev(unsafe.getLong(address))
-      case ev: (Float =:= T) => ev(unsafe.getFloat(address))
-      case ev: (Double =:= T) => ev(unsafe.getDouble(address))
-      case ev: (Char =:= T) => ev(unsafe.getChar(address))
-      case ev: (Short =:= T) => ev(unsafe.getShort(address))
-      case ev: (Byte =:= T) => ev(unsafe.getByte(address))
-      case _ => error("Cannot use non-primitive types with pointers")
-  inline def value_=(value: T): Unit =
-    import scala.compiletime._
-    summonFrom:
-      case ev: (T =:= Pointer[t]) => unsafe.putAddress(address, ev(value).address)
-      case ev: (T =:= Int) => unsafe.putInt(address, ev(value))
-      case ev: (T =:= Long) => unsafe.putLong(address, ev(value))
-      case ev: (T =:= Float) => unsafe.putFloat(address, ev(value))
-      case ev: (T =:= Double) => unsafe.putDouble(address, ev(value))
-      case ev: (T =:= Char) => unsafe.putChar(address, ev(value))
-      case ev: (T =:= Short) => unsafe.putShort(address, ev(value))
-      case ev: (T =:= Byte) => unsafe.putByte(address, ev(value))
-      case _ => error("Cannot use non-primitive types with pointers")
-  inline def +(offset: Long): Pointer[T] = Pointer(address + offset * Pointer.sizeOf[T])
-object Pointer:
-  inline def alloc[T](count: Long): Pointer[T] = Pointer(unsafe.allocateMemory(size * sizeOf[T]))
-  inline def size: Long = unsafe.addressSize
-  inline def sizeOf[T]: Long =
-    import scala.compiletime._
-    inline erasedValue[T] match
-      case ev: Pointer[t] => Pointer.size
-      case ev: Int => 4
-      case ev: Long => 8
-      case ev: Float => 4
-      case ev: Double => 8
-      case ev: Char => 4
-      case ev: Short => 2
-      case ev: Byte => 1
-      case _ => error("Cannot use non-primitive types with pointers")
-
-def bullshit(bytes: Array[Byte]): Unit =
-  MethodHandles.lookup.defineHiddenClass(bytes, true)
-def bullshit(node: ClassNode): Unit =
-  val writer = ClassWriter(0)
-  node accept writer
-  bullshit(writer toByteArray)
-
-def runInstrs(instrs: InsnList) =
-  val node = ClassNode()
-  node.superName = classOf[Runnable].getName
-  val method = tree.MethodNode(Member.PUBLIC, "run", "()V", null, Array.empty)
-  node.methods.add(method)
-  val writer = ClassWriter(0)
-  node accept writer
-  val id = "_runnable" + UUID.randomUUID().toString.replace("-", "")
-  ClassTinkerers.define(id, writer toByteArray)
-  classNamed(id).get.runtimeClass.newInstance.asInstanceOf[Runnable].run()
-
 private[hexic] object PatternRemapper:
   lazy val remappedPatterns: Map[ClassTag[?], HexPattern] =
     val file = Path.of("config/remapped_patterns.lst")
@@ -791,24 +728,7 @@ val _ =
       out.add(c.leftWeave)
       c.leftWeave = ItemStack.EMPTY
 
-trait Default[T]:
-  def default: T
-given Default[Int]:
-  def default = 0
-
-implicit class EntityExt(e: Entity) extends AnyVal, Dynamic
-
-extension (e: EntityExt)
-  def selectDynamic[T: {Codec, Default}](key: String): T = ???
-  def updateDynamic[T: Codec](key: String)(value: T): Unit = ???
-
 given Codec[Int] = Codec.INT.xmap(p => p, p => p)
-
-def test =
-  val p: ServerPlayerEntity = ???
-  val ext: EntityExt = p
-  ext.foo = 2
-  println(ext.foo: Int)
 
 type Media = Long
 object MediaBundle:
@@ -867,10 +787,6 @@ def init(): Unit =
   iotaTypeRegistry("tripwire") = TripwireIota.getType
   iotaTypeRegistry("access") = PropertyAccessIota.Type
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
-  ifModLoaded"infinite-hexxy${
-    iotaTypeRegistry("jvm/class") = ClassIota
-    iotaTypeRegistry("jvm/pointer") = PointerIota
-  }"
   hexXplat.getContinuationTypeRegistry("tripwire") = TripwireIota.Frame
   for (color, item) <- Mediaweave.colors do
     Registries.ITEM(s"${color.asString}_mediaweave") = item
@@ -1311,37 +1227,6 @@ def init(): Unit =
       )
       c.build())
   Registries.BLOCK("void_air") = Interop.VOID_AIR
-  ifModLoaded"infinite-hexxy${
-    extension (ctx: StringContext) def jvm() = e"aqqqqqdeeweweweweeaaedeqedee${ctx.s()}"
-    Patterns.register("jvm/class_of_iota", jvm"aeeee"):
-      Patterns.mkConstAction(1):
-        case Seq(x: Iota) => Seq(ClassIota()(using ClassTag(x.getClass)))
-    Patterns.register("jvm/class_of_payload", jvm"dqqqq"):
-      Patterns.mkConstAction(1):
-        case Seq(x: Iota) =>
-          val f = classOf[Iota].getDeclaredField("payload")
-          f.setAccessible(true)
-          val payload = f.get(x)
-          given ClassTag[payload.type] = ClassTag(payload.getClass)
-          Seq(ClassIota[payload.type]())
-    Patterns.register("jvm/newinstance_unboxed", jvm"aeeeedw"):
-      Patterns.mkConstAction(1):
-        case Seq(x@ClassIota()) =>
-          Seq(uninitialized[x.T](using x.tag).asInstanceOf[Iota])
-    Patterns.register("jvm/newinstance_boxed", jvm"dqqqqaw"):
-      Patterns.mkConstAction(1):
-        case Seq(x@ClassIota()) =>
-          Seq(ObjectIota(uninitialized[x.T](using x.tag).asInstanceOf[AnyRef]))
-    Patterns.register("malloc", jvm"wwaa"):
-      Patterns.mkConstAction(1):
-        case Seq(x: DoubleIota) =>
-          Seq(PointerIota(Pointer.alloc[Byte](x.getDouble.round)))
-    Patterns.register("free", jvm"wwdd"):
-      Patterns.mkConstAction(1):
-        case Seq(PointerIota(p)) =>
-          p.free()
-          Seq()
-  }"
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
@@ -1572,8 +1457,6 @@ def iotaInt(iota: Iota, er: => Nothing): Int =
       else
         i
     case _ => er
-
-def assume(cond: Boolean, msg: => String = "assumption failed"): Unit = if !cond then panic(msg)
 
 def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
   assume(max > min)
@@ -1854,7 +1737,7 @@ class IotaComponent[R: Codec](val id: Identifier):
     value.fold(data.remove(id.toString))(data.put(id.toString, _))
     (data: Iota | Null) match
       case iota: target.type => iota
-      case _ => panic("Iota changed types or became null during serialization")
+      case _ => throw IllegalStateException("Iota changed types or became null during serialization")
 
 inline given DynamicOps[JsonElement] = JsonOps.COMPRESSED
 extension [T: DynamicOps as t] (x: T) def convertDynamic[R: DynamicOps as r]: R = t.convertTo(r, x)
@@ -1993,14 +1876,6 @@ trait MediaContainerProvider:
   @targetName("hexic$MediaContainerProvider$getMediaContainer")
   def getMediaContainer(c: Context): Option[MediaContainer]
 
-def uninitialized[T: ClassTag](using u: Unsafe) = u.allocateInstance(summon[ClassTag[T]].runtimeClass).asInstanceOf[T]
-
-private def normalize(obj: Any)(using u: Unsafe): Long =
-  if u.arrayIndexScale(classOf[Array[Object]]) == 4 then
-    u.getInt(obj, 4L).toLong & 0xFFFFFFFFL
-  else
-    u.getLong(obj, 8L)
-
 given Codec[Text] = Codecs.TEXT
 given DynamicOps[NbtElement] = NbtOps.INSTANCE
 
@@ -2013,67 +1888,8 @@ given (vm: CastingVM) => CastingImage = vm.getImage
 given Conversion[CastingVM, CastingImage] = _.getImage
 given Conversion[CastingVM, CastingEnvironment] = _.getEnv
 
-case class ClassIota[_T: ClassTag]() extends Iota(ClassIota, summon[ClassTag[_T]]):
-  type T = _T
-  def tag: ClassTag[T] = summon[ClassTag[T]]
-  def runtimeClass: Class[T] = tag.runtimeClass.asInstanceOf
-  override def isTruthy: Boolean = true
-  override def toleratesOther(iota: Iota): Boolean = ???
-  override def serialize(): NbtElement = NbtString.of(runtimeClass.getName)
-object ClassIota extends IotaType[ClassIota[?]]:
-  override def color: Int = Formatting.GOLD.getColorValue
-  override def deserialize(element: NbtElement, world: ServerWorld): ClassIota[?] | Null = HexUtils.downcast(element, NbtString.TYPE).asString match
-    case "void" => ClassIota()(using ClassTag(java.lang.Void.TYPE))
-    case "byte" => ClassIota()(using ClassTag(java.lang.Byte.TYPE))
-    case "short" => ClassIota()(using ClassTag(java.lang.Short.TYPE))
-    case "int" => ClassIota()(using ClassTag(java.lang.Integer.TYPE))
-    case "long" => ClassIota()(using ClassTag(java.lang.Long.TYPE))
-    case "boolean" => ClassIota()(using ClassTag(java.lang.Boolean.TYPE))
-    case "float" => ClassIota()(using ClassTag(java.lang.Float.TYPE))
-    case "double" => ClassIota()(using ClassTag(java.lang.Double.TYPE))
-    case "char" => ClassIota()(using ClassTag(java.lang.Character.TYPE))
-    case s => classNamed(s).fold(null)(ClassIota()(using _))
-  override def display(element: NbtElement): Text =
-    val klass = deserialize(element, null).runtimeClass
-    (klass.getSimpleName: MutableText).styled(_.withColor(if klass.isPrimitive then Formatting.RED else Formatting.GOLD))
-
 given Conversion[String, NbtString] = NbtString.of
 given Conversion[NbtString, String] = _.asString
-
-case class FieldIota(field: Field | Method | Constructor[?]) extends Iota(FieldIota, field):
-  override def isTruthy: Boolean = true
-  override def toleratesOther(iota: Iota): Boolean = ???
-  override def serialize(): NbtElement = NbtCompound().tap: c =>
-    c("c") = field.getDeclaringClass.getName
-    field match
-      case f: Field =>
-        c("f") = NbtByte.of(0: Byte)
-        c("n") = field.getName
-      case m: Method =>
-        c("f") = NbtByte.of(1: Byte)
-        c("n") = field.getName
-      case k: Constructor[?] =>
-        c("f") = NbtByte.of(2: Byte)
-        c("k") = NbtList().tap: p =>
-          for t <- k.getParameterTypes do
-            p.add(t.getName)
-object FieldIota extends IotaType[FieldIota]:
-  override def color: Int = Formatting.YELLOW.getColorValue
-  override def deserialize(element: NbtElement, world: ServerWorld): FieldIota | Null =
-    boundary:
-      val c = HexUtils.downcast(element, NbtCompound.TYPE)
-      val klass = classNamed(c("c").downcast[NbtString]).getOrElse(boundary.break(null)).runtimeClass
-      lazy val name = c("n").downcast[NbtString]
-      try
-        FieldIota:
-          c("f").downcast[NbtByte].byteValue() match
-            case 0 => klass.getDeclaredField(name)
-            case 1 => klass.getDeclaredMethod(name)
-            case 2 => klass.getDeclaredConstructor(c("k").downcast[NbtList].map(m => classNamed(m.downcast[NbtString]).getOrElse(boundary.break(null)).runtimeClass).toSeq*)
-            case _ => boundary.break(null)
-      catch
-        case _: (NoSuchFieldException | NoSuchMethodException) => null
-  override def display(element: NbtElement): Text = t"Pointer: 0x${f"${HexUtils.downcast(element, NbtLong.TYPE).longValue}%x"}".styled(_.withColor(color))
 
 extension (e: NbtElement)
   def downcast[T <: NbtElement: NbtType] = HexUtils.downcast(e, summon[NbtType[T]])
@@ -2091,25 +1907,6 @@ given NbtType[NbtLongArray] = NbtLongArray.TYPE
 given NbtType[NbtList] = NbtList.TYPE
 given NbtType[NbtCompound] = NbtCompound.TYPE
 given NbtType[NbtEnd] = NbtEnd.TYPE
-
-case class ObjectIota[T](obj: AnyRef) extends Iota(ObjectIota, obj):
-  override def isTruthy: Boolean = !obj.isInstanceOf[Unit]
-  override def toleratesOther(iota: Iota): Boolean = false
-  override def serialize(): NbtElement = NbtCompound()
-  override def display(): Text = obj.toString
-object ObjectIota extends IotaType[ObjectIota[?]]:
-  override def color: Int = Formatting.RED.getColorValue
-  override def deserialize(element: NbtElement, world: ServerWorld): ObjectIota[?] = null
-  override def display(element: NbtElement): Text = t"Object"
-
-case class PointerIota[T](pointer: Pointer[T]) extends Iota(PointerIota, pointer):
-  override def isTruthy: Boolean = true
-  override def toleratesOther(iota: Iota): Boolean = ???
-  override def serialize(): NbtElement = NbtLong.of(pointer.address)
-object PointerIota extends IotaType[PointerIota[?]]:
-  override def color: Int = Formatting.RED.getColorValue
-  override def deserialize(element: NbtElement, world: ServerWorld): PointerIota[?] = PointerIota(Pointer(HexUtils.downcast(element, NbtLong.TYPE).longValue))
-  override def display(element: NbtElement): Text = t"Pointer: 0x${f"${HexUtils.downcast(element, NbtLong.TYPE).longValue}%x"}".styled(_.withColor(color))
 
 case class NbtIota(data: NbtElement) extends Iota(NbtIota, data):
   override def isTruthy: Boolean = data match

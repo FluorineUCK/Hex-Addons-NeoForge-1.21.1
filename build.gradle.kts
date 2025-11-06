@@ -134,58 +134,6 @@ repositories {
         "com.unascribed")
 }
 
-data class Addon(val id: String, val name: String, val version: String, val hexicVersion: String, val description: String) {
-    val camelCased = id.replace(Regex("-(\\w)")) { it.groups[1]!!.value.uppercase() }
-}
-
-val hexcasting get() = if (Math.random() < 0.5) "Hex Casting" else "Hexcasting"
-
-val allJars by tasks.register("allJars") {
-    dependsOn("build")
-}
-
-for (addon in listOf(
-    Addon("infinite-hexxy", "Infinite Hexxy", "0.1.0", "0.2.0", "Exposes patterns to $hexcasting that it... probably shouldn't have."),
-)) {
-    val jarTask by tasks.register<Jar>("${addon.camelCased}Jar") {
-        archiveBaseName = addon.id
-        archiveVersion = addon.version
-        from("addon/${addon.name}")
-        from(resources.text.fromString("""
-            {
-              "schemaVersion": 1,
-              "id": "${addon.id}",
-              "version": "${addon.version}",
-              "name": "${addon.name}",
-              "description": "${addon.description}",
-              "authors": [
-                "PoolloverNathan"
-              ],
-              "contact": {},
-              "license": "GPL-3.0",
-              "icon": "assets/hexic/${addon.id}.png",
-              "environment": "*",
-              "depends": {
-                "hexic": ">=${addon.hexicVersion}"
-              }
-            }
-        """.trimIndent())) {
-            rename { "fabric.mod.json" }
-        }
-    }
-    allJars.dependsOn(jarTask)
-    publishing {
-        publications {
-            create<MavenPublication>("maven${addon.camelCased.replaceFirstChar { it.uppercase() }}Java") {
-                artifactId = addon.id
-                artifact(jarTask) {
-                    group = rootProject.group
-                }
-            }
-        }
-    }
-}
-
 fun download(url: String, name: String = file(url).name): Download {
     val outPath = file("$buildDir/$name")
     return tasks.register<Download>("download_${file(name).nameWithoutExtension}") {

@@ -202,9 +202,6 @@ def datagen(gen: FabricDataGenerator): Unit =
           "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
           "variant" -> "Concept",
-          // infinite hexxy
-          "jvm/class" -> "Class",
-          "jvm/pointer" -> "Address",
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
         gen.add("itemGroup.hexic.group", "Hexic")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
