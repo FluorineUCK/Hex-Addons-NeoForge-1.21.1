@@ -823,6 +823,11 @@ trait HasCodec:
   def getCodec: Codec[? <: this.type]
 given [T <: Mishap] => Conversion[T, HasCodec] = _.asInstanceOf
 
+class DeferMut[T](initial: => T):
+  private var value = () => initial
+  def apply() = value()
+  def update(x: => T): Unit = value = () => x
+
 lazy val itemGroup = FabricItemGroup.builder()
   .icon(() => new ItemStack(stringworms("media")))
   .displayName(Text.translatable("itemGroup.hexic.group"))
@@ -1478,6 +1483,35 @@ def init(): Unit =
     val in = Option.when(buf.readBoolean())(buf.readString())
     if isDev then println(s"${player.getName.getString} murmurs: $in")
     player.getComponent(PlayerInfoComponent.key).murmur = in)
+  lazy val messageFrameType: ContinuationFrame.Type[MessageFrame] = (c: NbtCompound, world: ServerWorld) =>
+    val id = Uuids.toUuid(c.getIntArray("id"))
+    MessageFrame(id, Text.Serializer.fromJson(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, c.getCompound("t"))), world.getServer.getPlayerManager.getPlayer(id))
+  class MessageFrame(id: UUID, text: Text, player: => ServerPlayerEntity) extends ContinuationFrame:
+    override def getType: ContinuationFrame.Type[MessageFrame] = messageFrameType
+    override def evaluate(rest: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
+      boundary:
+        def mishap(m: Mishap) = boundary.break(CastResult(NullIota(), rest, vm.getImage, Seq(DoMishap(m, Mishap.Context(null, text))), ResolvedPatternType.EVALUATED, HexEvalSounds.NORMAL_EXECUTE))
+        vm.getImage.getStack.toSeq.reverse match
+          case Seq() =>
+            mishap(MishapNotEnoughArgs(1, 0))
+          case Seq(s: StringIota, stack*) =>
+            CastResult(NullIota(), rest, vm.getImage.withStack(_ => stack), Seq(
+              OperatorSideEffect.AttemptSpell(
+                new RenderedSpell:
+                  override def cast(env: CastingEnvironment): Unit =
+                    ServerPlayNetworking.send(player, "msg", PacketByteBufs.create.tap(_.writeString(s.getString)))
+                  override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+                , false, false
+              )
+            ), ResolvedPatternType.EVALUATED, HexEvalSounds.NORMAL_EXECUTE)
+          case Seq(i, _*) =>
+            mishap(MishapInvalidIota.ofType(i, 0, "string"))
+    override def serializeToNBT(): NbtCompound = NbtCompound()
+      .tap(_.putIntArray("id", Uuids.toIntArray(id)))
+      .tap(_.put("t", JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, Text.Serializer.toJsonTree(text))))
+    override def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(false, stack.toSeq)
+    override def size = 0
+  hexXplat.getContinuationTypeRegistry("send_message") = messageFrameType
   ServerPlayNetworking.registerGlobalReceiver("sync_mediaweave", (_, player, _, buf, _) =>
     val flags = buf.readByte()
     val c = player.getComponent(PlayerInfoComponent.key)
@@ -1520,24 +1554,15 @@ def init(): Unit =
                   if player.isCreative then 0L else extractMediaFromInventory(cost, canOvercast, simulate)
                 override def getCastingHand: Hand = castingHand
                 override def getPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
-              val stack =
+              val context =
                 if (flags & 1) != 0 then
                   Seq.fill(buf.readInt)(buf.readUnlimitedNbt: Iota)
                 else
                   Seq()
-              val image = CastingImage(stack :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
+              val image = CastingImage(context :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
               val instrs = s.getList.asScala.toSeq
               val vm = CastingVM(image, env)
-              val view = vm.queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld)
-              if view.getResolutionType == ResolvedPatternType.EVALUATED then
-                vm.getImage.getStack.lastOption match
-                  case Some(s: StringIota) =>
-                    if s.getString != "" then
-                      ServerPlayNetworking.send(player, "msg", PacketByteBufs.create.tap(_.writeString(s.getString)))
-                  case Some(_: NullIota) | None =>
-                  case Some(x) =>
-                    ServerPlayNetworking.send(player, "msg", PacketByteBufs.create.tap(_.writeString(x.display.getString)))
-                    vm.performSideEffects(Seq(DoMishap(MishapInvalidIota(x, 0, "string"), Mishap.Context(null, null))))
+              val view = vm.queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld, SpellContinuation.NotDone(MessageFrame(player.getUuid, stack.getName, player), SpellContinuation.Done.INSTANCE))
               val packet = MsgNewSpiralPatternsS2C(player.getUuid, instrs.collect { case p: PatternIota => p.getPattern }.asJava, 140)
               hexXplat.sendPacketToPlayer(player, packet)
               hexXplat.sendPacketTracking(player, packet)
