@@ -74,29 +74,64 @@ fabricApi {
 //}
 
 repositories {
-    mavenLocal()
+    fun exactRepo(url: String, vararg groups: String, recursive: Boolean = true) {
+        exclusiveContent {
+            forRepository {
+                maven(url)
+            }
+            filter {
+                for (group in groups) {
+                    if (recursive) {
+                        includeGroupAndSubgroups(group)
+                    } else {
+                        includeGroup(group)
+                    }
+                }
+            }
+        }
+    }
+
     mavenCentral()
-    flatDir { dirs("libs") }
-    maven { url = uri("https://api.modrinth.com/maven") }
-    maven { url = uri("https://artifacts.consensys.net/public/maven/maven/") }
-    maven { url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") }
-    maven { url = uri("https://dl.cloudsmith.io/public/libp2p/jvm-libp2p/maven/") }
-    maven { url = uri("https://jitpack.io/") }
-    maven { url = uri("https://masa.dy.fi/maven/") }
-    maven { url = uri("https://maven.blamejared.com/") }
-    maven { url = uri("https://maven.gegy.dev/releases") }
-    maven { url = uri("https://maven.hexxy.media/") }
-    maven { url = uri("https://maven.jamieswhiteshirt.com/libs-release/") }
-    maven { url = uri("https://maven.kosmx.dev/") }
-    maven { url = uri("https://maven.ladysnake.org/releases/") }
-    maven { url = uri("https://maven.quiltmc.org/repository/release/") }
-    maven { url = uri("https://maven.shedaniel.me/") }
-    maven { url = uri("https://maven.skye.vg/") }
-    maven { url = uri("https://maven.terraformersmc.com/") }
-    maven { url = uri("https://maven.terraformersmc.com/releases") }
-    maven { url = uri("https://mvn.devos.one/snapshots/") }
-    maven { url = uri("https://maven.pool.net.eu.org/") }
-    maven { url = uri("https://repo.sleeping.town/") }
+    exactRepo("https://api.modrinth.com/maven",
+        "maven.modrinth")
+    exactRepo("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/",
+        "com.eliotlash.mclib",
+        "software.bernie.geckolib")
+    exactRepo("https://jitpack.io/",
+        "com.github.Chocohead",
+        "com.github.LlamaLad7",
+        "com.github.Virtuoel",
+        "com.github.mattidragon")
+    exactRepo("https://maven.blamejared.com/",
+        "at.petra-k",
+        "com.samsthenerd.inline",
+        "gay.object",
+        "miyucomics.hexpose",
+        "net.darkhax.openloader",
+        "vazkii.patchouli")
+    exactRepo("https://maven.hexxy.media/",
+        "io.github.tropheusj",
+        "ram.talia")
+    exactRepo("https://maven.jamieswhiteshirt.com/libs-release/",
+        "com.jamieswhiteshirt")
+    exactRepo("https://maven.kosmx.dev/",
+        "dev.kosmx")
+    exactRepo("https://maven.ladysnake.org/releases/",
+        "dev.onyxstudios")
+    exactRepo("https://maven.pool.net.eu.org/",
+        "dev.kineticcat.hexportation",
+        "miyucomics.hexcellular",
+        "miyucomics.hexical",
+        "org.eu.net.pool",
+        "poollovernathan")
+    exactRepo("https://maven.shedaniel.me/",
+        "dev.architectury",
+        "me.shedaniel")
+    exactRepo("https://maven.terraformersmc.com/",
+        "com.terraformersmc",
+        "dev.emi")
+    exactRepo("https://repo.sleeping.town/",
+        "com.unascribed")
 }
 
 data class Addon(val id: String, val name: String, val version: String, val hexicVersion: String, val description: String) {
@@ -253,7 +288,7 @@ dependencies {
     modDepends(include(modApi("org.eu.net.pool:common-curses:1.1.5-SNAPSHOT")!!)!!)
     include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
     include(api("org.scala-lang:scala-library:2.13.6")!!)
-    modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2")
+    modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2-pre-749")
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
