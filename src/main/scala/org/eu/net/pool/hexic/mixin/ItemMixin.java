@@ -60,9 +60,13 @@ public class ItemMixin {
         try {
             staffcast.queueExecuteAndWrapIotas(patterns.stream().map(e -> e instanceof NbtCompound c ? IotaType.deserialize(c, serverWorld) : new GarbageIota()).toList(), serverWorld);
             IXplatAbstractions.INSTANCE.setStaffcastImage(serverPlayer, staffcast.getImage());
-            cir.setReturnValue(TypedActionResult.consume(stack));
         } finally {
-            user.getInventory().offerOrDrop(newStack);
+            if (stack.isEmpty()) {
+                cir.setReturnValue(TypedActionResult.consume(newStack));
+            } else {
+                user.getInventory().offerOrDrop(newStack);
+                cir.setReturnValue(TypedActionResult.consume(stack));
+            }
         }
     }
 }

@@ -2,6 +2,7 @@ package org.eu.net.pool.hexic
 package client
 
 import at.petrak.hexcasting.api.item.PigmentItem
+import at.petrak.hexcasting.api.mod.HexTags
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonObject}
@@ -13,12 +14,17 @@ import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, Fabr
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.minecraft.advancement.criterion.InventoryChangedCriterion
+import net.minecraft.block.entity.{BlockEntity, BlockEntityType}
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.color.item.ItemColorProvider
 import net.minecraft.client.gui.screen.ChatScreen
 import net.minecraft.client.gui.widget.TextFieldWidget
 import net.minecraft.client.network.{ClientPlayNetworkHandler, ClientPlayerEntity}
+import net.minecraft.client.render.{BufferBuilder, RenderLayer, RenderLayers, VertexConsumer, VertexConsumerProvider, VertexFormat}
+import net.minecraft.client.render.block.entity.{BlockEntityRenderer, BlockEntityRendererFactories}
 import net.minecraft.client.render.model.json
+import net.minecraft.client.texture.Sprite
+import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator, ModelIds, Models, TextureKey, TextureMap}
 import net.minecraft.data.server.recipe.{RecipeJsonProvider, ShapedRecipeJsonBuilder}
 import net.minecraft.entity.player.PlayerEntity
@@ -30,7 +36,7 @@ import net.minecraft.screen.slot.Slot
 import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
 import net.minecraft.util.DyeColor
 import net.minecraft.util.collection.DefaultedList
-import net.minecraft.util.math.Vec3d
+import net.minecraft.util.math.{Direction, MathHelper, Vec3d}
 import org.eu.net.pool.common_curses.{HotbarRendering, SlotAccess, TextManipulator}
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.hexic.mixin.client.ChatScreenAccess
@@ -38,7 +44,9 @@ import org.eu.net.pool.hexic.mixin.client.ChatScreenAccess
 import java.io.{InputStreamReader, Reader}
 import java.util.function.Consumer
 import scala.collection.JavaConverters.mapAsScalaMapConverter
+import scala.collection.immutable.BitSet
 import scala.language.experimental.{macros, saferExceptions}
+import scala.reflect.Selectable.reflectiveSelectable
 import scala.util.boundary
 import scala.util.chaining.scalaUtilChainingOps
 
@@ -63,7 +71,10 @@ object Hooks:
       val buf = PacketByteBufs.create()
       buf.writeBoolean(currentMurmur.isDefined)
       currentMurmur.foreach(buf.writeString)
-      ClientPlayNetworking.send("murmur", buf)
+      try
+        ClientPlayNetworking.send("murmur", buf)
+      catch
+        case _: IllegalStateException =>
   def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
     foldLocalPlayer(original): p =>
       val c = p.getComponent(PlayerInfoComponent.key)
@@ -105,6 +116,14 @@ def init(): Unit =
   HotbarRendering.Companion.getEvent.register: () =>
     foldLocalPlayer(HotbarRendering.ALL):
       _.getComponent(PlayerInfoComponent.key).wispMedia.fold(HotbarRendering.ALL)(_ => HotbarRendering.NONE)
+  BlockEntityRendererFactories.register(
+    Registries.BLOCK_ENTITY_TYPE("chisel_table").asInstanceOf[BlockEntityType[? <: BlockEntity { val bits: BitSet }]],
+    ctx => (tbl: BlockEntity { val bits: BitSet }, dt, mats, bufs, light, overlay) =>
+      given MatrixStack = mats
+      given Lighting = Lighting(light, overlay)
+      pushMatrices:
+        val bits: BitSet = tbl.bits
+  )
   ColorProviderRegistry.ITEM.register((stack, idx) => boundary:
     val nbt = stack.getSubNbt("pigment")
     if nbt == null then boundary.break(0xFFFFFFFF)
@@ -117,8 +136,109 @@ def init(): Unit =
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
       json.ItemModelGenerator.LAYERS.add(k)
+  ClientPlayNetworking.registerGlobalReceiver("msg", (_, handler, buf, _) =>
+    val s = buf.readString
+    if s.startsWith("/") then
+      handler.sendChatCommand(s)
+    else
+      handler.sendChatMessage(s))
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
+
+inline def pushMatrices[T](using stack: MatrixStack)(body: => T): T =
+  stack.push()
+  try
+    body
+  finally
+    stack.pop()
+
+case class Lighting(light: Int | (Int, Int), overlay: Int | (Int, Int) = (10, 0)):
+  def write()(using buf: VertexConsumer) =
+    light match
+      case (i, j) => buf.light(i, j)
+      case i: Int => buf.light(i)
+    overlay match
+      case (i, j) => buf.overlay(i, j)
+      case i: Int => buf.overlay(i)
+
+def vert(using buf: VertexConsumer, mats: MatrixStack, light: Lighting)(pos: (Float, Float, Float), normal: (Float, Float, Float), uv: (Float, Float)) =
+  buf.vertex(mats.peek.getPositionMatrix, pos._1, pos._2, pos._3)
+  buf.color(1.0f, 1.0f, 1.0f, 1.0f)
+  buf.texture(uv._1 / 48, uv._2 / 32)
+  light.write()
+  buf.normal(mats.peek.getNormalMatrix, normal._1, normal._2, normal._3)
+  buf.next()
+
+def verts(using VertexConsumer, MatrixStack, Lighting)(verts: Seq[((Float, Float, Float), (Float, Float))], normal: (Float, Float, Float)) =
+  for (pos, uv) <- verts yield
+    vert(pos, normal, uv)
+
+def cuboid(using VertexConsumer, MatrixStack, Lighting)(span: ((Float, Float, Float), (Float, Float, Float)), faces: (Direction, (Sprite | Null, ((Float, Float), (Float, Float))))*) =
+  val (from, to) = span
+  val (x1, y1, z1) = (from._1 min to._1, from._2 min to._2, from._3 min to._3)
+  val (x2, y2, z2) = (from._1 max to._1, from._2 max to._2, from._3 max to._3)
+  for (dir, (sprite, (uv1, uv2))) <- faces do
+    val ((minU, minV), (maxU, maxV)) = sprite match
+      case null => (0f, 0f) -> (1f, 1f)
+      case s: Sprite => (s.getMinU, s.getMinV) -> (s.getMaxU, s.getMaxV)
+    val u1 = MathHelper.lerp(uv1._1, minU, maxU)
+    val v1 = MathHelper.lerp(uv1._2, minV, maxV)
+    val u2 = MathHelper.lerp(uv2._1, minU, maxU)
+    val v2 = MathHelper.lerp(uv2._2, minV, maxV)
+    // the remainder of this function has been generated by a qwen3-coder:480b since I'm too lazy to write all this by hand
+    val vertsSeq = dir match
+      case Direction.UP =>
+        Seq(
+          (x1, y2, z2) -> (u1, v1),
+          (x2, y2, z2) -> (u2, v1),
+          (x2, y2, z1) -> (u2, v2),
+          (x1, y2, z1) -> (u1, v2),
+        )
+      case Direction.DOWN =>
+        Seq(
+          (x1, y1, z1) -> (u1, v1),
+          (x2, y1, z1) -> (u2, v1),
+          (x2, y1, z2) -> (u2, v2),
+          (x1, y1, z2) -> (u1, v2),
+        )
+      case Direction.NORTH =>
+        Seq(
+          (x2, y1, z1) -> (u1, v2),
+          (x1, y1, z1) -> (u2, v2),
+          (x1, y2, z1) -> (u2, v1),
+          (x2, y2, z1) -> (u1, v1),
+        )
+      case Direction.SOUTH =>
+        Seq(
+          (x1, y1, z2) -> (u1, v2),
+          (x2, y1, z2) -> (u2, v2),
+          (x2, y2, z2) -> (u2, v1),
+          (x1, y2, z2) -> (u1, v1),
+        )
+      case Direction.WEST =>
+        Seq(
+          (x1, y1, z1) -> (u1, v2),
+          (x1, y1, z2) -> (u2, v2),
+          (x1, y2, z2) -> (u2, v1),
+          (x1, y2, z1) -> (u1, v1),
+        )
+      case Direction.EAST =>
+        Seq(
+          (x2, y1, z2) -> (u1, v2),
+          (x2, y1, z1) -> (u2, v2),
+          (x2, y2, z1) -> (u2, v1),
+          (x2, y2, z2) -> (u1, v1),
+        )
+
+    val normal = dir match
+      case Direction.UP    => (0f, 1f, 0f)
+      case Direction.DOWN  => (0f, -1f, 0f)
+      case Direction.NORTH => (0f, 0f, -1f)
+      case Direction.SOUTH => (0f, 0f, 1f)
+      case Direction.WEST  => (-1f, 0f, 0f)
+      case Direction.EAST  => (1f, 0f, 0f)
+
+    verts(vertsSeq, normal)
 
 def datagen(gen: FabricDataGenerator): Unit =
   val pack = gen.createPack()
@@ -135,8 +255,8 @@ def datagen(gen: FabricDataGenerator): Unit =
             j.addProperty("parent", "minecraft:item/generated")
             j.add("textures", JsonObject().tap: j =>
               j.addProperty("layer0", "hexic:item/pen_back")
-              j.addProperty("layer1", "hexic:item/pen_cover")
-              j.addProperty("layer2", "hexic:item/pen_overlay")
+              j.addProperty("layer1", "hexic:item/pen_overlay")
+              j.addProperty("layer2", "hexic:item/pen_cover")
             )
           )
         gen.writer.accept(ModelIds.getItemModelId(dyedStringworm), () => JsonObject().tap: j =>
@@ -160,8 +280,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           "nbt/literal/collection" -> "Secretary's Reflection: Collection",
           "nbt/literal/list" -> "Secretary's Reflection: Vacant List",
           "nbt/literal/array1" -> "Secretary's Reflection: Vacant Byte Array",
-          "nbt/literal/array2" -> "Secretary's Reflection: Vacant Short Array",
-          "nbt/literal/array4" -> "Secretary's Reflection: Vacant Integer Array",
+          "nbt/literal/array2" -> "Secretary's Reflection: Vacant Integer Array",
+          "nbt/literal/array4" -> "Secretary's Reflection: Vacant Long Array",
           "empty_map" -> "Vacant Reflection: Map",
           "nbt/serialize" -> "Exporter's Purification",
           "tripwire" -> "Tripwire Reflection",
@@ -198,6 +318,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
         gen.add("itemGroup.hexic.group", "Hexic")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
+        gen.add("text.hexic.or_map", "%s or map")
 
         for (color, item) <- Mediaweave.colors do
           gen.add(item, s"${color.humanName} Mediaweave")
@@ -257,6 +378,7 @@ def datagen(gen: FabricDataGenerator): Unit =
     new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
         getOrCreateTagBuilder(Mediaweave.tag).add(Mediaweave.colors.values.toSeq*)
+        getOrCreateTagBuilder(HexTags.Items.STAVES).add(Pen.instances.values.toSeq*)
 
 object inventory_??? extends Inventory:
   override def size(): Int = ???
