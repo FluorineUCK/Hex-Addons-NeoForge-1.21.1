@@ -7,6 +7,7 @@ import at.petrak.hexcasting.api.pigment.FrozenPigment
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonObject}
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
+import kotlin.jvm.JvmField
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
@@ -120,8 +121,14 @@ def init(): Unit =
     Registries.BLOCK_ENTITY_TYPE("chisel_table").asInstanceOf[BlockEntityType[? <: BlockEntity { val bits: BitSet }]],
     ctx => (tbl: BlockEntity { val bits: BitSet }, dt, mats, bufs, light, overlay) =>
       given MatrixStack = mats
+      given buf: VertexConsumer = bufs.getBuffer(RenderLayer.getCutout)
       given Lighting = Lighting(light, overlay)
       pushMatrices:
+        cuboid(
+          (0f, 0f, 0f) -> (1f, 1f, 1f),
+          // TODO
+          Direction.values.map { _ -> (null, (0f, 0f) -> (1f, 1f)) } *
+        )
         val bits: BitSet = tbl.bits
   )
   ColorProviderRegistry.ITEM.register((stack, idx) => boundary:
@@ -237,7 +244,6 @@ def cuboid(using VertexConsumer, MatrixStack, Lighting)(span: ((Float, Float, Fl
       case Direction.SOUTH => (0f, 0f, 1f)
       case Direction.WEST  => (-1f, 0f, 0f)
       case Direction.EAST  => (1f, 0f, 0f)
-
     verts(vertsSeq, normal)
 
 def datagen(gen: FabricDataGenerator): Unit =

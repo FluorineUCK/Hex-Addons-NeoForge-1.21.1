@@ -92,7 +92,7 @@ import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
-import scala.collection.convert.ImplicitConversions.*
+export scala.collection.convert.ImplicitConversions.*
 import scala.collection.mutable
 import scala.compiletime.summonFrom
 import scala.concurrent.{Future, Promise}
@@ -143,6 +143,9 @@ import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod
 import com.llamalad7.mixinextras.injector.wrapoperation.{Operation, WrapOperation}
 import net.fabricmc.fabric.api.`object`.builder.v1.block.entity.FabricBlockEntityTypeBuilder
 import net.minecraft.block.entity.BlockEntity
+import net.minecraft.network.listener.ClientPlayPacketListener
+import net.minecraft.network.packet.Packet
+import net.minecraft.network.packet.s2c.play.BlockEntityUpdateS2CPacket
 import net.minecraft.util.hit.BlockHitResult
 import net.minecraft.util.shape.{VoxelShape, VoxelShapes}
 import org.spongepowered.asm.mixin.Mixin
@@ -918,11 +921,12 @@ def init(): Unit =
     override def getConsumptionPriority(stack: ItemStack): Int = 1100
 
   Registries.ITEM("chisel") = new Item(Item.Settings().maxCount(1)):
+    val Chisel = this
     object table extends BlockWithEntity(AbstractBlock.Settings.create().nonOpaque()):
       private val entityType = FabricBlockEntityTypeBuilder.create(createBlockEntity, table).build()
       Registries.BLOCK_ENTITY_TYPE("chisel_table") = entityType
       sealed trait entity extends BlockEntity:
-        private[table] var bits = BitSet()
+        var bits: BitSet = BitSet()
         private[table] object bit:
           def apply(x: Int, y: Int): Boolean = bits(x * 16 + y)
           def update(x: Int, y: Int, value: Boolean): Unit =
@@ -937,6 +941,9 @@ def init(): Unit =
             bits = BitSet.fromBitMask(nbt.getLongArray("b"))
           override def writeNbt(nbt: NbtCompound): Unit =
             nbt.putLongArray("b", bits.toBitMask)
+          override def toUpdatePacket: Packet[ClientPlayPacketListener] = BlockEntityUpdateS2CPacket.create(this)
+          override def toInitialChunkDataNbt: NbtCompound = createNbt()
+
       def findEntity(world: BlockView, pos: BlockPos): Option[entity] =
         world.getBlockEntity(pos) match
           case p: entity => Some(p)
@@ -947,7 +954,7 @@ def init(): Unit =
       val emptyShape = VoxelShapes.union(
         VoxelShapes.cuboid(0.00, 0.00, 0.00, 0.25, 0.50, 0.25),
         VoxelShapes.cuboid(0.75, 0.00, 0.75, 1.00, 0.50, 1.00),
-        VoxelShapes.cuboid(0.00, 0.50, 0.00, 1.00, 0.6875, 1.00),
+        VoxelShapes.cuboid(0.00, 0.50, 0.00, 1.00, 0.75, 1.00),
         VoxelShapes.cuboid(0.00, 0.75, 0.00, 0.0625, 0.8125, 1.00),
         VoxelShapes.cuboid(0.00, 0.75, 0.00, 1.00, 0.8125, 0.0625),
         VoxelShapes.cuboid(0.00, 0.75, 1.00, 0.9375, 0.8125, 1.00),
@@ -981,6 +988,10 @@ def init(): Unit =
             stack.setCount(1)
             entity.bits = BitSet.empty
             entity.markDirty()
+            ActionResult.SUCCESS
+          case stack@ItemStackAccess(_: Chisel.type, _, _) =>
+            // TODO
+            stack.damage(1, player, { _ => })
             ActionResult.SUCCESS
           case _ => ActionResult.PASS
     Registries.BLOCK("chisel_table") = table
