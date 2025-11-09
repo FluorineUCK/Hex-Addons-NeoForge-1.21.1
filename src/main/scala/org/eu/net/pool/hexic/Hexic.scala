@@ -1452,6 +1452,14 @@ def init(): Unit =
         Seq(ListIota(list.indices.filter(!excl.contains(_)).map(list(_)).toSeq.asJava))
       case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
       case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
+  Patterns.register("extract", ne"dewaqawed"):
+    Patterns.mkConstAction(2):
+      case Seq(ary: ListIota, nr: DoubleIota) =>
+        val ls = ary.getList.toSeq
+        val n = iotaInt(nr, throw MishapInvalidIota.ofType(nr, 0, "int"))
+        Seq(ListIota(ls take n), ListIota(ls drop (n+1)), ls(n))
+      case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
+      case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
   Patterns.register("murmur", e"wwaqwa"):
     Patterns.mkLiteral:
       locally(summon[CastingEnvironment]).getCastingEntity match
