@@ -121,7 +121,7 @@ def init(): Unit =
     Registries.BLOCK_ENTITY_TYPE("chisel_table").asInstanceOf[BlockEntityType[? <: BlockEntity { val bits: BitSet }]],
     ctx => (tbl: BlockEntity { val bits: BitSet }, dt, mats, bufs, light, overlay) =>
       given MatrixStack = mats
-      given buf: VertexConsumer = bufs.getBuffer(RenderLayer.getCutout)
+      given buf: VertexConsumer = bufs.getBuffer(RenderLayer.getTranslucent)
       given Lighting = Lighting(light, overlay)
       pushMatrices:
         cuboid(
@@ -159,7 +159,7 @@ inline def pushMatrices[T](using stack: MatrixStack)(body: => T): T =
   finally
     stack.pop()
 
-case class Lighting(light: Int | (Int, Int), overlay: Int | (Int, Int) = (10, 0)):
+case class Lighting(light: Int | (Int, Int), overlay: Int | (Int, Int) = (255, 255) /* trial-and-error with no effect */):
   def write()(using buf: VertexConsumer) =
     light match
       case (i, j) => buf.light(i, j)
@@ -170,7 +170,7 @@ case class Lighting(light: Int | (Int, Int), overlay: Int | (Int, Int) = (10, 0)
 
 def vert(using buf: VertexConsumer, mats: MatrixStack, light: Lighting)(pos: (Float, Float, Float), normal: (Float, Float, Float), uv: (Float, Float)) =
   buf.vertex(mats.peek.getPositionMatrix, pos._1, pos._2, pos._3)
-  buf.color(1.0f, 1.0f, 1.0f, 1.0f)
+  buf.color(1.0f, 0.0f, 1.0f, 0.5f)
   buf.texture(uv._1 / 48, uv._2 / 32)
   light.write()
   buf.normal(mats.peek.getNormalMatrix, normal._1, normal._2, normal._3)
