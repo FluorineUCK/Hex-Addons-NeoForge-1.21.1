@@ -5,7 +5,7 @@ import at.petrak.hexcasting.api.item.PigmentItem
 import at.petrak.hexcasting.api.mod.HexTags
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import com.google.gson.reflect.TypeToken
-import com.google.gson.{Gson, JsonObject}
+import com.google.gson.{Gson, JsonArray, JsonObject}
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
 import kotlin.jvm.JvmField
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
@@ -251,7 +251,41 @@ def datagen(gen: FabricDataGenerator): Unit =
   pack.addProvider:
     new FabricModelProvider(_):
       override def generateBlockStateModels(gen: BlockStateModelGenerator): Unit =
-        ;
+        gen.registerSimpleState(Registries.BLOCK("chisel_table"))
+        gen.modelCollector.accept(ModelIds.getBlockModelId(Registries.BLOCK("chisel_table")), () =>
+          new JsonObject().tap: j =>
+            j.addProperty("parent", "minecraft:block")
+            j.add("textures", new JsonObject().tap: j =>
+              j.addProperty("particle", "hexcasting:block/slate")
+            )
+            j.add("elements", new JsonArray().tap: j =>
+              def elem(name: String, from: (Float, Float, Float), to: (Float, Float, Float), config: JsonObject ?=> Unit, faces: (Direction, JsonObject ?=> Label[Unit] ?=> Unit)*) =
+                j.add(new JsonObject().tap: j =>
+                  j.addProperty("name", name)
+                  j.add("from", JsonArray().tap(_.add(from._1)).tap(_.add(from._2)).tap(_.add(from._3)))
+                  j.add("to", JsonArray().tap(_.add(to._1)).tap(_.add(to._2)).tap(_.add(to._3)))
+                  j.add("faces", JsonObject().tap: j =>
+                    for (face, action) <- if faces.nonEmpty then faces else Direction.values.toSeq.map { _ -> {} } do
+                      boundary:
+                        j.add(face.asString, JsonObject().tap:
+                          case given JsonObject =>
+                            val j = summon[JsonObject]
+                            if face == Direction.WEST && from._1 == 0 then j.addProperty("cullface", "west")
+                            if face == Direction.DOWN && from._2 == 0 then j.addProperty("cullface", "down")
+                            if face == Direction.NORTH && from._3 == 0 then j.addProperty("cullface", "north")
+                            if face == Direction.EAST && to._1 == 16 then j.addProperty("cullface", "east")
+                            if face == Direction.UP && to._2 == 16 then j.addProperty("cullface", "up")
+                            if face == Direction.SOUTH && to._3 == 16 then j.addProperty("cullface", "south")
+                            config; action
+                        )
+                  )
+                )
+              // TODO: we can optimize this later
+              elem("small_leg", (0, 0, 0), (4, 8, 4), j ?=> j.addProperty("texture", "#particle"))
+              elem("big_leg", (12, 0, 12), (16, 8, 16), j ?=> j.addProperty("texture", "#particle"))
+              elem("surface", (0, 8, 0), (16, 12, 16), j ?=> j.addProperty("texture", "#particle"))
+            )
+        )
       override def generateItemModels(gen: ItemModelGenerator): Unit =
         for (_, item) <- Mediaweave.colors do gen.register(item, Models.GENERATED)
         for (_, item) <- stringworms do gen.register(item, Models.GENERATED)
@@ -272,6 +306,7 @@ def datagen(gen: FabricDataGenerator): Unit =
               j.addProperty(s"layer$i", s"hexic:item/stringworm_tinted_$i")
           )
         )
+        gen.register(Registries.ITEM("chisel"), Models.GENERATED)
         gen.register(wizard, Models.GENERATED)
   pack.addProvider:
     new FabricLanguageProvider(_):
