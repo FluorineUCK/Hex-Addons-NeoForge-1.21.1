@@ -52,7 +52,7 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.base.SnapshotParticipant
 import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, TransactionContext}
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.Bootstrap
-import net.minecraft.block.{AbstractBlock, Block, BlockState, BlockWithEntity, ShapeContext}
+import net.minecraft.block.{AbstractBlock, Block, BlockRenderType, BlockState, BlockWithEntity, ShapeContext}
 import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType}
 import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
@@ -863,9 +863,11 @@ lazy val itemGroup = FabricItemGroup.builder()
 val goodModulo = ne"daawdda"
 
 def memo[T, R](f: T => R, limit: Int = 128): T => R =
-  val cache = new ju.LinkedHashMap[T, R]:
+  val cache = new ju.LinkedHashMap[T, R](limit + 1, 1, true):
     override def removeEldestEntry(eldest: ju.Map.Entry[T, R]): Boolean = size > limit
-  cache.computeIfAbsent(_, f(_))
+  x =>
+    cache.synchronized:
+      cache.computeIfAbsent(x, f(_))
 
 def init(): Unit =
   given_Logger.info:
@@ -925,6 +927,7 @@ def init(): Unit =
     object table extends BlockWithEntity(AbstractBlock.Settings.create().nonOpaque()):
       private val entityType = FabricBlockEntityTypeBuilder.create(createBlockEntity, table).build()
       Registries.BLOCK_ENTITY_TYPE("chisel_table") = entityType
+      override def getRenderType(state: BlockState) = BlockRenderType.MODEL
       sealed trait entity extends BlockEntity:
         var bits: BitSet = BitSet()
         private[table] object bit:
@@ -961,12 +964,12 @@ def init(): Unit =
         VoxelShapes.cuboid(1.00, 0.75, 0.00, 1.00, 0.8125, 0.9375),
       )
       val chunks = memo: (i: Int) =>
-        val x = i % 16
-        val z = i / 16
-        assume(x <= 14 && z <= 14)
+        val x = i / 16
+        val z = i % 16
+        assume(x < 14 && z < 14)
         val dx = (x + 1) / 16.0
         val dz = (z + 1) / 16.0
-        VoxelShapes.cuboid(dx - 0.025, 0.75, dz - 0.025, dx + 0.063, 0.8125, dz + 0.063)
+        VoxelShapes.cuboid(dx, 0.75, dz, dx + 0.0625, 0.8125, dz + 0.0625)
       val shapes = memo { (bits: BitSet) => VoxelShapes.union(emptyShape, bits.toSeq.map(chunks)*) }
 
       override def getOutlineShape(state: BlockState, world: BlockView, pos: BlockPos, context: ShapeContext): VoxelShape =
@@ -983,16 +986,26 @@ def init(): Unit =
               entity.bit(i, j) = true
             stack.decrement(1)
             ActionResult.SUCCESS
-          case stack@ItemStackAccess(_, 0, _) if entity.bits.nonEmpty =>
+          case stack@ItemStackAccess(_, c, _) if c == 0 && entity.bits.nonEmpty && player.isSneaking =>
             stack.setItem(cutItem)
             stack.setCount(1)
+            stack.getOrCreateNbt().putLongArray("b", entity.bits.toBitMask)
             entity.bits = BitSet.empty
             entity.markDirty()
             ActionResult.SUCCESS
           case stack@ItemStackAccess(_: Chisel.type, _, _) =>
-            // TODO
-            stack.damage(1, player, { _ => })
-            ActionResult.SUCCESS
+            val pos = hit.getPos.add(hit.getSide.getOffsetX * -1/32, hit.getSide.getOffsetY * -1/32, hit.getSide.getOffsetZ * -1/32)
+            val x = ((pos.x * 16 % 16 + 16) % 16 - 1).toInt
+            val y = ((pos.z * 16 % 16 + 16) % 16 - 1).toInt
+            if x >= 0 && y >= 0 && x < 14 && y < 14 then
+              if entity.bit(x, y) then
+                stack.damage(1, player, { _ => })
+                entity.bit(x, y) = false
+                ActionResult.SUCCESS
+              else
+                ActionResult.PASS
+            else
+              ActionResult.PASS
           case _ => ActionResult.PASS
     Registries.BLOCK("chisel_table") = table
     Registries.ITEM("chisel_table") = BlockItem(table, Item.Settings())

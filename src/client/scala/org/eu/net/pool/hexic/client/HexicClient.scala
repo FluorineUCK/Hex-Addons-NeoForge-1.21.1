@@ -49,6 +49,7 @@ import scala.collection.immutable.BitSet
 import scala.language.experimental.{macros, saferExceptions}
 import scala.reflect.Selectable.reflectiveSelectable
 import scala.util.boundary
+import scala.util.boundary.Label
 import scala.util.chaining.scalaUtilChainingOps
 
 given client: MinecraftClient = MinecraftClient.getInstance
@@ -122,14 +123,23 @@ def init(): Unit =
     ctx => (tbl: BlockEntity { val bits: BitSet }, dt, mats, bufs, light, overlay) =>
       given MatrixStack = mats
       given buf: VertexConsumer = bufs.getBuffer(RenderLayer.getTranslucent)
-      given Lighting = Lighting(light, overlay)
-      pushMatrices:
-        cuboid(
-          (0f, 0f, 0f) -> (1f, 1f, 1f),
-          // TODO
-          Direction.values.map { _ -> (null, (0f, 0f) -> (1f, 1f)) } *
-        )
-        val bits: BitSet = tbl.bits
+      for bit <- tbl.bits do
+        val x = bit / 16
+        val y = bit % 16
+        val n = x * 3f + y - 5f
+        val time = tbl.getWorld.getTime + dt
+        val lighten = Math.sin(n / 20f + time / 400f)
+        val darken = Math.sin(n / 24f + time / 400f)
+        val color = ((1.0f - (darken max 0) * 0.08f).toFloat, (0.6f + lighten * 0.125).toFloat, (1.0f + (darken min 0) * 0.08f).toFloat, 1.0f) // season to taste
+        if color._1 > 1 || color._2 > 1 || color._3 > 1 || color._4 > 1 then
+          given_Logger.error(s"Out-of-bounds pixel color! x=$x y=$y n=$n time=$time lighten=$lighten darken=$darken color=$color")
+        else
+          given Lighting = Lighting(light, overlay, color = color)
+          cuboid(
+            ((x+1)/16f, 12/16f, (y+1)/16f) -> ((x+2)/16f, 13/16f, (y+2)/16f),
+            // TODO
+            Direction.values.map(_ -> (null, (0f, 0f) -> (1f, 1f)))*
+          )
   )
   ColorProviderRegistry.ITEM.register((stack, idx) => boundary:
     val nbt = stack.getSubNbt("pigment")
@@ -159,20 +169,24 @@ inline def pushMatrices[T](using stack: MatrixStack)(body: => T): T =
   finally
     stack.pop()
 
-case class Lighting(light: Int | (Int, Int), overlay: Int | (Int, Int) = (255, 255) /* trial-and-error with no effect */):
-  def write()(using buf: VertexConsumer) =
+case class Lighting(light: Int | (Int, Int), overlay: Int | (Int, Int) = (255, 255) /* trial-and-error with no effect */, color: (Float, Float, Float, Float) = (1, 1, 1, 1)):
+  def writeLight()(using buf: VertexConsumer) =
     light match
       case (i, j) => buf.light(i, j)
       case i: Int => buf.light(i)
+  def writeOverlay()(using buf: VertexConsumer) =
     overlay match
       case (i, j) => buf.overlay(i, j)
       case i: Int => buf.overlay(i)
+  def writeColor()(using buf: VertexConsumer) =
+    buf.color(color._1, color._2, color._3, color._4)
 
 def vert(using buf: VertexConsumer, mats: MatrixStack, light: Lighting)(pos: (Float, Float, Float), normal: (Float, Float, Float), uv: (Float, Float)) =
   buf.vertex(mats.peek.getPositionMatrix, pos._1, pos._2, pos._3)
-  buf.color(1.0f, 0.0f, 1.0f, 0.5f)
+  light.writeColor()
   buf.texture(uv._1 / 48, uv._2 / 32)
-  light.write()
+  light.writeLight()
+  light.writeOverlay()
   buf.normal(mats.peek.getNormalMatrix, normal._1, normal._2, normal._3)
   buf.next()
 
