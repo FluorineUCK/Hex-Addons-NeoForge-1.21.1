@@ -300,7 +300,7 @@ tasks.processResources {
         fabricMod("hexic", version as String) {
             name = "Hexic"
             description = "Miscellaneous neat features and QoL patterns for Hex Casting."
-            license = "GPL-3.0"
+            license = "LGPL-3.0"
             icon = "assets/hexic/icon.png"
 
             author("PoolloverNathan") {
