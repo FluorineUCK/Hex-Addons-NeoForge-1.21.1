@@ -29,6 +29,8 @@ val erd by tasks.register<Sync>("myExtractRenderDoc") {
     into("$buildDir/renderdoc")
 }
 
+loom.runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
+
 tasks.named("runClientRenderDoc") {
     dependsOn(erd)
 }
