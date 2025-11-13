@@ -132,6 +132,8 @@ repositories {
         "dev.emi")
     exactRepo("https://repo.sleeping.town/",
         "com.unascribed")
+    exactRepo("https://maven.nucleoid.xyz/",
+        "xyz.nucleoid")
 }
 
 fun download(url: String, name: String = file(url).name): Download {
@@ -253,6 +255,7 @@ dependencies {
     implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3") // trans maven.modrinth:jsonpatcher
     modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0") // trans maven.modrinth:jsonpatcher
     modDepends(modImplementation("miyucomics.hexpose:hexpose:1.0.0")!!)
+    include(modApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     val cardinal_version = "5.2.3"
