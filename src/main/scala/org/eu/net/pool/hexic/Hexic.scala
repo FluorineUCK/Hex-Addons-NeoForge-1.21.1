@@ -139,6 +139,7 @@ import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+import xyz.nucleoid.fantasy.Fantasy
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -1227,6 +1228,9 @@ def init(): Unit =
       )
       c.build())
   Registries.BLOCK("void_air") = Interop.VOID_AIR
+  Patterns.register("makeworld", ???):
+    Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.QUENCHED_BLOCK_UNIT * 81):
+      Fantasy.get(summon[CastingEnvironment].getWorld).getOrOpenPersistentWorld()
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
