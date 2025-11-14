@@ -139,7 +139,9 @@ import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
-import xyz.nucleoid.fantasy.Fantasy
+import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
+import xyz.nucleoid.fantasy.util.VoidChunkGenerator
+import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig}
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -759,6 +761,11 @@ lazy val itemGroup = FabricItemGroup.builder()
 
 val goodModulo = ne"daawdda"
 
+def memo[T, R](f: T => R, limit: Int = 128): T => R =
+  val cache = new ju.LinkedHashMap[T, R]:
+    override def removeEldestEntry(eldest: ju.Map.Entry[T, R]): Boolean = size > limit
+  cache.computeIfAbsent(_, f(_))
+
 def init(): Unit =
   given_Logger.info:
     val possible = Seq(
@@ -1228,11 +1235,15 @@ def init(): Unit =
       )
       c.build())
   Registries.BLOCK("void_air") = Interop.VOID_AIR
+  val planes = memo { (uuid: UUID) => (env: CastingEnvironment) ?=>
+    val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
+    val world = env.getWorld
+    Fantasy get world.getServer getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(world.getRegistryManager get RegistryKeys.BIOME))
+  }
   Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
     Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
       val uuid = UUID.randomUUID()
-      val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
-      val handle = Fantasy.get(summon[CastingEnvironment].getWorld.getServer).getOrOpenPersistentWorld(dimID, ???)
+      val handle = planes(uuid)
       // TODO: world config
       // TODO: generate initial room
       // TODO: write down old worlds
