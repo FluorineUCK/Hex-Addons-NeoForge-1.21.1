@@ -1228,9 +1228,15 @@ def init(): Unit =
       )
       c.build())
   Registries.BLOCK("void_air") = Interop.VOID_AIR
-  Patterns.register("makeworld", ???):
-    Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.QUENCHED_BLOCK_UNIT * 81):
-      Fantasy.get(summon[CastingEnvironment].getWorld).getOrOpenPersistentWorld()
+  Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
+    Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
+      val uuid = UUID.randomUUID()
+      val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
+      val handle = Fantasy.get(summon[CastingEnvironment].getWorld.getServer).getOrOpenPersistentWorld(dimID, ???)
+      // TODO: world config
+      // TODO: generate initial room
+      // TODO: write down old worlds
+      Seq(???)
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
