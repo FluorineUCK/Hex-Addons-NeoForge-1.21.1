@@ -139,6 +139,7 @@ import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+import net.beholderface.oneironaut.casting.iotatypes.DimIota
 import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
 import xyz.nucleoid.fantasy.util.VoidChunkGenerator
 import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig}
@@ -1243,11 +1244,11 @@ def init(): Unit =
   Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
     Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
       val uuid = UUID.randomUUID()
-      val handle = planes(uuid)
+      val world = planes(uuid).asWorld
       // TODO: world config
       // TODO: generate initial room
       // TODO: write down old worlds
-      Seq(???)
+      Seq(DimIota(world))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
