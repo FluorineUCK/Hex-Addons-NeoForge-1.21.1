@@ -244,6 +244,7 @@ dependencies {
     include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
+    modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
     compat("maven.modrinth:hexcassettes:1.1.4")
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
