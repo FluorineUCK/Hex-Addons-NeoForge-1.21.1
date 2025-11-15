@@ -71,8 +71,6 @@ import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.{BlockPos, Direction, Vec3d}
 import net.minecraft.util.{Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
 import net.minecraft.world.World
-import org.eu.net.pool.common_curses.client.CommonCursesClientKt
-import org.eu.net.pool.common_curses.{CommonCursesKt, SlotAccess, TextManipulator}
 import org.eu.net.pool.hexic
 import org.eu.net.pool.hexic.ducks.SimpleRegistryDuck
 import org.objectweb.asm.{ClassWriter, tree}
@@ -385,17 +383,12 @@ trait SlotReference:
 
 class PlayerInfoComponent(
   val player: PlayerEntity,
-  var wispMedia: Option[Long] = None,
   var murmur: Option[String] = None,
   var leftWeave: ItemStack = ItemStack.EMPTY,
   var rightWeave: ItemStack = ItemStack.EMPTY,
   var chatLines: Seq[Text] = Seq(),
 ) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
-    if c.getBoolean("isWisp") then
-      wispMedia = Some(c.getLong("media"))
-    else
-      wispMedia = None
     if c.contains("shl", NbtElement.COMPOUND_TYPE) then
       leftWeave = ItemStack.fromNbt(c.getCompound("shl"))
     else
@@ -407,12 +400,6 @@ class PlayerInfoComponent(
     chatLines = c.getList("chat", NbtElement.COMPOUND_TYPE).map(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, _)).map(Text.Serializer.fromJson).toSeq
 
   override def writeToNbt(c: NbtCompound): Unit =
-    wispMedia match
-      case None =>
-        c.putBoolean("isWisp", false)
-      case Some(media) =>
-        c.putBoolean("isWisp", true)
-        c.putLong("media", media)
     if !leftWeave.isEmpty then c.put("shl", NbtCompound().tap(leftWeave.writeNbt))
     if !rightWeave.isEmpty then c.put("shr", NbtCompound().tap(rightWeave.writeNbt))
     c.put("chat", NbtList().tap(_.addAll(chatLines.map(Text.Serializer.toJsonTree).map(JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, _)))))
@@ -1137,36 +1124,6 @@ def init(): Unit =
             1
           ).build()
       ).build())
-    d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("playerwisp").pipe: c =>
-      c.requires(_.hasPermissionLevel(2))
-      c.argument("target", EntityArgumentType.players()): c =>
-        c.literal("make"): c =>
-          c.executes: (ctx: CommandContext[ServerCommandSource]) =>
-            val player = EntityArgumentType.getPlayer(ctx, "target")
-            player.getComponent(PlayerInfoComponent.key).wispMedia = Some(-1)
-            PlayerInfoComponent.key.sync(player)
-            1
-        c.literal("unmake"): c =>
-          c.executes: (ctx: CommandContext[ServerCommandSource]) =>
-            val player = EntityArgumentType.getPlayer(ctx, "target")
-            player.getComponent(PlayerInfoComponent.key).wispMedia = None
-            PlayerInfoComponent.key.sync(player)
-            1
-        c.literal("media"): c =>
-          c.literal("add"): c =>
-            c.executes: (ctx: CommandContext[ServerCommandSource]) =>
-              ???
-          c.literal("set"): c =>
-            c.executes: (ctx: CommandContext[ServerCommandSource]) =>
-              ???
-      // only rasonable to query one player
-      c.argument("target", EntityArgumentType.players()): c =>
-        c.literal("media"): c =>
-          c.literal("query"): c =>
-            c.executes: (ctx: CommandContext[ServerCommandSource]) =>
-              ???
-      c.build()
-    )
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("property").pipe: c =>
       c.requires(_.hasPermissionLevel(2))
       c.`then`(LiteralArgumentBuilder.literal("get")
@@ -1271,7 +1228,8 @@ def init(): Unit =
               userData = oldImage.getUserData,
               null // kotlin bullshit
             ))
-            HexCardinalComponents.STAFFCAST_IMAGE.sync(caster);
+            HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
+          // do not remove this comment
           (new CastingImage(
             stack = img.getStack.asScala.init.asJava,
             parenCount = img.getParenCount,
@@ -1363,10 +1321,6 @@ def init(): Unit =
             p.syncComponent(PlayerInfoComponent.key)
             Seq()
           case _ => throw MishapBadCaster()
-  SlotAccess.playerInventory.register: (player, slot, stack) =>
-    player.getComponent(PlayerInfoComponent.key).wispMedia match
-      case Some(_) => SlotAccess.LOCK_AND_DROP
-      case None => SlotAccess.ALLOW
   ServerPlayNetworking.registerGlobalReceiver("murmur", (_, player, _, buf, _) =>
     val in = Option.when(buf.readBoolean())(buf.readString())
     if isDev then println(s"${player.getName.getString} murmurs: $in")

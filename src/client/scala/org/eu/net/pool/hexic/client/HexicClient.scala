@@ -32,8 +32,6 @@ import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
 import net.minecraft.util.DyeColor
 import net.minecraft.util.collection.DefaultedList
 import net.minecraft.util.math.Vec3d
-import org.eu.net.pool.common_curses.{HotbarRendering, SlotAccess, TextManipulator}
-import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.hexic.mixin.client.ChatScreenAccess
 
 import java.io.{InputStreamReader, Reader}
@@ -106,9 +104,6 @@ object Hooks:
         true
 
 def init(): Unit =
-  HotbarRendering.Companion.getEvent.register: () =>
-    foldLocalPlayer(HotbarRendering.ALL):
-      _.getComponent(PlayerInfoComponent.key).wispMedia.fold(HotbarRendering.ALL)(_ => HotbarRendering.NONE)
   ColorProviderRegistry.ITEM.register((stack, idx) => boundary:
     val nbt = stack.getSubNbt("pigment")
     if nbt == null then boundary.break(0xFFFFFFFF)
