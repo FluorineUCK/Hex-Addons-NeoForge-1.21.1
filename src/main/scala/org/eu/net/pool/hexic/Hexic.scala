@@ -140,9 +140,12 @@ import org.eu.net.pool.hexic.mixin.ItemStackAccess
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
 import xyz.nucleoid.fantasy.util.VoidChunkGenerator
 import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig}
+
+import java.nio.charset.StandardCharsets
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -1236,18 +1239,32 @@ def init(): Unit =
       )
       c.build())
   Registries.BLOCK("void_air") = Interop.VOID_AIR
-  val planes = memo { (uuid: UUID) => (env: CastingEnvironment) ?=>
+  val planes = memo { (uuid: UUID) => (server: MinecraftServer) ?=>
     val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
-    val world = env.getWorld
-    Fantasy get world.getServer getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(world.getRegistryManager get RegistryKeys.BIOME))
+    Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
   }
+  given (env: CastingEnvironment) => MinecraftServer = env.getWorld.getServer
+  extension (server: MinecraftServer)
+    def savedPlanes =
+      val file = server.getSavePath(WorldSavePath("fresh"))
+      if Files.exists(file) then
+        Files.readAllLines(file, StandardCharsets.UTF_8).toSeq.filter(!_.isBlank).map(UUID.fromString)
+      else
+        Seq.empty
+    def savedPlanes_=(planes: Seq[UUID]) =
+      val file = server.getSavePath(WorldSavePath("fresh"))
+      Files.write(file, planes.map(_.toString))
+  ServerLifecycleEvents.SERVER_STARTED.register: server =>
+    given MinecraftServer = server
+    for id <- server.savedPlanes do
+      planes(id)
   Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
     Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
       val uuid = UUID.randomUUID()
       val world = planes(uuid).asWorld
       // TODO: world config
       // TODO: generate initial room
-      // TODO: write down old worlds
+      world.getServer.savedPlanes :+= uuid
       Seq(DimIota(world))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
