@@ -397,6 +397,10 @@ tasks.processResources {
                 }
             }
         }
+        file("$itemsRoot/../block").mkdir()
+        exec {
+            commandLine("env", "magick", "xc:#ffffff[16x16]", "$itemsRoot/../block/border.png")
+        }
         //file("$itemsRoot/stringworm.miff").delete()
         exec {
             commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")

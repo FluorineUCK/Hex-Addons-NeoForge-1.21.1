@@ -135,7 +135,7 @@ def datagen(gen: FabricDataGenerator): Unit =
   pack.addProvider:
     new FabricModelProvider(_):
       override def generateBlockStateModels(gen: BlockStateModelGenerator): Unit =
-        ;
+        gen.registerSimpleCubeAll(Registries.BLOCK("border"))
       override def generateItemModels(gen: ItemModelGenerator): Unit =
         for (_, item) <- Mediaweave.colors do gen.register(item, Models.GENERATED)
         for (_, item) <- stringworms do gen.register(item, Models.GENERATED)
@@ -217,8 +217,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           gen.add(item, item.size match
             case 6 => s"${item.color.humanName} Media Pouch"
             case 12 => s"Large ${item.color.humanName} Media Pouch"
-            case _ => s"How Did You Get This ${item.color.humanName} Media Pouch")
-        val hexLang = Gson().fromJson(InputStreamReader(getClass.getResourceAsStream("/assets/hexcasting/lang/en_us.json")), new TypeToken[java.util.Map[String, String]]() {}).asScala
+            case s => throw IllegalStateException(s"Unhandled bundle size $s"))
+        val hexLang = Seq("hexcasting", "oneironaut").flatMap(mod => Gson().fromJson(InputStreamReader(getClass.getResourceAsStream(s"/assets/$mod/lang/en_us.json")), new TypeToken[java.util.Map[String, String]]() {}).asScala).toMap
         Registries.ITEM.forEach:
           case p: PigmentItem => gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
           case e => println(e)
