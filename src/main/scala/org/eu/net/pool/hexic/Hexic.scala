@@ -121,7 +121,7 @@ import kotlin.jvm.internal.DefaultConstructorMarker
 import net.minecraft.client.item.{BundleTooltipData, TooltipContext, TooltipData}
 import net.minecraft.entity.{Entity, LivingEntity}
 import net.minecraft.screen.slot.Slot
-import net.minecraft.sound.{SoundCategory, SoundEvents}
+import net.minecraft.sound.{BlockSoundGroup, SoundCategory, SoundEvents}
 import net.minecraft.util.collection.DefaultedList
 import org.eu.net.pool.hexic.MediaBundle.{DUST_AMOUNT, PERCENTAGE}
 
@@ -1258,12 +1258,22 @@ def init(): Unit =
     given MinecraftServer = server
     for id <- server.savedPlanes do
       planes(id)
+  object border extends Block(AbstractBlock.Settings.create().dropsNothing().allowsSpawning((_, _, _, _) => false).sounds(BlockSoundGroup.STONE).requiresTool().strength(100.0F, 1200.0F).luminance(_ => 14))
+  Registries.BLOCK("border") = border
   Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
     Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
       val uuid = UUID.randomUUID()
       val world = planes(uuid).asWorld
       // TODO: world config
-      // TODO: generate initial room
+      val state = border.getDefaultState
+      val bp = BlockPos.Mutable()
+      for i <- 0 to 10; j <- 0 to 10; k <- Seq(0, 10) do
+        bp.set(i, j, k)
+        world.setBlockState(bp, state, 0)
+        bp.set(i, k, j)
+        world.setBlockState(bp, state, 0)
+        bp.set(k, i, j)
+        world.setBlockState(bp, state, 0)
       world.getServer.savedPlanes :+= uuid
       Seq(DimIota(world))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
