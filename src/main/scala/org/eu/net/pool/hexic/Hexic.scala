@@ -1243,7 +1243,7 @@ def init(): Unit =
   Registries.BLOCK("void_air") = Interop.VOID_AIR
   val planes = memo { (uuid: UUID) => (server: MinecraftServer) ?=>
     val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
-    Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
+    Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setDimensionType RegistryKey.of(RegistryKeys.DIMENSION_TYPE, "cell") setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
   }
   given (env: CastingEnvironment) => MinecraftServer = env.getWorld.getServer
   extension (server: MinecraftServer)

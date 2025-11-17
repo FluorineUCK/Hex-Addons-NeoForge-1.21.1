@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "ActionRegistryEntryMixin",
+    "DimIotaMixin",
     "EntityMixin",
     "HopperEndpointRegistryMixin",
     "ItemMixin",
@@ -12,6 +13,7 @@
     "ItemStackAccess",
     "ItemStackMixin",
     "MediafiedItemManagerIndexMixin",
+    "OpDimTeleport$SpellMixin",
     "OpEdifySaplingMixin",
     "OpEdifySaplingMixin$Spell",
     "OpObservePropertyMixin",
