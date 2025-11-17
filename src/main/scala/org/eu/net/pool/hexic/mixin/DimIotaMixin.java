@@ -11,9 +11,9 @@ import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import at.petrak.hexcasting.api.casting.iota.IotaType;
 
 @Mixin(targets = "net.beholderface.oneironaut.casting.iotatypes.DimIota$1")
-abstract class DimIotaMixin extends IotaType {
+abstract class DimIotaMixin {
     @WrapOperation(method = "display", at = @At(value = "INVOKE", target = "Lnet/minecraft/text/Text;of(Ljava/lang/String;)Lnet/minecraft/text/Text;"))
     Text getName(String dim, Operation<Text> original) {
-        return /*dim.startsWith("hexic:fresh_") ? org.eu.net.pool.hexic.Extern.getPocketName(dim) :*/ original.call(dim);
+        return dim.startsWith("hexic:fresh_") ? org.eu.net.pool.hexic.Extern.getPocketName(dim) : original.call(dim);
     }
 }

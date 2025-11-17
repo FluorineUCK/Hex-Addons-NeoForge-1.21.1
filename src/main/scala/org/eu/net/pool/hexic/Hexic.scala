@@ -1804,15 +1804,12 @@ def getPocketID(key: Identifier): Option[UUID] =
     Some(UUID(bi1.longValue, bi2.longValue))
   else
     None
-def pocketName(using rand: java.util.Random) =
-  def b = "zxcvbnm"(rand.nextInt(7)).toString
-  def v = "aeiouaeiouaeiouy"(rand.nextInt(16)).toString
+def pocketName(using rand: Random) =
+  def b = "zxcvbnm".charAt(rand.nextInt(7)).toString
+  def v = "aeiouaeiouaeiouy".charAt(rand.nextInt(16)).toString
   def piece = s"${b.toUpperCase}$v$b" + Iterator.continually(v + b).takeWhile(_ => rand.nextInt(3) != 0).mkString("")
   (piece +: Iterator.continually(piece).takeWhile(_ => rand.nextInt(5) == 0).toSeq).mkString("-")
-val pocketNames: UUID => String = memo { id =>
-  given Random = Random(id.getLeastSignificantBits)
-  pocketName
-}
+val pocketNames = memo((id: UUID) => pocketName(using Random(id.getLeastSignificantBits)))
 
 abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleton, userdata: Iota, override val display: Text, metatable: String, readonlyMetatable: Boolean) extends Iota(iotaType, (userdata, display, metatable, readonlyMetatable)):
   override def subIotas(): lang.Iterable[Iota] = util.List.of(userdata)
