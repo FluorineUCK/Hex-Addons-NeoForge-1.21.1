@@ -480,6 +480,9 @@ extension [T] (x: T | Null)
   inline def ?[R](f: T => R): R | Null = x match
     case null => null
     case x: T => f(x)
+  inline def ??(y: T): T = x match
+    case null => y
+    case x: T => x
 
 case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)):
   override def use(world: World, player: PlayerEntity, hand: Hand): TypedActionResult[ItemStack] =
@@ -744,6 +747,11 @@ lazy val itemGroup = FabricItemGroup.builder()
   .build()
 
 val goodModulo = ne"daawdda"
+
+def memo[T, R](f: T => R, limit: Int = 128): T => R =
+  val cache = new ju.LinkedHashMap[T, R]:
+    override def removeEldestEntry(eldest: ju.Map.Entry[T, R]): Boolean = size > limit
+  cache.computeIfAbsent(_, f(_))
 
 def init(): Unit =
   given_Logger.info:
@@ -1295,7 +1303,7 @@ def init(): Unit =
         Seq(ListIota(list.indices.filter(!excl.contains(_)).map(list(_)).toSeq.asJava))
       case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
       case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
-  Patterns.register("extract", ne"dewaqawed"):
+  Patterns.register("extract", nw"dewaqawed"):
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
         val ls = ary.getList.toSeq

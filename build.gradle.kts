@@ -132,6 +132,8 @@ repositories {
         "dev.emi")
     exactRepo("https://repo.sleeping.town/",
         "com.unascribed")
+    exactRepo("https://maven.nucleoid.xyz/",
+        "xyz.nucleoid")
 }
 
 fun download(url: String, name: String = file(url).name): Download {
@@ -235,7 +237,7 @@ dependencies {
     modDepends(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)
     include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
     include(api("org.scala-lang:scala-library:2.13.6")!!)
-    modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2-pre-749")
+    modDepends(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2-pre-751")!!)
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
@@ -252,6 +254,7 @@ dependencies {
     implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3") // trans maven.modrinth:jsonpatcher
     modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0") // trans maven.modrinth:jsonpatcher
     modDepends(modImplementation("miyucomics.hexpose:hexpose:1.0.0")!!)
+    include(modApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     val cardinal_version = "5.2.3"
