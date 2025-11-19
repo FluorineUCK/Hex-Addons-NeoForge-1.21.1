@@ -11,6 +11,7 @@
     "ItemPackagedHexMixin",
     "ItemStackAccess",
     "ItemStackMixin",
+    "LivingEntityAccess",
     "MediafiedItemManagerIndexMixin",
     "OpEdifySaplingMixin",
     "OpEdifySaplingMixin$Spell",

@@ -4,7 +4,7 @@ package org.eu.net.pool.hexic
 import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
-import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler}
+import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler, SpellAction}
 import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect.DoMishap
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
@@ -87,7 +87,7 @@ import java.io.{File, FileNotFoundException, FileOutputStream, IOException, Inpu
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
 import java.nio.file.{Files, Path, StandardOpenOption}
-import java.util.{List, Optional, UUID}
+import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
@@ -136,9 +136,10 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
 import net.minecraft.block.AbstractBlock
 import net.minecraft.stat.Stats
-import org.eu.net.pool.hexic.mixin.ItemStackAccess
+import org.eu.net.pool.hexic.mixin.{ItemStackAccess, LivingEntityAccess}
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+import at.petrak.hexcasting.common.casting.actions.spells.OpBreakBlock
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
@@ -147,6 +148,9 @@ import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig}
 
 import java.nio.charset.StandardCharsets
 import java.math.BigInteger
+import net.minecraft.entity.ItemEntity
+import net.minecraft.entity.ExperienceOrbEntity
+import net.minecraft.network.packet.s2c.play.PositionFlag
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -1250,10 +1254,10 @@ def init(): Unit =
     def savedPlanes =
       val file = server.getSavePath(WorldSavePath("fresh"))
       if Files.exists(file) then
-        Files.readAllLines(file, StandardCharsets.UTF_8).toSeq.filter(!_.isBlank).map(UUID.fromString)
+        Files.readAllLines(file, StandardCharsets.UTF_8).toSet.filter(!_.isBlank).map(UUID.fromString)
       else
-        Seq.empty
-    def savedPlanes_=(planes: Seq[UUID]) =
+        Set.empty
+    def savedPlanes_=(planes: Set[UUID]) =
       val file = server.getSavePath(WorldSavePath("fresh"))
       Files.write(file, planes.map(_.toString))
   ServerLifecycleEvents.SERVER_STARTED.register: server =>
@@ -1275,8 +1279,73 @@ def init(): Unit =
         world.setBlockState(bp, state, 0)
         bp.set(k, i, j)
         world.setBlockState(bp, state, 0)
-      world.getServer.savedPlanes :+= uuid
+      world.getServer.savedPlanes += uuid
       Seq(DimIota(world))
+  Patterns.register("deleteworld", e"qaaqqwaeddeawqqaaqawwwawwwwwwwaqaaqqwaeddeawqqaaqawwwwwwwawwwaqaaqqwaeddeawqqaaq"):
+    new SpellAction:
+      override def getArgc: Int = 2
+      override def awardsCastingStat(env: CastingEnvironment): Boolean = true
+      override def execute(stack: util.List[? <: Iota], env: CastingEnvironment): SpellAction.Result =
+        stack.toSeq match
+          case Seq(plane: DimIota, dest: Vec3Iota) if plane.getDimString.startsWith("hexic:fresh-") =>
+            val pos = dest.getVec3
+            env.assertPosInRangeForEditing(BlockPos.ofFloored(pos))
+            val world = env.getWorld.getServer.getWorld(plane.getWorldKey)
+            given server: MinecraftServer = world.getServer
+            val id = getPocketID(plane.getWorldKey.getValue).get
+            SpellAction.Result(
+              new RenderedSpell:
+                override def cast(env: CastingEnvironment): Unit =
+                  given outer: ServerWorld = env.getWorld
+                  val loc = BlockPos.Mutable()
+                  for x <- 1 to 9; y <- 1 to 9; z <- 1 to 9 do
+                    loc.set(x, y, z)
+                    world.breakBlock(loc, true)
+                  val itemsToSpawn = mutable.Map[ItemVariant, Long]()
+                  var xpToSpawn: Long = 0
+                  iterated(world.iterateEntities): (entities, recurse) =>
+                    val entitySeq = entities.toSeq
+                    if entitySeq.nonEmpty then
+                      for entity <- entitySeq do
+                        entity match
+                          case e: ItemEntity =>
+                            val stack = e.getStack
+                            itemsToSpawn(ItemVariant.of(stack)) += stack.getCount
+                            e.discard()
+                          case e: ExperienceOrbEntity =>
+                            xpToSpawn += e.getExperienceAmount
+                            e.discard()
+                          case p: PlayerEntity =>
+                            p.teleport(outer, pos.getX, pos.getY, pos.getZ, Set(PositionFlag.X, PositionFlag.Y, PositionFlag.Z), 0, 0)
+                            if !p.isCreative && !p.isSpectator then p.kill()
+                          case e: LivingEntity =>
+                            e.kill()
+                            while !e.isRemoved do (e: LivingEntityAccess).callUpdatePostDeath()
+                          case e =>
+                            e.teleport(outer, pos.getX, pos.getY, pos.getZ, Set(PositionFlag.X, PositionFlag.Y, PositionFlag.Z), 0, 0)
+                      recurse
+                  for (item, count) <- itemsToSpawn do
+                    spawnManyItems(dest.getVec3, item, count)
+                  while xpToSpawn > 2477 do
+                    ExperienceOrbEntity.spawn(outer, pos, 2477)
+                    xpToSpawn -= 2477
+                  if xpToSpawn > 0 then
+                    ExperienceOrbEntity.spawn(outer, pos, xpToSpawn.toInt)
+                  // FIN.
+                  server.savedPlanes -= id
+                  planes(id).unload()
+                override def cast(env: CastingEnvironment, image: CastingImage): CastingImage = { cast(env); image },
+              MediaConstants.SHARD_UNIT * 750,
+              Seq(),
+              1
+            )
+          case Seq(plane: DimIota, x) if plane.getDimString.startsWith("hexic:fresh-") =>
+            throw MishapInvalidIota(x, 1, "vec3")
+          case Seq(x, _) =>
+            throw MishapInvalidIota(x, 2, "hexic:world")
+      override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
+      override def hasCastingSound(env: CastingEnvironment): Boolean = true
+      override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
@@ -1741,6 +1810,7 @@ trait PigmentHolderItem:
   def setPigment(stack: ItemStack)(pigment: FrozenPigment): Unit
 given Conversion[ItemPackagedHex, PigmentHolderItem] = _.asInstanceOf // by mixin
 given Conversion[ItemStack, ItemStackAccess] = _.asInstanceOf // by mixin
+given Conversion[LivingEntity, LivingEntityAccess] = _.asInstanceOf // by mixin
 
 given Conversion[Double, DoubleIota] = DoubleIota(_)
 given Conversion[Int, DoubleIota] = DoubleIota(_)
@@ -1771,6 +1841,17 @@ given Conversion[IotaDuck, Iota] = _.asInstanceOf
 
 def copy[T <: Iota](iota: T)(using ServerWorld): T | Null = iota.getType.deserialize(iota, summon[ServerWorld]).asInstanceOf[T | Null]
 
+def spawnItem(pos: Vec3d, stack: ItemStack)(using world: ServerWorld): ItemEntity =
+  ItemEntity(world, pos.getX, pos.getY, pos.getZ, stack).tap(world.spawnEntity(_))
+def spawnManyItems(pos: Vec3d, variant: ItemVariant, amount: Long)(using ServerWorld): Seq[ItemEntity] =
+  assume(amount >= 0)
+  if amount > Int.MaxValue then
+    spawnItem(pos, variant.toStack(Int.MaxValue)) +: spawnManyItems(pos, variant, amount - Int.MaxValue)
+  else if amount > 0 then
+    List(spawnItem(pos, variant.toStack(amount.toInt)))
+  else
+    Nil
+
 class IotaComponent[R: Codec](val id: Identifier):
   def apply(target: Iota): Option[R] =
     val data: NbtCompound = target
@@ -1797,8 +1878,8 @@ given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
 
 object border extends Block(AbstractBlock.Settings.create().dropsNothing().allowsSpawning((_, _, _, _) => false).sounds(BlockSoundGroup.STONE).requiresTool().strength(100.0F, 1200.0F).luminance(_ => 14))
 def getPocketID(key: Identifier): Option[UUID] =
-  if key.getNamespace == "hexic" && key.getPath.startsWith("fresh_") then
-    val hash = key.getPath.replace("fresh_", "")
+  if key.getNamespace == "hexic" && key.getPath.startsWith("fresh-") then
+    val hash = key.getPath.replace("fresh-", "")
     val bi1 = BigInteger(hash.substring(0, 16), 16)
     val bi2 = BigInteger(hash.substring(16, 32), 16)
     Some(UUID(bi1.longValue, bi2.longValue))
