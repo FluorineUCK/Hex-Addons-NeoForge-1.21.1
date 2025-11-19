@@ -11,7 +11,7 @@ import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, Contin
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult, ResolvedPattern}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapNotEnoughArgs, MishapOthersName}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.{HexUtils, MediaHelper}
 import at.petrak.hexcasting.common.lib.{HexAttributes, HexItems, HexRegistries, HexSounds}
@@ -136,6 +136,10 @@ import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
 import net.minecraft.block.AbstractBlock
 import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
+import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+
+import scala.util.matching.Regex
+import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -736,6 +740,9 @@ object dyedStringworm extends Stringworm:
       case null => super.getName(stack)
       case n => Text.translatable("item.hexic.stringworm." + FrozenPigment.fromNBT(n).item.getTranslationKey)
 
+def toRoman(value: Int): String =
+  "M" * (value / 1000) + ("", "C", "CC", "CCC", "CD", "D", "DC", "DCC", "DCCC", "CM").productElement(value % 1000 / 100) + ("", "X", "XX", "XXX", "XL", "L", "LX", "LXX", "LXXX", "XC").productElement(value % 100 / 10) + ("", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX").productElement(value % 10)
+
 private [hexic] object Extern:
   private [hexic] def getStringworm(idx: Int) = stringworms(Stringworm.flavors(idx))
   private [hexic] def observePropertyHook(args: util.List[? <: Iota], idx: Int, argc: Int)(original: => String)(using cir: CallbackInfoReturnable[util.List[Iota]]) =
@@ -759,7 +766,45 @@ private [hexic] object Extern:
           original
         catch case e: MishapInvalidIota =>
           throw MishapInvalidIota(e.getPerpetrator, e.getReverseIdx, t"${e.getExpected} or writer")
-
+  private val introPattern = """^q(w*)d\1q$""".r
+  private [hexic] def handleParentheses(vm: CastingVM, iota: Iota): Option[(CastingImage, ResolvedPatternType)] = boundary:
+    val p = iota match
+      case p: PatternIota => p.getPattern
+      case _ => boundary.break(None)
+    val measure = p.anglesSignature match
+      case introPattern (measure) => measure
+      case _ => boundary.break(None)
+    val size = measure.length + 1
+    def mishap(m: Mishap) =
+      val safeVM = CastingVM(vm.getImage, vm.getEnv)
+      OperatorSideEffect.DoMishap(m, Mishap.Context(p, Text.translatable("hexcasting.action.hexic:parenthesize"))).performEffect(safeVM)
+      boundary.break(Some(safeVM.getImage, ResolvedPatternType.ERRORED))
+    val img = vm.getImage
+    val parens = img.getParenCount
+    if parens == size then
+      img.getStack.toSeq match
+        case Seq() => mishap(MishapNotEnoughArgs(1, 0))
+        case tail :+ head => Some((
+          CastingImage(
+            stack = tail,
+            parenCount = parens,
+            parenthesized = img.getParenthesized :+ ParenthesizedIota(head, false),
+            escapeNext = false, 
+            opsConsumed = img.getOpsConsumed,
+            userData = img.getUserData,
+            null
+          ),
+          ResolvedPatternType.EVALUATED
+        ))
+    else if parens > size then
+      None // leave unescaped, so a nested hex can introject
+    else
+      mishap(new Mishap:
+        override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.ORANGE)
+        override def errorMessage(env: CastingEnvironment, ctx: Context): Text = ???
+        override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
+          stack.add(PatternIota(p))
+      )
 val _ =
   Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
     val c = p.getComponent(PlayerInfoComponent.key)
