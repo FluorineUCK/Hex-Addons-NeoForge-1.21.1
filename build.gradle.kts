@@ -7,7 +7,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 plugins {
-    id("fabric-loom") version "1.10-SNAPSHOT"
+    id("fabric-loom") version "1.13-SNAPSHOT"
     id("scala")
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
@@ -15,6 +15,25 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
+tasks.named("downloadRenderDoc") {
+    setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
+}
+
+tasks.named("extractRenderDoc") {
+    enabled = false
+}
+
+val erd by tasks.register<Sync>("myExtractRenderDoc") {
+    dependsOn("downloadRenderDoc")
+    from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
+    into("$buildDir/renderdoc")
+}
+
+tasks.named("runClientRenderDoc") {
+    dependsOn(erd)
+}
+
+//tasks.withType<RenderDocR>()
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 val p = P(project)
@@ -29,7 +48,9 @@ base {
     archivesName.set(project.property("archives_base_name") as String)
 }
 
+val targetJavaVersion = 17
 java {
+    toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
     // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
     // if it is present.
     // If you remove this line, sources will not be generated.
@@ -72,81 +93,66 @@ fabricApi {
 //}
 
 repositories {
-    mavenLocal()
-    mavenCentral()
-    flatDir { dirs("libs") }
-    maven { url = uri("https://api.modrinth.com/maven") }
-    maven { url = uri("https://artifacts.consensys.net/public/maven/maven/") }
-    maven { url = uri("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/") }
-    maven { url = uri("https://dl.cloudsmith.io/public/libp2p/jvm-libp2p/maven/") }
-    maven { url = uri("https://jitpack.io/") }
-    maven { url = uri("https://masa.dy.fi/maven/") }
-    maven { url = uri("https://maven.blamejared.com/") }
-    maven { url = uri("https://maven.gegy.dev/releases") }
-    maven { url = uri("https://maven.hexxy.media/") }
-    maven { url = uri("https://maven.jamieswhiteshirt.com/libs-release/") }
-    maven { url = uri("https://maven.kosmx.dev/") }
-    maven { url = uri("https://maven.ladysnake.org/releases/") }
-    maven { url = uri("https://maven.quiltmc.org/repository/release/") }
-    maven { url = uri("https://maven.shedaniel.me/") }
-    maven { url = uri("https://maven.skye.vg/") }
-    maven { url = uri("https://maven.terraformersmc.com/") }
-    maven { url = uri("https://maven.terraformersmc.com/releases") }
-    maven { url = uri("https://mvn.devos.one/snapshots/") }
-    maven { url = uri("https://maven.pool.net.eu.org/") }
-    maven { url = uri("https://repo.sleeping.town/") }
-}
-
-data class Addon(val id: String, val name: String, val version: String, val hexicVersion: String, val description: String) {
-    val camelCased = id.replace(Regex("-(\\w)")) { it.groups[1]!!.value.uppercase() }
-}
-
-val hexcasting get() = if (Math.random() < 0.5) "Hex Casting" else "Hexcasting"
-
-val allJars by tasks.register("allJars") {
-    dependsOn("build")
-}
-
-for (addon in listOf(
-    Addon("infinite-hexxy", "Infinite Hexxy", "0.1.0", "0.2.0", "Exposes patterns to $hexcasting that it... probably shouldn't have."),
-)) {
-    val jarTask by tasks.register<Jar>("${addon.camelCased}Jar") {
-        archiveBaseName = addon.id
-        archiveVersion = addon.version
-        from("addon/${addon.name}")
-        from(resources.text.fromString("""
-            {
-              "schemaVersion": 1,
-              "id": "${addon.id}",
-              "version": "${addon.version}",
-              "name": "${addon.name}",
-              "description": "${addon.description}",
-              "authors": [
-                "PoolloverNathan"
-              ],
-              "contact": {},
-              "license": "GPL-3.0",
-              "icon": "assets/hexic/${addon.id}.png",
-              "environment": "*",
-              "depends": {
-                "hexic": ">=${addon.hexicVersion}"
-              }
+    fun exactRepo(url: String, vararg groups: String, recursive: Boolean = true) {
+        exclusiveContent {
+            forRepository {
+                maven(url)
             }
-        """.trimIndent())) {
-            rename { "fabric.mod.json" }
-        }
-    }
-    allJars.dependsOn(jarTask)
-    publishing {
-        publications {
-            create<MavenPublication>("maven${addon.camelCased.replaceFirstChar { it.uppercase() }}Java") {
-                artifactId = addon.id
-                artifact(jarTask) {
-                    group = rootProject.group
+            filter {
+                for (group in groups) {
+                    if (recursive) {
+                        includeGroupAndSubgroups(group)
+                    } else {
+                        includeGroup(group)
+                    }
                 }
             }
         }
     }
+
+    mavenCentral()
+    exactRepo("https://api.modrinth.com/maven",
+        "maven.modrinth")
+    exactRepo("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/",
+        "com.eliotlash.mclib",
+        "software.bernie.geckolib")
+    exactRepo("https://jitpack.io/",
+        "com.github.Chocohead",
+        "com.github.LlamaLad7",
+        "com.github.Virtuoel",
+        "com.github.mattidragon")
+    exactRepo("https://maven.blamejared.com/",
+        "at.petra-k",
+        "com.samsthenerd.inline",
+        "gay.object",
+        "miyucomics.hexpose",
+        "net.darkhax.openloader",
+        "vazkii.patchouli")
+    exactRepo("https://maven.hexxy.media/",
+        "io.github.tropheusj",
+        "ram.talia")
+    exactRepo("https://maven.jamieswhiteshirt.com/libs-release/",
+        "com.jamieswhiteshirt")
+    exactRepo("https://maven.kosmx.dev/",
+        "dev.kosmx")
+    exactRepo("https://maven.ladysnake.org/releases/",
+        "dev.onyxstudios")
+    exactRepo("https://maven.pool.net.eu.org/",
+        "dev.kineticcat.hexportation",
+        "miyucomics.hexcellular",
+        "miyucomics.hexical",
+        "org.eu.net.pool",
+        "poollovernathan")
+    exactRepo("https://maven.shedaniel.me/",
+        "dev.architectury",
+        "me.shedaniel")
+    exactRepo("https://maven.terraformersmc.com/",
+        "com.terraformersmc",
+        "dev.emi")
+    exactRepo("https://repo.sleeping.town/",
+        "com.unascribed")
+    exactRepo("https://maven.nucleoid.xyz/",
+        "xyz.nucleoid")
 }
 
 fun download(url: String, name: String = file(url).name): Download {
@@ -248,10 +254,9 @@ dependencies {
     modDepends(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
     modDepends(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")!!)
     modDepends(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)
-    modDepends(include(modApi("org.eu.net.pool:common-curses:1.1.5-SNAPSHOT")!!)!!)
     include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
     include(api("org.scala-lang:scala-library:2.13.6")!!)
-    modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2")
+    modDepends(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2-pre-751")!!)
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
@@ -269,6 +274,7 @@ dependencies {
     implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3") // trans maven.modrinth:jsonpatcher
     modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0") // trans maven.modrinth:jsonpatcher
     modDepends(modImplementation("miyucomics.hexpose:hexpose:1.0.0")!!)
+    include(modApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     val cardinal_version = "5.2.3"
@@ -316,7 +322,7 @@ tasks.processResources {
         fabricMod("hexic", version as String) {
             name = "Hexic"
             description = "Miscellaneous neat features and QoL patterns for Hex Casting."
-            license = "GPL-3.0"
+            license = "LGPL-3.0"
             icon = "assets/hexic/icon.png"
 
             author("PoolloverNathan") {
@@ -441,6 +447,7 @@ tasks.withType<JavaCompile>().configureEach {
     // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
     // If Javadoc is generated, this must be specified in that task too.
     options.encoding = "UTF-8"
+    options.release.set(targetJavaVersion)
 }
 
 tasks.withType<ScalaCompile>().configureEach {

@@ -6,7 +6,8 @@
 
 pkgs.mkShell {
   name = "hexic";
-  JAVA_HOME = pkgs.zulu21;
+  JAVA_HOME = pkgs.zulu17;
+  JDK17 = pkgs.zulu17;
   LD_LIBRARY_PATH = if pkgs.system == "x86_64-linux" then pkgs.symlinkJoin {
     name = "extraLibs";
     paths = [
@@ -25,7 +26,6 @@ pkgs.mkShell {
     pkgs.imagemagick
     pkgs.jujutsu
     pkgs.zulu17
-    pkgs.zulu21
     jj.packages.${pkgs.system}.default
   ] ++ (if pkgs.system == "x86_64-linux" then [
     nixGL.auto.nixGLDefault

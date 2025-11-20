@@ -5,7 +5,8 @@
 
 pkgs.mkShell {
   name = "hexic";
-  JAVA_HOME = pkgs.jdk17;
+  JAVA_HOME = pkgs.zulu17;
+  JDK17 = pkgs.zulu17;
   buildInputs = [
     pkgs.aseprite
     pkgs.bashInteractive
@@ -14,6 +15,6 @@ pkgs.mkShell {
     pkgs.gradle_8
     pkgs.imagemagick
     pkgs.jujutsu
-    pkgs.zulu21
+    pkgs.zulu17
   ];
 }
