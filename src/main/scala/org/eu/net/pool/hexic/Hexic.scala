@@ -91,7 +91,7 @@ import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
 import scala.collection.convert.ImplicitConversions.*
 import scala.collection.mutable
 import scala.compiletime.summonFrom
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.jdk.CollectionConverters.*
 import scala.language.experimental.{macros, saferExceptions}
 import scala.language.{dynamics, existentials, implicitConversions, postfixOps, reflectiveCalls}
@@ -111,6 +111,7 @@ import scala.util.boundary.Label
 import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
 import at.petrak.hexcasting.api.item.{IotaHolderItem, MediaHolderItem}
 import at.petrak.hexcasting.api.misc.MediaConstants
+import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.common.items.magic.{ItemMediaHolder, ItemPackagedHex}
 import at.petrak.hexcasting.common.msgs.{MsgClearSpiralPatternsS2C, MsgNewSpiralPatternsS2C, MsgOpenSpellGuiS2C}
 import at.petrak.hexcasting.fabric.cc.adimpl.CCMediaHolder
@@ -132,10 +133,13 @@ import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
 import net.minecraft.block.AbstractBlock
+import net.minecraft.entity.passive.FoxEntity
 import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.ItemStackAccess
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+
+import scala.concurrent.duration.Duration
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -385,6 +389,7 @@ class PlayerInfoComponent(
   var leftWeave: ItemStack = ItemStack.EMPTY,
   var rightWeave: ItemStack = ItemStack.EMPTY,
   var chatLines: Seq[Text] = Seq(),
+  var foxType: Option[FoxEntity.Type] = None,
 ) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
     if c.contains("shl", NbtElement.COMPOUND_TYPE) then
@@ -396,13 +401,18 @@ class PlayerInfoComponent(
     else
       rightWeave = ItemStack.EMPTY
     chatLines = c.getList("chat", NbtElement.COMPOUND_TYPE).map(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, _)).map(Text.Serializer.fromJson).toSeq
-
+    if c.contains("fox", NbtElement.STRING_TYPE) then
+      foxType = Some(FoxEntity.Type.valueOf(c.getString("fox")))
+    else
+      foxType = None
   override def writeToNbt(c: NbtCompound): Unit =
     if !leftWeave.isEmpty then c.put("shl", NbtCompound().tap(leftWeave.writeNbt))
     if !rightWeave.isEmpty then c.put("shr", NbtCompound().tap(rightWeave.writeNbt))
     c.put("chat", NbtList().tap(_.addAll(chatLines.map(Text.Serializer.toJsonTree).map(JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, _)))))
+    foxType.fold(c.remove("fox"))(f => c.putString("fox", f.name))
 object PlayerInfoComponent:
   val key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
+  given Conversion[PlayerEntity, PlayerInfoComponent] = _.getComponent(key)
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
     fac.registerForPlayers(key, PlayerInfoComponent(_), RespawnCopyStrategy.LOSSLESS_ONLY)
 
@@ -708,7 +718,7 @@ private [hexic] object Extern:
 
 val _ =
   Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
-    val c = p.getComponent(PlayerInfoComponent.key)
+    val c = p: PlayerInfoComponent
     if !c.rightWeave.isEmpty then
       out.add(c.rightWeave)
       c.rightWeave = ItemStack.EMPTY
@@ -726,6 +736,8 @@ object MediaBundle:
   PERCENTAGE.setRoundingMode(RoundingMode.DOWN)
   private val DUST_AMOUNT = new DecimalFormat("###,###.##")
 val wizard = Item(Item.Settings().rarity(Rarity.EPIC).maxCount(1))
+
+val aLotOfMedia = (200000 /* max phial size */ * 6 /* phials per small pouch */ * 4 /* small pouches per large pouch */ * (36 /* inventory slots */ + 4 /* armor slots */ + 2 /* offhands */) + 20 /* healthcasting */) * MediaConstants.DUST_UNIT
 
 trait HasCodec:
   def getCodec: Codec[? <: this.type]
@@ -745,6 +757,7 @@ lazy val itemGroup = FabricItemGroup.builder()
   .build()
 
 val goodModulo = ne"daawdda"
+val getEntity: PartialFunction[Iota, Entity] = { case e: EntityIota => e.getEntity }
 
 def memo[T, R](f: T => R, limit: Int = 128): T => R =
   val cache = new ju.LinkedHashMap[T, R]:
@@ -1095,6 +1108,34 @@ def init(): Unit =
       GREATER_EQ -> ((a: MapIota, b: MapIota) => a.map containsAll b.map),
       LESS_EQ -> ((a: MapIota, b: MapIota) => b.map containsAll a.map),
     )
+  def fox(tr: PlayerEntity ?=> PartialFunction[Option[FoxEntity.Type], Option[FoxEntity.Type]]): Action =
+    Patterns.mkAction: (img, cont) =>
+      img.getStack.lastOption match
+        case None => throw MishapNotEnoughArgs(1, 0)
+        case Some(getEntity(given ServerPlayerEntity)) =>
+          val c: PlayerInfoComponent = summon[PlayerEntity]
+          c.foxType match
+            case tr(newFoxType) =>
+              OperationResult(img.withStack(_.init), Seq(
+                OperatorSideEffect.ConsumeMedia(MediaConstants.SHARD_UNIT + MediaConstants.DUST_UNIT),
+                OperatorSideEffect.AttemptSpell(
+                  new RenderedSpell:
+                    override def cast(env: CastingEnvironment): Unit =
+                      c.foxType = newFoxType
+                      summon[PlayerEntity].syncComponent(PlayerInfoComponent.key)
+                    override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+                  , true, true)
+              ), cont, HexEvalSounds.SPELL)
+            case _ =>
+              OperationResult(img.withStack(_.init), Seq(), cont, HexEvalSounds.SPELL)
+        case Some(x) => throw MishapInvalidIota(x, 0, "player")
+  Patterns.register("fox", se"wqwqeeeweedqqeqwaeeaw"):
+    fox:
+      case None => Some:
+        val p = summon[PlayerEntity]
+        FoxEntity.Type.fromBiome(p.getWorld.getBiome(p.getBlockPos))
+  Patterns.register("unfox", se"wqwqwqwaeeaw"):
+    fox { case Some(_) => None }
   hexXplat.getArithmeticRegistry("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
@@ -1315,6 +1356,60 @@ def init(): Unit =
         case null => throw MishapBadCaster()
         case p: ServerPlayerEntity => p.getComponent(PlayerInfoComponent.key).murmur.fold(NullIota())(StringIota.make)
         case _ => throw MishapBadCaster()
+  Patterns.register("make_cme", ne"dqqd"):
+    Patterns.mkAction: (img, cont) =>
+      img.getStack.toSeq.reverse match
+        case Seq(args: ListIota, fn: ListIota, stack*) =>
+          given ExecutionContext = ExecutionContext.global
+          val p = Promise[Seq[CastingImage]]()
+          if isDev then println(s"parathoth args=$args fn=${fn.getList} stack=$stack")
+          val imgs = args.getList.map: x =>
+            Future:
+              try
+                val subImg = new CastingImage(
+                  stack = stack :+ x,
+                  parenCount = 0,
+                  parenthesized = Seq.empty,
+                  escapeNext = false,
+                  opsConsumed = img.getOpsConsumed,
+                  userData = img.getUserData,
+                  null // kotlin bullshit
+                )
+                println(s"- thread $x started")
+                val env = summon[CastingEnvironment]
+                val vm = CastingVM(subImg, new CastingEnvironment(env.getWorld):
+                  export env._
+                  override def hasEditPermissionsAtEnvironment(pos: BlockPos): Boolean = false
+                  override def extractMediaEnvironment(cost: Media, simulate: Boolean): Media = 0
+                  override def isVecInRangeEnvironment(vec: Vec3d): Boolean = false
+                  override def getUsableStacks(mode: CastingEnvironment.StackDiscoveryMode): util.List[ItemStack] = Seq()
+                  override def getPrimaryStacks: util.List[CastingEnvironment.HeldItemInfo] = Seq()
+                )
+                vm.queueExecuteAndWrapIotas(fn.getList.toSeq, env.getWorld)
+                println(s"- thread $x ended")
+                vm.getImage
+              catch case e =>
+                p.tryFailure(e)
+                throw e
+          Future.sequence(imgs).onComplete(p tryComplete _.map(_.toSeq))
+          val results = Await.result(p.future, Duration.Inf)
+          OperationResult(
+            newImage = CastingImage(
+              stack = stack :+ ListIota(results.flatMap(_.getStack)),
+              parenCount = img.getParenCount,
+              parenthesized = img.getParenthesized,
+              escapeNext = img.getEscapeNext,
+              opsConsumed = results.map(_.getOpsConsumed).max,
+              userData = img.getUserData,
+              null // kotlin bullshit
+            ),
+            sideEffects = Seq(),
+            newContinuation = cont,
+            sound = HexEvalSounds.THOTH,
+          )
+        case Seq(i, _: ListIota, _*) => throw MishapInvalidIota.ofType(i, 0, "list")
+        case Seq(_, i, _*) => throw MishapInvalidIota.ofType(i, 1, "list")
+        case s => throw MishapNotEnoughArgs(2, s.size)
   Patterns.register("reveal", ne"deqed"):
     Patterns.mkConstAction(1, 0):
       case Seq(iota: Iota) =>
@@ -1443,6 +1538,16 @@ private[hexic] class ComponentInit extends EntityComponentInitializer:
 
 opaque type Attrition = Unit
 object Attrition extends Registrar[Attrition]("attrition")
+
+@tailrec
+def finishOperation(p: OperationResult)(using env: CastingEnvironment): OperationResult =
+  p.getNewContinuation match
+    case c: SpellContinuation.Done => p
+    case c: SpellContinuation.NotDone =>
+      finishCast(c.getFrame.evaluate(c.getNext, env.getWorld, CastingVM(p.getNewImage, env)), p.getNewImage)
+
+inline def finishCast(p: CastResult, oldImage: CastingImage)(using env: CastingEnvironment): OperationResult =
+  finishOperation(OperationResult(p.getNewData??oldImage, p.getSideEffects, p.getContinuation, p.getSound))
 
 type subtypes[T, R <: T] = T
 //case class StaffcastFrame(owner: ServerPlayerEntity, oldImage: CastingImage) extends ContinuationFrame:
