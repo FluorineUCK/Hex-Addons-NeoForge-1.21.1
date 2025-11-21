@@ -1525,6 +1525,8 @@ def init(): Unit =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
+  Patterns.register("get_other_caster", nw"ede"):
+    Patterns.mkLiteral(summon[CastingEnvironment].getWorld.getPlayers.toSet.-(summon[CastingEnvironment].getCastingEntity).toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos)).headOption.fold(NullIota())(EntityIota(_)))
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
     Patterns.mkAction: (img, cont) =>
       def mkResult(pos: => Vec3d, spell: => Unit) =
