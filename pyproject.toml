@@ -28,9 +28,6 @@ hexdoc-hexal = { url = "https://github.com/FallingColors/Hexal/raw/a5d1dbc6528e4
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[[project.authors]]
-name = "PoolloverNathan"
-
 [project.entry-points.hexdoc]
 hexic = "hexdoc_hexic._hooks:HexicPlugin"
 
