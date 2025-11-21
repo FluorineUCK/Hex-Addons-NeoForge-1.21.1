@@ -138,3 +138,4 @@ doc/src/hexdoc_hexic/_export/generated/
 
 # Chloebuild
 .cb_cache
+.docker_cache/

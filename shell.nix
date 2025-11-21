@@ -7,6 +7,7 @@
 pkgs.mkShell {
   name = "hexic";
   JAVA_HOME = pkgs.zulu21;
+  JDK17 = pkgs.zulu17;
   LD_LIBRARY_PATH = if pkgs.system == "x86_64-linux" then pkgs.symlinkJoin {
     name = "extraLibs";
     paths = [

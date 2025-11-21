@@ -123,8 +123,8 @@ gradle-app.setting
 run/
 runs/
 
-# Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
+!libs/*.jar
 
 # Hexdoc
 *.egg-info
@@ -138,3 +138,4 @@ doc/src/hexdoc_hexic/_export/generated/
 
 # Chloebuild
 .cb_cache
+.docker_cache/

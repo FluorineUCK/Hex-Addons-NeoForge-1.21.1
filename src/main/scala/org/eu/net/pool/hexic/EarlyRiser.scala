@@ -16,7 +16,6 @@ import java.lang.instrument.ClassFileTransformer
 import java.security.ProtectionDomain
 import org.objectweb.asm.{Attribute, ClassReader, ClassWriter, Handle, Opcodes, Type}
 import sun.instrument.InstrumentationImpl
-import sun.misc.Unsafe
 
 import java.io.File
 import java.lang.invoke.{MethodHandles, MethodType}
@@ -40,36 +39,7 @@ def classNamed(name: String): Option[ClassTag[?]] =
 class Dummy:
   type T <: Enum[T]
 
-given Unsafe =
-  val klass = classNamed("sun.misc.Unsafe").get.runtimeClass
-  val field = klass.getDeclaredField("theUnsafe")
-  field.setAccessible(true)
-  field.get(null).asInstanceOf[Unsafe]
-
-extension (f: Field)
-  inline def staticBase(using u: Unsafe) = u.staticFieldBase(f)
-  inline def staticOffset(using u: Unsafe) = u.staticFieldOffset(f)
-
-val godLookup: MethodHandles.Lookup =
-  val c = classOf[MethodHandles.Lookup]
-  val f = c.getDeclaredField("IMPL_LOOKUP")
-  unsafe.getObject(f.staticBase, f.staticOffset)
-    .asInstanceOf[MethodHandles.Lookup]
-
-given instrumentation: Instrumentation =
-  try
-    val d = Dummy()
-    val byteBuddy = classNamed("net.bytebuddy.agent.ByteBuddyAgent$AgentProvider$ForByteBuddyAgent").get.runtimeClass.asInstanceOf[Class[d.T]]
-    val mth = byteBuddy.getMethod("resolve")
-    val inst = Enum.valueOf(byteBuddy, "INSTANCE")
-    val path = mth.invoke(inst).asInstanceOf[File]
-    val instr = classNamed("sun.instrument.InstrumentationImpl").get.runtimeClass
-    val h = godLookup.findStatic(instr, "loadAgent", MethodType.methodType(Void.TYPE, classOf[String]))
-    h.invoke(path.getAbsolutePath)
-    ByteBuddyAgent.getInstrumentation
-  catch case e: Throwable =>
-    e.printStackTrace()
-    ByteBuddyAgent.install()
+given instrumentation: Instrumentation = ByteBuddyAgent.install()
 class ChangesFlag private[hexic]():
   private[hexic] var value = false
 
@@ -181,7 +151,6 @@ def warCrimes(): Unit =
       ClassTinkerers.define(k.dots, writer.toByteArray)
     addTransformer: (name: String, c: ClassNode) =>
       assert(name == name.dots)
-      if transformedClasses isDefinedAt name.slashes then panic(name)
       println(s"Remapping $name")
       madeChanges() // not gonna try checking
       c.methods.forEach: m =>
@@ -246,11 +215,4 @@ def warCrimes(): Unit =
         madeChanges()
   catch case e: Throwable =>
     e.printStackTrace()
-    panic(s"$e")
-
-@tailrec
-def panic(reason: String): Nothing =
-  Bootstrap.SYSOUT.println(s"thread '${Thread.currentThread.getName}' panicked at '$reason'")
-  Bootstrap.SYSOUT.flush()
-  Runtime.getRuntime.halt(101)
-  panic(reason)
+    sys.exit(1)
