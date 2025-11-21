@@ -362,12 +362,15 @@ def datagen(gen: FabricDataGenerator): Unit =
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (klass, name) <- Vector(
           "int_or_list" -> "§aint§r or §5[§aint§5]§r",
+          "erase" -> "an item entity or vector"
         ) do gen.add(s"hexcasting.mishap.invalid_value.class.hexic:$klass", name)
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
           "variant" -> "Concept",
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
+        gen.add("hexcasting.mishap.bad_item.hexic:erase", "a casting item or iota holder")
+        gen.add("hexcasting.mishap.bad_block.hexic:erase", "a block holding a casting item or acting as an iota holder")
         gen.add("itemGroup.hexic.group", "Hexic")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
         gen.add("text.hexic.or_map", "%s or map")

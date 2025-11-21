@@ -1568,7 +1568,7 @@ def init(): Unit =
             val holder = hexXplat.findDataHolder(s.getEntity)
             if holder == null || !holder.writeIota(null, true) then throw MishapBadEntity.of(s.getEntity, "hexic:erase")
             result(maybeItem.fold(1)(_.getCount), holder.writeIota(null, false))
-        case i => throw MishapInvalidIota(i, 0, ???)
+        case i => throw MishapInvalidIota.ofType(i, 0, "hexic:erase")
   Patterns.register("rotate", nw"qaeaqweeee"):
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
