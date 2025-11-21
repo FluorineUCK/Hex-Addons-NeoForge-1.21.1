@@ -7,7 +7,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 
 plugins {
-    id("fabric-loom") version "1.10-SNAPSHOT"
+    id("fabric-loom") version "1.13-SNAPSHOT"
     id("scala")
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
@@ -15,6 +15,25 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
+tasks.named("downloadRenderDoc") {
+    setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
+}
+
+tasks.named("extractRenderDoc") {
+    enabled = false
+}
+
+val erd by tasks.register<Sync>("myExtractRenderDoc") {
+    dependsOn("downloadRenderDoc")
+    from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
+    into("$buildDir/renderdoc")
+}
+
+tasks.named("runClientRenderDoc") {
+    dependsOn(erd)
+}
+
+//tasks.withType<RenderDocR>()
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 val p = P(project)
@@ -242,7 +261,9 @@ dependencies {
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
+    compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
+    modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
     compat("maven.modrinth:hexcassettes:1.1.4")
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
@@ -394,6 +415,10 @@ tasks.processResources {
                     standardOutput = it
                 }
             }
+        }
+        file("$itemsRoot/../block").mkdir()
+        exec {
+            commandLine("env", "magick", "xc:#ffffff[16x16]", "$itemsRoot/../block/border.png")
         }
         //file("$itemsRoot/stringworm.miff").delete()
         exec {

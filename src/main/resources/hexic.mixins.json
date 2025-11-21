@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "ActionRegistryEntryMixin",
+    "CastingVMMixin",
     "EntityMixin",
     "HopperEndpointRegistryMixin",
     "ItemMixin",
@@ -21,7 +22,6 @@
     "OpTickMixin$SpellMixin",
     "PacketByteBufMixin",
     "PatternIotaMixin",
-    "PhantomEntityMixin",
     "PlayerInventoryMixin",
     "SimpleRegistryMixin",
     "StaffCastEnvMixin"

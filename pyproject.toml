@@ -1,5 +1,8 @@
 [project]
 name = "hexdoc-hexic"
+description = "Miscellaneous neat features and QoL patterns for Hex Casting."
+readme = "README.md"
+license = "LGPL-3.0"
 dynamic = ["version"]
 dependencies = [
     "hexdoc>=1!0.1.0a31",
@@ -11,14 +14,19 @@ dependencies = [
 ]
 requires-python = ">=3.12"
 
+[[project.authors]]
+name = "PoolloverNathan"
+
+[project.urls]
+Homepage = "https://modrinth.com/mod/hexic"
+Source = "https://codeberg.org/PoolloverNathan/hexic"
+Issues = "https://codeberg.org/PoolloverNathan/hexic/issues"
+
 [tool.uv.sources]
 hexdoc-hexal = { url = "https://github.com/FallingColors/Hexal/raw/a5d1dbc6528e4a6c7c8f67ba3adc4c143dafb6e5/docs/v/latest/main/dist/hexdoc_hexal-0.3.0.1.0rc4.dev0-py3-none-any.whl" }
 
 [tool.hatch.metadata]
 allow-direct-references = true
-
-[[project.authors]]
-name = "PoolloverNathan"
 
 [project.entry-points.hexdoc]
 hexic = "hexdoc_hexic._hooks:HexicPlugin"
