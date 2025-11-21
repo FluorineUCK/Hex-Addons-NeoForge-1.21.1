@@ -263,6 +263,7 @@ dependencies {
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
     compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
+    modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
     compat("maven.modrinth:hexcassettes:1.1.4")
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
@@ -414,6 +415,10 @@ tasks.processResources {
                     standardOutput = it
                 }
             }
+        }
+        file("$itemsRoot/../block").mkdir()
+        exec {
+            commandLine("env", "magick", "xc:#ffffff[16x16]", "$itemsRoot/../block/border.png")
         }
         //file("$itemsRoot/stringworm.miff").delete()
         exec {

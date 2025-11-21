@@ -120,7 +120,7 @@ import kotlin.jvm.internal.DefaultConstructorMarker
 import net.minecraft.client.item.{BundleTooltipData, TooltipContext, TooltipData}
 import net.minecraft.entity.{Entity, LivingEntity}
 import net.minecraft.screen.slot.Slot
-import net.minecraft.sound.{SoundCategory, SoundEvents}
+import net.minecraft.sound.{BlockSoundGroup, SoundCategory, SoundEvents}
 import net.minecraft.util.collection.DefaultedList
 import org.eu.net.pool.hexic.MediaBundle.{DUST_AMOUNT, PERCENTAGE}
 
@@ -163,6 +163,14 @@ import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 
 import scala.util.matching.Regex
 import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
+import net.beholderface.oneironaut.casting.iotatypes.DimIota
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
+import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
+import xyz.nucleoid.fantasy.util.VoidChunkGenerator
+import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig}
+
+import java.nio.charset.StandardCharsets
+import java.math.BigInteger
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -775,6 +783,7 @@ private [hexic] object Extern:
       args.last match
         case m: MapIota => m.toList
         case _ => throw MishapInvalidIota(e.getPerpetrator, e.getReverseIdx, Text.translatable("text.hexic.or_map", e.getExpected)).initCause(e);
+  private [hexic] def getPocketName(pocket: String) = Text.of(pocketNames(getPocketID(Identifier.tryParse(pocket)).get))
 
 val _ =
   Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
@@ -1372,6 +1381,42 @@ def init(): Unit =
       )
       c.build())
   Registries.BLOCK("void_air") = Interop.VOID_AIR
+  val planes = memo { (uuid: UUID) => (server: MinecraftServer) ?=>
+    val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
+    Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
+  }
+  given (env: CastingEnvironment) => MinecraftServer = env.getWorld.getServer
+  extension (server: MinecraftServer)
+    def savedPlanes =
+      val file = server.getSavePath(WorldSavePath("fresh"))
+      if Files.exists(file) then
+        Files.readAllLines(file, StandardCharsets.UTF_8).toSeq.filter(!_.isBlank).map(UUID.fromString)
+      else
+        Seq.empty
+    def savedPlanes_=(planes: Seq[UUID]) =
+      val file = server.getSavePath(WorldSavePath("fresh"))
+      Files.write(file, planes.map(_.toString))
+  ServerLifecycleEvents.SERVER_STARTED.register: server =>
+    given MinecraftServer = server
+    for id <- server.savedPlanes do
+      planes(id)
+  Registries.BLOCK("border") = border
+  Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
+    Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
+      val uuid = UUID.randomUUID()
+      val world = planes(uuid).asWorld
+      // TODO: world config
+      val state = border.getDefaultState
+      val bp = BlockPos.Mutable()
+      for i <- 0 to 10; j <- 0 to 10; k <- Seq(0, 10) do
+        bp.set(i, j, k)
+        world.setBlockState(bp, state, 0)
+        bp.set(i, k, j)
+        world.setBlockState(bp, state, 0)
+        bp.set(k, i, j)
+        world.setBlockState(bp, state, 0)
+      world.getServer.savedPlanes :+= uuid
+      Seq(DimIota(world))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
@@ -1949,6 +1994,22 @@ extension [T: DynamicOps as t] (x: T) def convertDynamic[R: DynamicOps as r]: R 
 
 given (vm: CastingVM) => CastingEnvironment = vm.getEnv
 given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
+
+object border extends Block(AbstractBlock.Settings.create().dropsNothing().allowsSpawning((_, _, _, _) => false).sounds(BlockSoundGroup.STONE).requiresTool().strength(100.0F, 1200.0F).luminance(_ => 14))
+def getPocketID(key: Identifier): Option[UUID] =
+  if key.getNamespace == "hexic" && key.getPath.startsWith("fresh_") then
+    val hash = key.getPath.replace("fresh_", "")
+    val bi1 = BigInteger(hash.substring(0, 16), 16)
+    val bi2 = BigInteger(hash.substring(16, 32), 16)
+    Some(UUID(bi1.longValue, bi2.longValue))
+  else
+    None
+def pocketName(using rand: Random) =
+  def b = "zxcvbnm".charAt(rand.nextInt(7)).toString
+  def v = "aeiouaeiouaeiouy".charAt(rand.nextInt(16)).toString
+  def piece = s"${b.toUpperCase}$v$b" + Iterator.continually(v + b).takeWhile(_ => rand.nextInt(3) != 0).mkString("")
+  (piece +: Iterator.continually(piece).takeWhile(_ => rand.nextInt(5) == 0).toSeq).mkString("-")
+val pocketNames = memo((id: UUID) => pocketName(using Random(id.getLeastSignificantBits)))
 
 abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleton, userdata: Iota, override val display: Text, metatable: String, readonlyMetatable: Boolean) extends Iota(iotaType, (userdata, display, metatable, readonlyMetatable)):
   override def subIotas(): lang.Iterable[Iota] = util.List.of(userdata)
