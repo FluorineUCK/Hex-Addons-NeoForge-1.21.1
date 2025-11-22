@@ -361,6 +361,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           "unfox" -> "Vulpine Expulsion",
           "get_other_caster" -> "Dual's Reflection",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
+        gen.add("hexcasting.special.hexic:tuple", "Coupler's Gambit")
+        gen.add("hexcasting.special.hexic:tuple.n", "Coupler's Gambit %s")
         for (klass, name) <- Vector(
           "int_or_list" -> "§aint§r or §5[§aint§5]§r",
           "erase" -> "an item entity or vector"

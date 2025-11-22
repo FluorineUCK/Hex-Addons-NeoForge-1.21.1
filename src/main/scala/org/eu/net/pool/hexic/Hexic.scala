@@ -1331,6 +1331,15 @@ def init(): Unit =
     Arithmetic.MUL -> ((a: ListIota, b: ListIota) => ListIota(for x <- a.getList.toSeq; y <- b.getList yield ListIota(Seq(x, y)))),
     Arithmetic.DIV -> ((a: ListIota, b: ListIota) => ListIota(for (x, y) <- a.getList.toSeq zip b.getList yield ListIota(Seq(x, y)))),
   )
+  hexXplat.getSpecialHandlerRegistry("tuple") = (pattern, env) =>
+    val regex = "qq(w*)qq".r
+    pattern.anglesSignature match
+      case regex(middle) =>
+        val size = middle.length + 1
+        new SpecialHandler:
+          override val act: Action = Patterns.mkConstAction(size)(ListIota(_).pipe(Seq(_)))
+          override val getName: Text = Text.translatable("hexcasting.special.hexic:tuple.n", toRoman(size))
+      case _ => null
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
       .requires(c => c.hasPermissionLevel(2) || (c.getPlayer != null && c.getPlayer.isCreative))
