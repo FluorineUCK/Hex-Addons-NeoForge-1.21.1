@@ -1525,13 +1525,15 @@ def init(): Unit =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
+  Patterns.register("get_other_caster", nw"ede"):
+    Patterns.mkLiteral(summon[CastingEnvironment].getWorld.getPlayers.toSet.-(summon[CastingEnvironment].getCastingEntity).toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos)).headOption.fold(NullIota())(EntityIota(_)))
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
     Patterns.mkAction: (img, cont) =>
-      def mkResult(pos: => Vec3d, spell: => Unit) =
+      def mkResult(scale: Int, pos: => Vec3d, spell: => Unit) =
         OperationResult(
           img.withStack(_.init),
           Seq(
-            OperatorSideEffect.ConsumeMedia(MediaConstants.DUST_UNIT),
+            OperatorSideEffect.ConsumeMedia(MediaConstants.DUST_UNIT * scale),
             OperatorSideEffect.AttemptSpell(
               new RenderedSpell:
                 override def cast(env: CastingEnvironment): Unit =
@@ -1551,23 +1553,24 @@ def init(): Unit =
           summon[CastingEnvironment].assertPosInRangeForEditing(pos)
           val holder = IoticBlocksAPI.INSTANCE.findIotaHolder(summon[CastingEnvironment].getWorld, pos)
           if holder == null || !holder.writeIota(null, true) then throw MishapBadBlock.of(pos, "hexic:erase")
-          mkResult(pos.toCenterPos, holder.writeIota(null, false))
+          mkResult(1, pos.toCenterPos, holder.writeIota(null, false))
         case s: EntityIota =>
           summon[CastingEnvironment].assertEntityInRange(s.getEntity)
-          def result(spell: CastingEnvironment ?=> Unit) = mkResult(s.getEntity match { case e: ItemEntity => e.getPos.add(0, .375, .0); case e => e.getPos }, spell)
+          def result(scale: Int, spell: CastingEnvironment ?=> Unit) = mkResult(scale, s.getEntity match { case e: ItemEntity => e.getPos.add(0, .375, .0); case e => e.getPos }, spell)
           boundary: outer ?=>
+            val maybeItem = s.getEntity match
+              case i: ItemEntity => Some(i.getStack)
+              case f: ItemFrameEntity => Some(f.getHeldItemStack)
+              case _ => None
             boundary:
-              val item = s.getEntity match
-                case i: ItemEntity => i.getStack
-                case f: ItemFrameEntity => f.getHeldItemStack
-                case _ => boundary.break()
+              val item = maybeItem.getOrElse(boundary.break())
               val holder = hexXplat.findHexHolder(item)
               if holder == null || !holder.hasHex then boundary.break()
-              boundary.break(result(holder.clearHex()))(using outer)
+              boundary.break(result(item.getCount, holder.clearHex()))(using outer)
             val holder = hexXplat.findDataHolder(s.getEntity)
             if holder == null || !holder.writeIota(null, true) then throw MishapBadEntity.of(s.getEntity, "hexic:erase")
-            result(holder.writeIota(null, false))
-        case i => throw MishapInvalidIota(i, 0, ???)
+            result(maybeItem.fold(1)(_.getCount), holder.writeIota(null, false))
+        case i => throw MishapInvalidIota.ofType(i, 0, "hexic:erase")
   Patterns.register("rotate", nw"qaeaqweeee"):
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>

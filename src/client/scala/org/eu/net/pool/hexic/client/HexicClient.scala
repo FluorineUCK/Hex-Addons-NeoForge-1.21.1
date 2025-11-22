@@ -356,17 +356,22 @@ def datagen(gen: FabricDataGenerator): Unit =
           "whatthefuck" -> "Suffering",
           "modulo" -> "Modulus Distillation II",
           "extract" -> "Excisor's Gambit",
+          "erase" -> "Erase Block",
           "fox" -> "Vulpine Gambit",
           "unfox" -> "Vulpine Expulsion",
+          "get_other_caster" -> "Dual's Reflection",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         for (klass, name) <- Vector(
           "int_or_list" -> "§aint§r or §5[§aint§5]§r",
+          "erase" -> "an item entity or vector"
         ) do gen.add(s"hexcasting.mishap.invalid_value.class.hexic:$klass", name)
         for (ty, name) <- Vector(
           "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
           "variant" -> "Concept",
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
+        gen.add("hexcasting.mishap.bad_item.hexic:erase", "a casting item or iota holder")
+        gen.add("hexcasting.mishap.bad_block.hexic:erase", "a block holding a casting item or acting as an iota holder")
         gen.add("itemGroup.hexic.group", "Hexic")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
         gen.add("text.hexic.or_map", "%s or map")
@@ -399,7 +404,9 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
         gen.add("book.hexic.page.dye_offhand", "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.")
         gen.add("book.hexic.page.modulo", "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.")
+        gen.add("book.hexic.page.erase", "Erases the _Hex or iota contained within a dropped item or block. Costs one dust per item.")
         gen.add("book.hexic.page.murmur", "Adds the phrase on the $(o)tip of my tongue/$ to the stack, regardless of whether I intend to say it.")
+        gen.add("book.hexic.page.get_other_caster", "Adds the closest sentient being, excluding me, to the stack.")
   pack.addProvider:
     new FabricRecipeProvider(_):
       override def generate(consumer: Consumer[RecipeJsonProvider]): Unit =
