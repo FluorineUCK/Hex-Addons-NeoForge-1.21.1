@@ -20,6 +20,7 @@ import at.petrak.hexcasting.common.lib.{HexAttributes, HexItems, HexRegistries, 
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
 import at.petrak.hexcasting.xplat.IXplatAbstractions
+import carpet.patches.EntityPlayerMPFake
 import com.chocohead.mm.api.ClassTinkerers
 import com.google.gson.{JsonElement, JsonObject}
 import com.ibm.icu.util.MeasureUnit
@@ -1540,7 +1541,15 @@ def init(): Unit =
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
   Patterns.register("get_other_caster", nw"ede"):
-    Patterns.mkLiteral(summon[CastingEnvironment].getWorld.getPlayers.toSet.-(summon[CastingEnvironment].getCastingEntity).toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos)).headOption.fold(NullIota())(EntityIota(_)))
+    Patterns.mkLiteral:
+      val players: Set[LivingEntity] = summon[CastingEnvironment].getWorld.getPlayers.toSet
+      var others = players - summon[CastingEnvironment].getCastingEntity
+      for case given ClassTag[EntityPlayerMPFake] <- classNamed("carpet.patches.EntityPlayerMPFake") do
+        others = others.filter:
+          case _: EntityPlayerMPFake => false
+          case _ => true
+      val sorted = others.toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos))
+      sorted.headOption.fold(NullIota())(EntityIota(_))
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
     Patterns.mkAction: (img, cont) =>
       def mkResult(scale: Int, pos: => Vec3d, spell: => Unit) =
