@@ -211,7 +211,7 @@ object Outcome:
   def apply[T: Outcome](xs: T*): OperationResult => OperationResult = res => res.->(xs*)
 extension (op: OperationResult)
   def ->[T: Outcome](xs: T*): OperationResult =
-    xs.foldLeft(op)(summon[Outcome[T]](_, _))
+    (op /: xs)(summon[Outcome[T]](_, _))
 
 given Outcome[OperationResult => OperationResult] = (res, f) => f(res)
 given [T: Outcome]: Outcome[Seq[T]] = (res, value) => res -> Outcome(value*)
@@ -676,7 +676,7 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
     val (canProvide, cantProvide) = nonrecursive.flatten.partition(_.canProvide)
     val (canRecharge, consumables) = canProvide.partition(_.canRecharge)
     val mine: M = (Option.when(consumables.nonEmpty)(consumables.map(_.getMedia).sum), Option.when(canRecharge.nonEmpty)((canRecharge.map(_.getMedia).sum, canRecharge.map(_.getMaxMedia).sum)), Option.when(cantProvide.nonEmpty)((cantProvide.map(_.getMedia).sum, cantProvide.map(_.getMaxMedia).sum)))
-    recursive.foldLeft(mine)((p: M, q: M) => (
+    (mine /: recursive)((p: M, q: M) => (
       (p._1, q._1) match
         case (None, None) => None
         case (Some(x), None) => Some(x)
@@ -1327,6 +1327,20 @@ def init(): Unit =
   Patterns.register("unfox", se"wqwqwqwaeeaw"):
     fox { case Some(_) => None }
   hexXplat.getArithmeticRegistry("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
+  hexXplat.getArithmeticRegistry("list_math") = arith("list_math",
+    Arithmetic.MUL -> ((a: ListIota, b: ListIota) => ListIota(for x <- a.getList.toSeq; y <- b.getList yield ListIota(Seq(x, y)))),
+    Arithmetic.DIV -> ((a: ListIota, b: ListIota) => ListIota(for (x, y) <- a.getList.toSeq zip b.getList yield ListIota(Seq(x, y)))),
+  )
+  hexXplat.getSpecialHandlerRegistry("tuple") = ((pattern, env) =>
+    val regex = "qq(w*)qq".r
+    pattern.anglesSignature match
+      case regex(middle) =>
+        val size = middle.length + 1
+        new SpecialHandler:
+          override val act: Action = Patterns.mkConstAction(size)(ListIota(_).pipe(Seq(_)))
+          override val getName: Text = Text.translatable("hexcasting.special.hexic:tuple.n", toRoman(size))
+      case _ => null
+  ): SpecialHandler.Factory[? <: SpecialHandler]
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
       .requires(c => c.hasPermissionLevel(2) || (c.getPlayer != null && c.getPlayer.isCreative))
@@ -1525,13 +1539,15 @@ def init(): Unit =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
+  Patterns.register("get_other_caster", nw"ede"):
+    Patterns.mkLiteral(summon[CastingEnvironment].getWorld.getPlayers.toSet.-(summon[CastingEnvironment].getCastingEntity).toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos)).headOption.fold(NullIota())(EntityIota(_)))
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
     Patterns.mkAction: (img, cont) =>
-      def mkResult(pos: => Vec3d, spell: => Unit) =
+      def mkResult(scale: Int, pos: => Vec3d, spell: => Unit) =
         OperationResult(
           img.withStack(_.init),
           Seq(
-            OperatorSideEffect.ConsumeMedia(MediaConstants.DUST_UNIT),
+            OperatorSideEffect.ConsumeMedia(MediaConstants.DUST_UNIT * scale),
             OperatorSideEffect.AttemptSpell(
               new RenderedSpell:
                 override def cast(env: CastingEnvironment): Unit =
@@ -1551,23 +1567,24 @@ def init(): Unit =
           summon[CastingEnvironment].assertPosInRangeForEditing(pos)
           val holder = IoticBlocksAPI.INSTANCE.findIotaHolder(summon[CastingEnvironment].getWorld, pos)
           if holder == null || !holder.writeIota(null, true) then throw MishapBadBlock.of(pos, "hexic:erase")
-          mkResult(pos.toCenterPos, holder.writeIota(null, false))
+          mkResult(1, pos.toCenterPos, holder.writeIota(null, false))
         case s: EntityIota =>
           summon[CastingEnvironment].assertEntityInRange(s.getEntity)
-          def result(spell: CastingEnvironment ?=> Unit) = mkResult(s.getEntity match { case e: ItemEntity => e.getPos.add(0, .375, .0); case e => e.getPos }, spell)
+          def result(scale: Int, spell: CastingEnvironment ?=> Unit) = mkResult(scale, s.getEntity match { case e: ItemEntity => e.getPos.add(0, .375, .0); case e => e.getPos }, spell)
           boundary: outer ?=>
+            val maybeItem = s.getEntity match
+              case i: ItemEntity => Some(i.getStack)
+              case f: ItemFrameEntity => Some(f.getHeldItemStack)
+              case _ => None
             boundary:
-              val item = s.getEntity match
-                case i: ItemEntity => i.getStack
-                case f: ItemFrameEntity => f.getHeldItemStack
-                case _ => boundary.break()
+              val item = maybeItem.getOrElse(boundary.break())
               val holder = hexXplat.findHexHolder(item)
               if holder == null || !holder.hasHex then boundary.break()
-              boundary.break(result(holder.clearHex()))(using outer)
+              boundary.break(result(item.getCount, holder.clearHex()))(using outer)
             val holder = hexXplat.findDataHolder(s.getEntity)
             if holder == null || !holder.writeIota(null, true) then throw MishapBadEntity.of(s.getEntity, "hexic:erase")
-            result(holder.writeIota(null, false))
-        case i => throw MishapInvalidIota(i, 0, ???)
+            result(maybeItem.fold(1)(_.getCount), holder.writeIota(null, false))
+        case i => throw MishapInvalidIota.ofType(i, 0, "hexic:erase")
   Patterns.register("rotate", nw"qaeaqweeee"):
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
@@ -1637,7 +1654,7 @@ def init(): Unit =
       .tap(_.put("d", seqToNBT(filter.map(IotaType.serialize))))
     override def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(true, this.stack :+ ListIota(received))
     override def size = 0
-  Patterns.register("grep", ne"qaeaqea"):
+  Patterns.register("grep", nw"qaeaqea"):
     Patterns.mkAction: (img, cont) =>
       img.getStack.toSeq match
         case Seq() => throw MishapNotEnoughArgs(2, 0)

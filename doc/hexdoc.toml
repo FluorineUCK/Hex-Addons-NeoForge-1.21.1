@@ -25,7 +25,7 @@ path = "../build/datagen/patterns.csv"
 regex = "{^_pattern_regex}"
 
 [textures]
-missing = ["hexic:preferred_mediaweave", "minecraft:chest"]
+missing = ["hexic:preferred_mediaweave", "minecraft:chest", "hexic:chisel"]
 
 [template]
 icon = "../src/main/resources/assets/hexic/icon.png"
