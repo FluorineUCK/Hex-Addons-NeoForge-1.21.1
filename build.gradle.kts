@@ -153,6 +153,8 @@ repositories {
         "dev.emi")
     exactRepo("https://repo.sleeping.town/",
         "com.unascribed")
+    exactRepo("https://masa.dy.fi/maven/",
+        "carpet")
     exactRepo("https://maven.nucleoid.xyz/",
         "xyz.nucleoid")
 }
@@ -263,6 +265,7 @@ dependencies {
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modDepends(include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
+    modCompileOnly("carpet:fabric-carpet:1.20-1.+")
     compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
