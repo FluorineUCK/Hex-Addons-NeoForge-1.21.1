@@ -211,7 +211,7 @@ object Outcome:
   def apply[T: Outcome](xs: T*): OperationResult => OperationResult = res => res.->(xs*)
 extension (op: OperationResult)
   def ->[T: Outcome](xs: T*): OperationResult =
-    xs.foldLeft(op)(summon[Outcome[T]](_, _))
+    (op /: xs)(summon[Outcome[T]](_, _))
 
 given Outcome[OperationResult => OperationResult] = (res, f) => f(res)
 given [T: Outcome]: Outcome[Seq[T]] = (res, value) => res -> Outcome(value*)
@@ -676,7 +676,7 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
     val (canProvide, cantProvide) = nonrecursive.flatten.partition(_.canProvide)
     val (canRecharge, consumables) = canProvide.partition(_.canRecharge)
     val mine: M = (Option.when(consumables.nonEmpty)(consumables.map(_.getMedia).sum), Option.when(canRecharge.nonEmpty)((canRecharge.map(_.getMedia).sum, canRecharge.map(_.getMaxMedia).sum)), Option.when(cantProvide.nonEmpty)((cantProvide.map(_.getMedia).sum, cantProvide.map(_.getMaxMedia).sum)))
-    recursive.foldLeft(mine)((p: M, q: M) => (
+    (mine /: recursive)((p: M, q: M) => (
       (p._1, q._1) match
         case (None, None) => None
         case (Some(x), None) => Some(x)
