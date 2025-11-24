@@ -15,25 +15,27 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
-tasks.named("downloadRenderDoc") {
-    setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
-}
+try {
+    tasks.named("downloadRenderDoc") {
+        setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
+    }
 
-tasks.named("extractRenderDoc") {
-    enabled = false
-}
+    tasks.named("extractRenderDoc") {
+        enabled = false
+    }
 
-val erd by tasks.register<Sync>("myExtractRenderDoc") {
-    dependsOn("downloadRenderDoc")
-    from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
-    into("$buildDir/renderdoc")
-}
+    val erd by tasks.register<Sync>("myExtractRenderDoc") {
+        dependsOn("downloadRenderDoc")
+        from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
+        into("$buildDir/renderdoc")
+    }
+
+    tasks.named("runClientRenderDoc") {
+        dependsOn(erd)
+    }
+} catch (ignored: UnknownTaskException) {}
 
 loom.runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
-
-tasks.named("runClientRenderDoc") {
-    dependsOn(erd)
-}
 
 //tasks.withType<RenderDocR>()
 
