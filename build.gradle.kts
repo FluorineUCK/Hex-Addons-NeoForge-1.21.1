@@ -369,22 +369,22 @@ tasks.processResources {
 
     dependsOn(cloth)
     dependsOn(*downloadedBags.values.toTypedArray())
-    val itemsRoot = "$destinationDir/assets/hexic/textures/item"
+    val itemsRoot = destinationDir.resolve("assets/hexic/textures/item")
     doLast {
         for ((name, color) in colors) {
             exec {
-                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$itemsRoot/${name}_mediaweave.png")
+                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", itemsRoot.resolve("${name}_mediaweave.png"))
             }
             val bag = downloadedBags[name]!!.dest
             exec {
-                commandLine("env", "magick", bag, "-write", "$itemsRoot/large_${name}_bundle.png", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "$itemsRoot/small_${name}_bundle.png")
+                commandLine("env", "magick", bag, "-write", itemsRoot.resolve("large_${name}_bundle.png"), "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", itemsRoot.resolve("small_${name}_bundle.png"))
             }
         }
         exec {
-            commandLine("env", "magick", "wizard:", "$itemsRoot/wizard.png")
+            commandLine("env", "magick", "wizard:", itemsRoot.resolve("wizard.png"))
         }
         exec {
-            commandLine("env", "magick", "null:", "$itemsRoot/no.png")
+            commandLine("env", "magick", "null:", itemsRoot.resolve("no.png"))
         }
         exec {
             commandLine("env", "magick",
@@ -401,7 +401,7 @@ tasks.processResources {
                 "-compose", "copy_opacity",
                 "-composite",
                 "-fx", "u*2",
-                "$itemsRoot/stringworm.miff"
+                itemsRoot.resolve("stringworm.miff")
             )
         }
         for ((name, expr) in mapOf(
@@ -412,25 +412,25 @@ tasks.processResources {
             "pure" to "u",
         )) {
             exec {
-                commandLine("env", "magick", "$itemsRoot/stringworm.miff", "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
+                commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
             }
         }
         // people will hate this
         for (i in 0..31) {
-            file("$itemsRoot/stringworm_tinted_$i.png").outputStream().use {
+            itemsRoot.resolve("stringworm_tinted_$i.png").outputStream().use {
                 exec {
-                    commandLine("env", "magick", "$itemsRoot/stringworm.miff", "-fx", "i+j == $i ? u : Transparent", "png:-")
+                    commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-fx", "i+j == $i ? u : Transparent", "png:-")
                     standardOutput = it
                 }
             }
         }
         file("$itemsRoot/../block").mkdir()
         exec {
-            commandLine("env", "magick", "xc:#ffffff[16x16]", "$itemsRoot/../block/border.png")
+            commandLine("env", "magick", "xc:#ffffff[16x16]", itemsRoot.resolveSibling("block/border.png"))
         }
         //file("$itemsRoot/stringworm.miff").delete()
         exec {
-            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
+            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", itemsRoot.resolve("beans.png"))
         }
     }
 
