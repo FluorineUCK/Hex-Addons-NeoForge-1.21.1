@@ -372,6 +372,7 @@ tasks.processResources {
     dependsOn(*downloadedBags.values.toTypedArray())
     val itemsRoot = destinationDir.resolve("assets/hexic/textures/item")
     val langRoot = destinationDir.resolve("assets/hexic/lang")
+    val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
     doLast {
         for ((name, color) in colors) {
             exec {
@@ -437,9 +438,35 @@ tasks.processResources {
     }
 
     doLast {
-        for (lang in listOf("en_us", "zh_cn")) {
+        for (lang in bookRoot.list()) {
             val langFile = langRoot.resolve("$lang.json")
-            val entries = JsonSlurper().parseText(langFile.readText()) as Map<String, String>
+            val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
+            var n = 0
+            for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
+                if (bookFile.isFile) {
+                    val json = JsonSlurper().parseText(bookFile.readText())
+                    if (json !is Map<*, *>) continue
+                    val pages = json["pages"]
+                    if (pages !is MutableList<*>) continue
+                    pages as MutableList<Any>
+                    for (i in pages.indices) {
+                        val page = pages[i]
+                        if (page is String) {
+                            entries["text.hexic.book.${n}"] = page
+                            pages[i] = "hexic.book.${n}"
+                            n++
+                        } else if (page is MutableMap<*, *>) {
+                            page as MutableMap<Any, Any>
+                            val text = page["text"]
+                            if (text != null && text is String) {
+                                entries["text.hexic.book.${n}"] = text
+                                page["text"] = "hexic.book.${n}"
+                                n++
+                            }
+                        }
+                    }
+                }
+            }
             langFile.writeText(JsonOutput.toJson(entries))
         }
     }
