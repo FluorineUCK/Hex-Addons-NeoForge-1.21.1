@@ -5,6 +5,7 @@ import org.gradle.api.publish.maven.internal.publication.MavenPomInternal
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import kotlin.io.path.exists
 import kotlin.io.path.readText
+import groovy.json.JsonOutput
 
 plugins {
     id("fabric-loom") version "1.13-SNAPSHOT"
@@ -370,6 +371,7 @@ tasks.processResources {
     dependsOn(cloth)
     dependsOn(*downloadedBags.values.toTypedArray())
     val itemsRoot = destinationDir.resolve("assets/hexic/textures/item")
+    val langRoot = destinationDir.resolve("assets/hexic/lang")
     doLast {
         for ((name, color) in colors) {
             exec {
@@ -431,6 +433,14 @@ tasks.processResources {
         //file("$itemsRoot/stringworm.miff").delete()
         exec {
             commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", itemsRoot.resolve("beans.png"))
+        }
+    }
+
+    doLast {
+        for (lang in listOf("en_us", "zh_cn")) {
+            val langFile = langRoot.resolve("$lang.json")
+            val entries = JsonSlurper().parseText(langFile.readText()) as Map<String, String>
+            langFile.writeText(JsonOutput.toJson(entries))
         }
     }
 
