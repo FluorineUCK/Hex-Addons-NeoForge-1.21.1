@@ -465,17 +465,18 @@ tasks.processResources {
                                 n++
                             } else if (page is MutableMap<*, *>) {
                                 page as MutableMap<Any, Any>
-                                val text = page["text"]
-                                if (text != null && text is String) {
-                                    entries["text.hexic.book.${n}"] = text
-                                    page["text"] = "text.hexic.book.${n}"
-                                    n++
+                                for (key in listOf("text", "title")) {
+                                    val text = page[key]
+                                    if (text != null && text is String) {
+                                        entries["text.hexic.book.${n}"] = text
+                                        page[key] = "text.hexic.book.${n}"
+                                        n++
+                                    }
                                 }
                             }
                         }
                         bookFile.writeText(JsonOutput.toJson(json))
                     }
-                    bookFile.writeText(JsonOutput.toJson(json))
                 }
                 langFile.writeText(JsonOutput.toJson(entries))
             }
