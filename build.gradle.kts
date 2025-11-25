@@ -457,11 +457,13 @@ tasks.processResources {
                             n++
                         } else if (page is MutableMap<*, *>) {
                             page as MutableMap<Any, Any>
-                            val text = page["text"]
-                            if (text != null && text is String) {
-                                entries["text.hexic.book.${n}"] = text
-                                page["text"] = "hexic.book.${n}"
-                                n++
+                            for (key in listOf("text", "title")) {
+                                val text = page[key]
+                                if (text != null && text is String) {
+                                    entries["text.hexic.book.${n}"] = text
+                                    page[key] = "hexic.book.${n}"
+                                    n++
+                                }
                             }
                         }
                     }
