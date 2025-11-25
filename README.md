@@ -1,6 +1,6 @@
 <center>
 
-<img height="200" src="src/main/resources/assets/hexic/icon.png" title="hexic icon: a blue stringworm" width="200"/>
+<img height="200" src="https://codeberg.org/api/v1/repos/poollovernathan/hexic/raw/src/main/resources/assets/hexic/icon.png" title="hexic icon: a blue stringworm" width="200"/>
 
 <h1 style="margin-top: 0">hexic</h1>
 

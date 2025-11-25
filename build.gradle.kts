@@ -440,34 +440,45 @@ tasks.processResources {
     doLast {
         for (lang in bookRoot.list()) {
             val langFile = langRoot.resolve("$lang.json")
-            val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
-            var n = 0
-            for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
-                if (bookFile.isFile) {
-                    val json = JsonSlurper().parseText(bookFile.readText())
-                    if (json !is Map<*, *>) continue
-                    val pages = json["pages"]
-                    if (pages !is MutableList<*>) continue
-                    pages as MutableList<Any>
-                    for (i in pages.indices) {
-                        val page = pages[i]
-                        if (page is String) {
-                            entries["text.hexic.book.${n}"] = page
-                            pages[i] = "hexic.book.${n}"
+            if (langFile.exists()) {
+                val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
+                var n = 0
+                for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
+                    if (bookFile.isFile) {
+                        val json = JsonSlurper().parseText(bookFile.readText())
+                        if (json !is Map<*, *>) continue
+                        json as MutableMap<Any, Any>
+                        val name = json["name"]
+                        if (name is String) {
+                            entries["text.hexic.book.${n}"] = name
+                            json["name"] = "text.hexic.book.${n}"
                             n++
-                        } else if (page is MutableMap<*, *>) {
-                            page as MutableMap<Any, Any>
-                            val text = page["text"]
-                            if (text != null && text is String) {
-                                entries["text.hexic.book.${n}"] = text
-                                page["text"] = "hexic.book.${n}"
+                        }
+                        val pages = json["pages"]
+                        if (pages !is MutableList<*>) continue
+                        pages as MutableList<Any>
+                        for (i in pages.indices) {
+                            val page = pages[i]
+                            if (page is String) {
+                                entries["text.hexic.book.${n}"] = page
+                                pages[i] = "text.hexic.book.${n}"
                                 n++
+                            } else if (page is MutableMap<*, *>) {
+                                page as MutableMap<Any, Any>
+                                val text = page["text"]
+                                if (text != null && text is String) {
+                                    entries["text.hexic.book.${n}"] = text
+                                    page["text"] = "text.hexic.book.${n}"
+                                    n++
+                                }
                             }
                         }
+                        bookFile.writeText(JsonOutput.toJson(json))
                     }
+                    bookFile.writeText(JsonOutput.toJson(json))
                 }
+                langFile.writeText(JsonOutput.toJson(entries))
             }
-            langFile.writeText(JsonOutput.toJson(entries))
         }
     }
 
@@ -561,6 +572,13 @@ tasks.register<Exec>("pushWheels") {
     commandLine("git", "push", "origin", "+$wheelCommit:refs/heads/wheels")
 }
 
+tasks.named("clean") {
+    doLast {
+        file("src/main/generated").deleteRecursively()
+        file("dist").deleteRecursively()
+    }
+}
+
 open class Hexdoc: Exec() {
     init {
         environment["GITHUB_PAGES_URL"] = "https://hexic.pool.net.eu.org/"
@@ -622,7 +640,7 @@ val syncPip by tasks.register<Exec>("syncPip") {
     commandLine("env", "pip", "install", "-e", ".")
 }
 val hexdoc by tasks.register<Hexdoc>("hexdoc") {
-    dependsOn(syncPip, tasks.processResources, "runDatagen")
+    dependsOn(syncPip, "processWithDatagen")
     docsPrefix = file("_site/src/docs")
     cleanPrefix()
     hexdocArgs = listOf("build", "--branch", p.change_id)
@@ -638,6 +656,7 @@ val mergeHexdoc by tasks.register<Hexdoc>("mergeHexdoc") {
 }
 val wheel by tasks.register<Exec>("wheel") {
     dependsOn(hexdoc)
+    doFirst { file("dist").deleteRecursively() }
     commandLine("env", "uv", "build")
     outputs.file(wheelPath)
 }

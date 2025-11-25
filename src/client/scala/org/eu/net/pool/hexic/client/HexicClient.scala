@@ -264,7 +264,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.registerSimpleState(Registries.BLOCK("chisel_table"))
         gen.modelCollector.accept(ModelIds.getBlockModelId(Registries.BLOCK("chisel_table")), () =>
           new JsonObject().tap: j =>
-            j.addProperty("parent", "minecraft:block")
+            j.addProperty("parent", "minecraft:block/block")
             j.add("textures", new JsonObject().tap: j =>
               j.addProperty("particle", "hexcasting:block/slate")
             )
