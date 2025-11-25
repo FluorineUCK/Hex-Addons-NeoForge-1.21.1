@@ -27,6 +27,22 @@
             "input": "pigment",
             "output": "",
             "text": "book.hexic.page.dye_offhand"
+        },
+        {
+            "type": "hexcasting:pattern",
+            "op_id": "hexic:get_other_caster",
+            "anchor": "hexic:get_other_caster",
+            "input": "",
+            "output": "entity | null",
+            "text": "book.hexic.page.get_other_caster"
+        },
+        {
+            "type": "hexcasting:pattern",
+            "op_id": "hexic:erase",
+            "anchor": "hexic:erase",
+            "input": "vec | entity",
+            "output": "",
+            "text": "book.hexic.page.erase"
         }
     ]
 }

@@ -5,6 +5,7 @@ import org.gradle.api.publish.maven.internal.publication.MavenPomInternal
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import kotlin.io.path.exists
 import kotlin.io.path.readText
+import groovy.json.JsonOutput
 
 plugins {
     id("fabric-loom") version "1.13-SNAPSHOT"
@@ -15,23 +16,27 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
-tasks.named("downloadRenderDoc") {
-    setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
-}
+try {
+    tasks.named("downloadRenderDoc") {
+        setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
+    }
 
-tasks.named("extractRenderDoc") {
-    enabled = false
-}
+    tasks.named("extractRenderDoc") {
+        enabled = false
+    }
 
-val erd by tasks.register<Sync>("myExtractRenderDoc") {
-    dependsOn("downloadRenderDoc")
-    from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
-    into("$buildDir/renderdoc")
-}
+    val erd by tasks.register<Sync>("myExtractRenderDoc") {
+        dependsOn("downloadRenderDoc")
+        from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
+        into("$buildDir/renderdoc")
+    }
 
-tasks.named("runClientRenderDoc") {
-    dependsOn(erd)
-}
+    tasks.named("runClientRenderDoc") {
+        dependsOn(erd)
+    }
+} catch (ignored: UnknownTaskException) {}
+
+loom.runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
 
 //tasks.withType<RenderDocR>()
 
@@ -151,6 +156,8 @@ repositories {
         "dev.emi")
     exactRepo("https://repo.sleeping.town/",
         "com.unascribed")
+    exactRepo("https://masa.dy.fi/maven/",
+        "carpet")
     exactRepo("https://maven.nucleoid.xyz/",
         "xyz.nucleoid")
 }
@@ -261,6 +268,8 @@ dependencies {
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modDepends(include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
+    modCompileOnly("carpet:fabric-carpet:1.20-1.+")
+//    modRuntimeOnly("carpet:fabric-carpet:1.20-1.+")
     compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
@@ -361,22 +370,24 @@ tasks.processResources {
 
     dependsOn(cloth)
     dependsOn(*downloadedBags.values.toTypedArray())
-    val itemsRoot = "$destinationDir/assets/hexic/textures/item"
+    val itemsRoot = destinationDir.resolve("assets/hexic/textures/item")
+    val langRoot = destinationDir.resolve("assets/hexic/lang")
+    val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
     doLast {
         for ((name, color) in colors) {
             exec {
-                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$itemsRoot/${name}_mediaweave.png")
+                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", itemsRoot.resolve("${name}_mediaweave.png"))
             }
             val bag = downloadedBags[name]!!.dest
             exec {
-                commandLine("env", "magick", bag, "-write", "$itemsRoot/large_${name}_bundle.png", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "$itemsRoot/small_${name}_bundle.png")
+                commandLine("env", "magick", bag, "-write", itemsRoot.resolve("large_${name}_bundle.png"), "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", itemsRoot.resolve("small_${name}_bundle.png"))
             }
         }
         exec {
-            commandLine("env", "magick", "wizard:", "$itemsRoot/wizard.png")
+            commandLine("env", "magick", "wizard:", itemsRoot.resolve("wizard.png"))
         }
         exec {
-            commandLine("env", "magick", "null:", "$itemsRoot/no.png")
+            commandLine("env", "magick", "null:", itemsRoot.resolve("no.png"))
         }
         exec {
             commandLine("env", "magick",
@@ -393,7 +404,7 @@ tasks.processResources {
                 "-compose", "copy_opacity",
                 "-composite",
                 "-fx", "u*2",
-                "$itemsRoot/stringworm.miff"
+                itemsRoot.resolve("stringworm.miff")
             )
         }
         for ((name, expr) in mapOf(
@@ -404,25 +415,59 @@ tasks.processResources {
             "pure" to "u",
         )) {
             exec {
-                commandLine("env", "magick", "$itemsRoot/stringworm.miff", "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
+                commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
             }
         }
         // people will hate this
         for (i in 0..31) {
-            file("$itemsRoot/stringworm_tinted_$i.png").outputStream().use {
+            itemsRoot.resolve("stringworm_tinted_$i.png").outputStream().use {
                 exec {
-                    commandLine("env", "magick", "$itemsRoot/stringworm.miff", "-fx", "i+j == $i ? u : Transparent", "png:-")
+                    commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-fx", "i+j == $i ? u : Transparent", "png:-")
                     standardOutput = it
                 }
             }
         }
         file("$itemsRoot/../block").mkdir()
         exec {
-            commandLine("env", "magick", "xc:#ffffff[16x16]", "$itemsRoot/../block/border.png")
+            commandLine("env", "magick", "xc:#ffffff[16x16]", itemsRoot.resolveSibling("block/border.png"))
         }
         //file("$itemsRoot/stringworm.miff").delete()
         exec {
-            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
+            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", itemsRoot.resolve("beans.png"))
+        }
+    }
+
+    doLast {
+        for (lang in bookRoot.list()) {
+            val langFile = langRoot.resolve("$lang.json")
+            val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
+            var n = 0
+            for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
+                if (bookFile.isFile) {
+                    val json = JsonSlurper().parseText(bookFile.readText())
+                    if (json !is Map<*, *>) continue
+                    val pages = json["pages"]
+                    if (pages !is MutableList<*>) continue
+                    pages as MutableList<Any>
+                    for (i in pages.indices) {
+                        val page = pages[i]
+                        if (page is String) {
+                            entries["text.hexic.book.${n}"] = page
+                            pages[i] = "hexic.book.${n}"
+                            n++
+                        } else if (page is MutableMap<*, *>) {
+                            page as MutableMap<Any, Any>
+                            val text = page["text"]
+                            if (text != null && text is String) {
+                                entries["text.hexic.book.${n}"] = text
+                                page["text"] = "hexic.book.${n}"
+                                n++
+                            }
+                        }
+                    }
+                }
+            }
+            langFile.writeText(JsonOutput.toJson(entries))
         }
     }
 
