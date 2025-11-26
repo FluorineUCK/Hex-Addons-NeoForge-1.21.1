@@ -10,7 +10,7 @@ import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect.DoMishap
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, FrameEvaluate, SpellContinuation}
-import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
+import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, CastingEnvironmentComponent, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
@@ -1481,7 +1481,8 @@ def init(): Unit =
           staffcast.setImage(img)
           val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
           try
-            vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
+            propagateMishaps(vm.getEnv):
+              vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
           finally
             staffcast.setImage(oldImage)
             HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
@@ -1505,7 +1506,8 @@ def init(): Unit =
             null // kotlin bullshit
           ))
           try
-            vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
+            propagateMishaps(vm.getEnv):
+              vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
           finally
             staffcast.setImage(new CastingImage(
               stack = vm.getImage.getStack,
@@ -1872,6 +1874,25 @@ def iotaInt(iota: Iota, er: => Nothing): Int =
       else
         i
     case _ => er
+
+def wrapReturn[T](body: (T => Nothing) => T): T = body(return _)
+def wrapThrow[T, E <: Throwable](body: (E => Nothing) => T): T =
+  wrapReturn[Either[E, T]](r => Right(body(e => r(Left(e))))) match
+    case Left(e) => throw e
+    case Right(x) => x
+
+def propagateMishaps[T](env: CastingEnvironment)(body: => T): T =
+  wrapThrow[T, Mishap]: doThrow =>
+    object key extends CastingEnvironmentComponent.Key[?]
+    env.addExtension:
+      new CastingEnvironmentComponent with CastingEnvironmentComponent.PostExecution:
+        override def getKey: CastingEnvironmentComponent.Key[?] = key
+        override def onPostExecution(result: CastResult): Unit =
+          result.getSideEffects.collectFirst:
+            case m: OperatorSideEffect.DoMishap =>
+              if isDev then println(s"Propagating mishap: $m")
+              doThrow(m.getMishap)
+    try body finally env.removeExtension(key)
 
 def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
   assume(max > min)
