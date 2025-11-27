@@ -2,12 +2,12 @@
 * `ktwznkmp` making Noetic Gateway always go to a demiplane's center
 * `ktwznkmp` special demiplane iota handling
 * demiplane rupturing
-* `mtnvyrpu` deleting demiplanes
 * implement table stuff
 * chisel texture
 * table in-inventory model
 # probably soon
 * `szrotpky` filtering and sorting would be nice to have
 * The Suffering / Ascension
+* document demiplanes
 # at some point
 * spellminds
