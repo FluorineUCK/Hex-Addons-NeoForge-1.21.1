@@ -90,6 +90,7 @@ import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
+import scala.util.{Failure, Success, Try}
 export scala.collection.convert.ImplicitConversions.*
 import scala.collection.mutable
 import scala.compiletime.summonFrom
@@ -1797,6 +1798,24 @@ def init(): Unit =
     override def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(false, stack.toSeq)
     override def size = 0
   hexXplat.getContinuationTypeRegistry("send_message") = messageFrameType
+  CastingEnvironment.addCreateEventListener: (env: CastingEnvironment, data: NbtCompound) =>
+    val id = env.getWorld.getRegistryKey.getValue
+    if isDev then println(s"Environment created in $id")
+    for pocketID <- getPocketID(id) do
+      if isDev then println(s"Preparing pocket $pocketID for environment $env")
+      env.addExtension:
+        new CastingEnvironmentComponent with CastingEnvironmentComponent.IsVecInRange with CastingEnvironmentComponent.HasEditPermissionsAt:
+          object getKey extends CastingEnvironmentComponent.Key[this.type]
+          override def onIsVecInRange(vec: Vec3d, current: Boolean): Boolean = boundary:
+            for axis <- Direction.Axis.values do
+              val x = vec.getComponentAlongAxis(axis)
+              if x < 0 || x >= 11 then boundary.break(false)
+            true
+          override def onHasEditPermissionsAt(pos: BlockPos, current: Boolean): Boolean = boundary:
+            for axis <- Direction.Axis.values do
+              val x = pos.getComponentAlongAxis(axis)
+              if x < 0 || x >= 11 then boundary.break(false)
+            true
   ServerPlayNetworking.registerGlobalReceiver("sync_mediaweave", (_, player, _, buf, _) =>
     val flags = buf.readByte()
     val c = player.getComponent(PlayerInfoComponent.key)
@@ -1875,11 +1894,9 @@ def iotaInt(iota: Iota, er: => Nothing): Int =
         i
     case _ => er
 
+extension [T, R] (f: T => R) def ∘ [U](g: U => T) = (x: U) => f(g(x))
 def wrapReturn[T](body: (T => Nothing) => T): T = body(return _)
-def wrapThrow[T, E <: Throwable](body: (E => Nothing) => T): T =
-  wrapReturn[Either[E, T]](r => Right(body(e => r(Left(e))))) match
-    case Left(e) => throw e
-    case Right(x) => x
+def wrapThrow[T, E <: Throwable](body: (E => Nothing) => T): T = wrapReturn[Try[T]](r => Success(body(r∘Failure))).get
 
 def propagateMishaps[T](env: CastingEnvironment)(body: => T): T =
   wrapThrow[T, Mishap]: doThrow =>
@@ -2198,8 +2215,8 @@ given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
 
 object border extends Block(AbstractBlock.Settings.create().dropsNothing().allowsSpawning((_, _, _, _) => false).sounds(BlockSoundGroup.STONE).requiresTool().strength(100.0F, 1200.0F).luminance(_ => 14))
 def getPocketID(key: Identifier): Option[UUID] =
-  if key.getNamespace == "hexic" && key.getPath.startsWith("fresh_") then
-    val hash = key.getPath.replace("fresh_", "")
+  if key.getNamespace == "hexic" && key.getPath.startsWith("fresh-") then
+    val hash = key.getPath.replace("fresh-", "")
     val bi1 = BigInteger(hash.substring(0, 16), 16)
     val bi2 = BigInteger(hash.substring(16, 32), 16)
     Some(UUID(bi1.longValue, bi2.longValue))

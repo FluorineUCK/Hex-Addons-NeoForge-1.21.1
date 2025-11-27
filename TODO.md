@@ -1,7 +1,6 @@
 # before next release
 * `ktwznkmp` making Noetic Gateway always go to a demiplane's center
 * `ktwznkmp` special demiplane iota handling
-* demiplane ambit overriding
 * demiplane rupturing
 * `mtnvyrpu` deleting demiplanes
 * implement table stuff
