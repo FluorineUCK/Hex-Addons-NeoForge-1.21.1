@@ -153,7 +153,7 @@ def cuboid(using VertexConsumer, MatrixStack, Lighting)(from: (Float, Float, Flo
   val (x1, y1, z1) = (from._1 min to._1, from._2 min to._2, from._3 min to._3)
   val (x2, y2, z2) = (from._1 max to._1, from._2 max to._2, from._3 max to._3)
   for (dir, (sprite, uv1, uv2)) <- faces do
-    val (minU, minV, maxU, maxV) = sprite match
+    val ((minU, minV), (maxU, maxV)) = sprite match
       case null => (0f, 0f) -> (1f, 1f)
       case s: Sprite => (s.getMinU, s.getMinV) -> (s.getMaxU, s.getMaxV)
     val u1 = MathHelper.lerp(uv1._1, minU, maxU)
