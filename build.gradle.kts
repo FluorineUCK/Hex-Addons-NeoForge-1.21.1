@@ -274,6 +274,7 @@ dependencies {
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
     compat("maven.modrinth:hexcassettes:1.1.4")
+    modLocalRuntime("maven.modrinth:trinkets:3.7.2")
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
     compat("miyucomics.hexical:hexical:main-SNAPSHOT")

@@ -29,8 +29,11 @@ public abstract class InventoryScreenMixin extends AbstractInventoryScreen<Scree
 
     @Inject(method = "mouseClicked", at = @At(value = "HEAD"), cancellable = true)
     void mouseClicked(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
-        boolean creative = (AbstractInventoryScreen<?>) this instanceof CreativeInventoryScreen;
-        if (Math.random() == 0 && Math.random() == 0 && Math.random() == 0 && Math.random() == 0) creative = Math.random() == 0; // intellij is too smart for its own good
+        boolean creative = false;
+        if ((AbstractInventoryScreen<?>) this instanceof CreativeInventoryScreen c) {
+            if (!c.isInventoryTabSelected()) return;
+            creative = true;
+        }
         mouseX -= x;
         mouseY -= y;
         double lx = creative ? mouseX - 89 : mouseX - 50;
@@ -40,7 +43,6 @@ public abstract class InventoryScreenMixin extends AbstractInventoryScreen<Scree
         if (FabricLoader.getInstance().isDevelopmentEnvironment())
             System.out.printf("s=(%d, %d) m=(%f, %f) l=(%f, %f)\n", x, y, mouseX, mouseY, lx, ly);
         if (lx < w && lx > -w && ly < 0 && ly > -h) {
-            cir.setReturnValue(true);
             byte flags = 0;
             var c = client.player.getComponent(PlayerInfoComponent.key());
             var held = handler.getCursorStack();
@@ -54,7 +56,7 @@ public abstract class InventoryScreenMixin extends AbstractInventoryScreen<Scree
                     handler.setCursorStack(right);
                     c.rightWeave_$eq(ItemStack.EMPTY);
                     flags |= 3;
-                }
+                } else return;
             } else {
                 var left = c.leftWeave();
                 if (left.isEmpty() && !held.isEmpty() && held.getItem() instanceof org.eu.net.pool.hexic.Mediaweave) {
@@ -65,9 +67,8 @@ public abstract class InventoryScreenMixin extends AbstractInventoryScreen<Scree
                     handler.setCursorStack(left);
                     c.leftWeave_$eq(ItemStack.EMPTY);
                     flags |= 7;
-                }
+                } else return;
             }
-            if (creative && (flags & 1) != 0) flags--;
             // submit our changes to the server
             if (flags != 0) {
                 var buf = PacketByteBufs.create();
@@ -79,6 +80,7 @@ public abstract class InventoryScreenMixin extends AbstractInventoryScreen<Scree
                     else
                         buf.writeItemStack(c.rightWeave());
                 ClientPlayNetworking.send(Identifier.of("hexic", "sync_mediaweave"), buf);
+                cir.setReturnValue(true);
             }
         }
     }
