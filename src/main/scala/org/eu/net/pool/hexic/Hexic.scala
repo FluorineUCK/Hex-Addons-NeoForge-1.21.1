@@ -52,7 +52,7 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, Transaction
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.Bootstrap
 import net.minecraft.block.Block
-import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType}
+import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType, UuidArgumentType}
 import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.Fluid
@@ -68,9 +68,9 @@ import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntit
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
-import net.minecraft.util.math.{BlockPos, Direction, Vec3d}
+import net.minecraft.util.math.{BlockPos, ChunkPos, Direction, Vec3d}
 import net.minecraft.util.{Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
-import net.minecraft.world.World
+import net.minecraft.world.{TeleportTarget, World}
 import org.eu.net.pool.common_curses.client.CommonCursesClientKt
 import org.eu.net.pool.common_curses.{CommonCursesKt, SlotAccess, TextManipulator}
 import org.eu.net.pool.hexic
@@ -141,16 +141,18 @@ import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 import at.petrak.hexcasting.common.casting.actions.spells.OpBreakBlock
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
+import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
 import xyz.nucleoid.fantasy.util.VoidChunkGenerator
-import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig}
+import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig, RuntimeWorldHandle}
 
 import java.nio.charset.StandardCharsets
 import java.math.BigInteger
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.ExperienceOrbEntity
 import net.minecraft.network.packet.s2c.play.PositionFlag
+import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -771,9 +773,10 @@ lazy val itemGroup = FabricItemGroup.builder()
 
 val goodModulo = ne"daawdda"
 
-def memo[T, R](f: T => R, limit: Int = 128): T => R =
-  val cache = new ju.LinkedHashMap[T, R]:
-    override def removeEldestEntry(eldest: ju.Map.Entry[T, R]): Boolean = size > limit
+def memo[T, R](f: T => R, limit: Option[Int] = Some(128)): T => R =
+  val cache = limit.fold(ju.HashMap()): cap =>
+    new ju.LinkedHashMap[T, R]:
+      override def removeEldestEntry(eldest: ju.Map.Entry[T, R]): Boolean = size > cap
   cache.computeIfAbsent(_, f(_))
 
 def init(): Unit =
@@ -1121,6 +1124,25 @@ def init(): Unit =
       LESS_EQ -> ((a: MapIota, b: MapIota) => b.map containsAll a.map),
     )
   hexXplat.getArithmeticRegistry("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
+  val planeCaches = ju.WeakHashMap[MinecraftServer, mutable.Map[UUID, RuntimeWorldHandle]]()
+  def planeCache(using server: MinecraftServer): mutable.Map[UUID, RuntimeWorldHandle] = planeCaches.computeIfAbsent(server, _ => mutable.Map())
+  def planes(uuid: UUID)(using server: MinecraftServer) =
+    planeCache.computeIfAbsent(uuid, _ =>
+      val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
+      val handle = Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
+      handle.asWorld.setChunkForced(0, 0, true)
+      handle
+    )
+  extension (server: MinecraftServer)
+    def savedPlanes =
+      val file = server.getSavePath(WorldSavePath("fresh"))
+      if Files.exists(file) then
+        Files.readAllLines(file, StandardCharsets.UTF_8).toSet.filter(!_.isBlank).map(UUID.fromString)
+      else
+        Set.empty
+    def savedPlanes_=(planes: Set[UUID]) =
+      val file = server.getSavePath(WorldSavePath("fresh"))
+      Files.write(file, planes.map(_.toString))
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
       .requires(c => c.hasPermissionLevel(2) || (c.getPlayer != null && c.getPlayer.isCreative))
@@ -1155,6 +1177,36 @@ def init(): Unit =
             1
           ).build()
       ).build())
+    def planeAction(name: String)(body: MinecraftServer ?=> UUID => Int): Unit =
+      d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource](name).pipe: c =>
+        c.requires(_.hasPermissionLevel(2))
+        c.argument("id", UuidArgumentType.uuid()): c =>
+          c.executes: (ctx: CommandContext[ServerCommandSource]) =>
+            given MinecraftServer = ctx.getSource.getServer
+            body(UuidArgumentType.getUuid(ctx, "id"))
+        c.build()
+      )
+    planeAction("pin_plane"): id =>
+      summon[MinecraftServer].savedPlanes += id
+      1
+    planeAction("un_plane"): id =>
+      summon[MinecraftServer].savedPlanes -= id
+      1
+    planeAction("touch_plane"): id =>
+      planes(id)
+      1
+    planeAction("unmap_plane"): id =>
+      planeCache.remove(id) match
+        case Some(h) =>
+          h.unload()
+          1
+        case None => throw CommandException(Text.literal("Plane not mapped"))
+    planeAction("delete_plane"): id =>
+      planeCache.remove(id) match
+        case Some(h) =>
+          h.delete()
+          1
+        case None => throw CommandException(Text.literal("Plane not mapped"))
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("playerwisp").pipe: c =>
       c.requires(_.hasPermissionLevel(2))
       c.argument("target", EntityArgumentType.players()): c =>
@@ -1245,21 +1297,7 @@ def init(): Unit =
       )
       c.build())
   Registries.BLOCK("void_air") = Interop.VOID_AIR
-  val planes = memo { (uuid: UUID) => (server: MinecraftServer) ?=>
-    val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
-    Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
-  }
   given (env: CastingEnvironment) => MinecraftServer = env.getWorld.getServer
-  extension (server: MinecraftServer)
-    def savedPlanes =
-      val file = server.getSavePath(WorldSavePath("fresh"))
-      if Files.exists(file) then
-        Files.readAllLines(file, StandardCharsets.UTF_8).toSet.filter(!_.isBlank).map(UUID.fromString)
-      else
-        Set.empty
-    def savedPlanes_=(planes: Set[UUID]) =
-      val file = server.getSavePath(WorldSavePath("fresh"))
-      Files.write(file, planes.map(_.toString))
   ServerLifecycleEvents.SERVER_STARTED.register: server =>
     given MinecraftServer = server
     for id <- server.savedPlanes do
@@ -1301,39 +1339,67 @@ def init(): Unit =
                   for x <- 1 to 9; y <- 1 to 9; z <- 1 to 9 do
                     loc.set(x, y, z)
                     world.breakBlock(loc, true)
-                  val itemsToSpawn = mutable.Map[ItemVariant, Long]()
+                  val itemsToSpawn = mutable.Map[ItemVariant, Long]().withDefaultValue(0)
                   var xpToSpawn: Long = 0
-                  iterated(world.iterateEntities): (entities, recurse) =>
-                    val entitySeq = entities.toSeq
-                    if entitySeq.nonEmpty then
-                      for entity <- entitySeq do
-                        entity match
-                          case e: ItemEntity =>
-                            val stack = e.getStack
-                            itemsToSpawn(ItemVariant.of(stack)) += stack.getCount
-                            e.discard()
-                          case e: ExperienceOrbEntity =>
-                            xpToSpawn += e.getExperienceAmount
-                            e.discard()
-                          case p: PlayerEntity =>
-                            p.teleport(outer, pos.getX, pos.getY, pos.getZ, Set(PositionFlag.X, PositionFlag.Y, PositionFlag.Z), 0, 0)
-                            if !p.isCreative && !p.isSpectator then p.kill()
-                          case e: LivingEntity =>
-                            e.kill()
-                            while !e.isRemoved do (e: LivingEntityAccess).callUpdatePostDeath()
-                          case e =>
-                            e.teleport(outer, pos.getX, pos.getY, pos.getZ, Set(PositionFlag.X, PositionFlag.Y, PositionFlag.Z), 0, 0)
-                      recurse
-                  for (item, count) <- itemsToSpawn do
-                    spawnManyItems(dest.getVec3, item, count)
-                  while xpToSpawn > 2477 do
-                    ExperienceOrbEntity.spawn(outer, pos, 2477)
-                    xpToSpawn -= 2477
-                  if xpToSpawn > 0 then
-                    ExperienceOrbEntity.spawn(outer, pos, xpToSpawn.toInt)
-                  // FIN.
-                  server.savedPlanes -= id
-                  planes(id).unload()
+                  val chunk = world.getChunkManager.getChunk(0, 0, ChunkStatus.FULL, false)
+                  chunk.asInstanceOf[WorldChunk].loadEntities()
+                  boundary:
+                    if isDev then println("Beginning lurker cleanup")
+                    try
+                      var pass = 0
+                      // test dim: hexic:fresh-9116c992558d4aca854d75270e100b84, uuid 9116c992-558d-4aca-854d-75270e100b84
+                      iterated(world.iterateEntities): (entities, recurse) =>
+                        val entitySeq = entities.toSeq
+                        if isDev then println(s"Performing pass ${pass += 1} over ${entitySeq.size} entities")
+                        if entitySeq.nonEmpty then
+                          for entity <- entitySeq do
+                            entity match
+                              case e: ItemEntity =>
+                                val stack = e.getStack
+                                itemsToSpawn(ItemVariant.of(stack)) += stack.getCount
+                                if isDev then println(s"Collecting item entity $stack, need to spawn: $itemsToSpawn")
+                                e.discard()
+                              case e: ExperienceOrbEntity =>
+                                xpToSpawn += e.getExperienceAmount
+                                if isDev then println(s"Collecting XP orb, need to spawn: $xpToSpawn")
+                                e.discard()
+                              case p: PlayerEntity =>
+                                // thanks but please stop eating my ears
+                                if isDev then println(s"Teleporting player $p")
+                                FabricDimensions.teleport(p, outer, TeleportTarget(pos, Vec3d.ZERO, p.getYaw, p.getPitch))
+                                if !p.isCreative && !p.isSpectator then p.kill()
+                              case e: LivingEntity =>
+                                e.kill()
+                                if isDev then println(s"Killing living entity $e")
+                                var n = 0
+                                while !e.isRemoved do
+                                  if isDev then println(s"  Waiting ${n += 1} ticks to die")
+                                  (e: LivingEntityAccess).callUpdatePostDeath()
+                              case e =>
+                                if isDev then println(s"Killing nonliving entity $e")
+                                FabricDimensions.teleport(e, outer, TeleportTarget(pos, Vec3d.ZERO, e.getYaw, e.getPitch))
+                                e.kill()
+                          if isDev then println(s"Proceeding to pass ${pass}")
+                          recurse
+                      if isDev then println(s"Ledger: $itemsToSpawn, $xpToSpawn XP")
+                      for (item, count) <- itemsToSpawn do
+                        if isDev then println(s"Spawning $item ($count)")
+                        spawnManyItems(dest.getVec3, item, count)
+                      while xpToSpawn > 2477 do
+                        if isDev then println(s"Spawning max XP orb, $xpToSpawn left")
+                        ExperienceOrbEntity.spawn(outer, pos, 2477)
+                        xpToSpawn -= 2477
+                      if xpToSpawn > 0 then
+                        if isDev then println(s"Spawning final XP orb, $xpToSpawn")
+                        ExperienceOrbEntity.spawn(outer, pos, xpToSpawn.toInt)
+                    catch case e: Throwable =>
+                      println(s"FAILED TO REMOVE DIMENSION!! $id. Not unloading.")
+                      e.printStackTrace()
+                      boundary.break()
+                      throw e
+                    // FIN.
+                    server.savedPlanes -= id
+                    planes(id).unload()
                 override def cast(env: CastingEnvironment, image: CastingImage): CastingImage = { cast(env); image },
               MediaConstants.SHARD_UNIT * 750,
               Seq(),
