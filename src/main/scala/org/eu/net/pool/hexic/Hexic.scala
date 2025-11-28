@@ -1608,6 +1608,17 @@ def init(): Unit =
       override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
       override def hasCastingSound(env: CastingEnvironment): Boolean = true
       override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
+  Patterns.register("snow", ???):
+    Patterns.mkAction: (img, cont) =>
+      (img, cont, HexEvalSounds.SPELL, Seq(
+        OperatorSideEffect.ConsumeMedia(12 * MediaConstants.DUST_UNIT),
+        OperatorSideEffect.AttemptSpell(
+          new RenderedSpell:
+            override def cast(env: CastingEnvironment): Unit =
+              env.getWorld.setWeather(0, env.getWorld.random.nextBetween(15, 30) * 20 * 60, true, false)
+            override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+        , true, true)
+      ))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
