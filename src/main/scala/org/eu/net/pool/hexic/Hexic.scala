@@ -1631,7 +1631,7 @@ def init(): Unit =
       override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
       override def hasCastingSound(env: CastingEnvironment): Boolean = true
       override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
-  Patterns.register("snow", ???):
+  Patterns.register("snow", nw"eewwweewdadadaddwwwaqwwq"):
     Patterns.mkAction: (img, cont) =>
       (img, cont, HexEvalSounds.SPELL, Seq(
         OperatorSideEffect.ConsumeMedia(12 * MediaConstants.DUST_UNIT),
