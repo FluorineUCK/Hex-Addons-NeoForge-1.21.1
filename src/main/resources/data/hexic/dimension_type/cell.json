@@ -2,6 +2,7 @@
   "ultrawarm": false,
   "natural": false,
   "coordinate_scale": 1.0,
+  "effects": "the_end",
   "has_skylight": false,
   "has_ceiling": false,
   "ambient_light": 1.0,
