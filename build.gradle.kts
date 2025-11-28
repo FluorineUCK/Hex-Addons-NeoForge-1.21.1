@@ -146,6 +146,7 @@ repositories {
         "dev.kineticcat.hexportation",
         "miyucomics.hexcellular",
         "miyucomics.hexical",
+        "miyucomics.overevaluate",
         "org.eu.net.pool",
         "poollovernathan")
     exactRepo("https://maven.shedaniel.me/",
@@ -278,6 +279,7 @@ dependencies {
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
     compat("miyucomics.hexical:hexical:main-SNAPSHOT")
+    compat("miyucomics.overevaluate:overevaluate:main-SNAPSHOT")
     modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("miyucomics.hexcellular:hexcellular:1.1.0")!!)
