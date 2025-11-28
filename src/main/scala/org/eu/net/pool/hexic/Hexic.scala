@@ -35,6 +35,7 @@ import dev.kineticcat.hexportation.fabric.api.casting.iota.{ConduitIota, Storage
 import dev.onyxstudios.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
 import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
 import dev.onyxstudios.cca.api.v3.entity.{EntityComponentFactoryRegistry, EntityComponentInitializer, RespawnCopyStrategy}
+import dev.onyxstudios.cca.api.v3.level.{LevelComponentFactoryRegistry, LevelComponentInitializer}
 import kotlin.Pair
 import kotlin.text.Charsets
 import miyucomics.hexcellular.{PropertyIota, StateStorage}
@@ -72,6 +73,7 @@ import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, T
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.{BlockPos, ChunkPos, Direction, Vec3d}
 import net.minecraft.util.{ActionResult, Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
+import net.minecraft.world.biome.Biome
 import net.minecraft.world.{BlockView, TeleportTarget, World}
 import org.eu.net.pool.hexic
 import org.eu.net.pool.hexic.ducks.SimpleRegistryDuck
@@ -90,6 +92,7 @@ import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
+import scala.ref.WeakReference
 import scala.util.{Failure, Success, Try}
 export scala.collection.convert.ImplicitConversions.*
 import scala.collection.mutable
@@ -454,10 +457,24 @@ class PlayerInfoComponent(
     c.put("chat", NbtList().tap(_.addAll(chatLines.map(Text.Serializer.toJsonTree).map(JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, _)))))
     foxType.fold(c.remove("fox"))(f => c.putString("fox", f.name))
 object PlayerInfoComponent:
-  val key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
+  given key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
   given Conversion[PlayerEntity, PlayerInfoComponent] = _.getComponent(key)
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
     fac.registerForPlayers(key, PlayerInfoComponent(_), RespawnCopyStrategy.LOSSLESS_ONLY)
+
+class ServerInfoComponent(
+  var endSnowTick: Long = 0
+) extends Component, AutoSyncedComponent:
+  override def readFromNbt(tag: NbtCompound): Unit =
+    endSnowTick = tag.getLong("snow")
+  override def writeToNbt(tag: NbtCompound): Unit =
+    tag.putLong("snow", endSnowTick)
+object ServerInfoComponent:
+  given key: ComponentKey[ServerInfoComponent] = ComponentRegistry.getOrCreate("server_info", classOf[ServerInfoComponent])
+  given get: (server: MinecraftServer) => ServerInfoComponent = server.getOverworld.getLevelProperties.getComponent(key)
+  def sync()(using server: MinecraftServer): Unit = server.getOverworld.getLevelProperties.syncComponent(key)
+  private[hexic] def register(using fac: LevelComponentFactoryRegistry) =
+    fac.register(key, _ => ServerInfoComponent())
 
 extension [S, T <: ArgumentBuilder[S, T]] (builder: T)
   def literal(name: String)(body: LiteralArgumentBuilder[S] => Unit): T = builder.`then`(LiteralArgumentBuilder.literal[S](name).tap(body))
@@ -732,6 +749,12 @@ def toRoman(value: Int): String =
   "M" * (value / 1000) + ("", "C", "CC", "CCC", "CD", "D", "DC", "DCC", "DCCC", "CM").productElement(value % 1000 / 100) + ("", "X", "XX", "XXX", "XL", "L", "LX", "LXX", "LXXX", "XC").productElement(value % 100 / 10) + ("", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX").productElement(value % 10)
 
 private [hexic] object Extern:
+  private [hexic] val worlds = mutable.Set[WeakReference[World]]()
+  private [hexic] def getWorld(biome: Biome): World =
+    worlds.collect:
+      case WeakReference(world) if world.getRegistryManager.get(RegistryKeys.BIOME).getId(biome) != null => return world
+      case dropped => worlds -= dropped
+    null
   private [hexic] def getStringworm(idx: Int) = stringworms(Stringworm.flavors(idx))
   private [hexic] def observePropertyHook(args: util.List[? <: Iota], idx: Int, argc: Int)(original: => String)(using cir: CallbackInfoReturnable[util.List[Iota]]) =
     args.lastOption match
@@ -1615,7 +1638,11 @@ def init(): Unit =
         OperatorSideEffect.AttemptSpell(
           new RenderedSpell:
             override def cast(env: CastingEnvironment): Unit =
-              env.getWorld.setWeather(0, env.getWorld.random.nextBetween(15, 30) * 20 * 60, true, false)
+              given MinecraftServer = env.getWorld.getServer
+              val duration = env.getWorld.random.nextBetween(15, 30) * 20 * 60
+              env.getWorld.setWeather(0, duration, true, false)
+              ServerInfoComponent.get.endSnowTick = env.getWorld.getTime + duration
+              ServerInfoComponent.sync()
             override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
         , true, true)
       ))
@@ -2076,9 +2103,11 @@ case class Const[T](value: T)
 inline given [T <: Singleton] => Const[T] = Const[T](compiletime.constValue[T])
 given [T] => Conversion[Const[T], T] = _.value
 
-private[hexic] class ComponentInit extends EntityComponentInitializer:
+private[hexic] class ComponentInit extends EntityComponentInitializer, LevelComponentInitializer:
   override def registerEntityComponentFactories(using EntityComponentFactoryRegistry): Unit =
     PlayerInfoComponent.register
+  override def registerLevelComponentFactories(using LevelComponentFactoryRegistry): Unit =
+    ServerInfoComponent.register
 
 opaque type Attrition = Unit
 object Attrition extends Registrar[Attrition]("attrition")
