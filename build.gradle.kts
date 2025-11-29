@@ -366,6 +366,7 @@ tasks.processResources {
             custom {
                 array("cardinal-components") {
                     put("hexic:player_wisp")
+                    put("hexic:server_info")
                 }
             }
         }
