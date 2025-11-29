@@ -361,6 +361,10 @@ def datagen(gen: FabricDataGenerator): Unit =
           "unfox" -> "Vulpine Expulsion",
           "get_other_caster" -> "Dual's Reflection",
           "grep" -> "Refinement Distillation",
+          "snow" -> "Summon Snow",
+          "make_cme" -> "Thoth's Pseudogambit",
+          "makeworld" -> "Conjure Demiplane",
+          "deleteworld" -> "Shatter Demiplane",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         gen.add("hexcasting.special.hexic:tuple", "Coupler's Gambit")
         gen.add("hexcasting.special.hexic:tuple.n", "Coupler's Gambit %s")

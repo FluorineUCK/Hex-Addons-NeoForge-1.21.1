@@ -9,5 +9,7 @@
 * `szrotpky` filtering and sorting would be nice to have
 * The Suffering / Ascension
 * document demiplanes
+* document snow pattern
+* document parathoth
 # at some point
 * spellminds
