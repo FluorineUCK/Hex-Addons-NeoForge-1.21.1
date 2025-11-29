@@ -63,6 +63,7 @@
         },
         {
             "type": "hexcasting:pattern",
+            "header": "Exterior Distillation",
             "op_id": "hexcasting:mul",
             "anchor": "hexcasting:mul",
             "input": "[a], [b]",
@@ -71,6 +72,7 @@
         },
         {
             "type": "hexcasting:pattern",
+            "header": "Interior Distillation",
             "op_id": "hexcasting:div",
             "anchor": "hexcasting:div",
             "input": "[a], [b]",
