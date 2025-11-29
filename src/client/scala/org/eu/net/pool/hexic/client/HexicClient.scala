@@ -322,65 +322,65 @@ def datagen(gen: FabricDataGenerator): Unit =
     new FabricLanguageProvider(_):
       override def generateTranslations(gen: FabricLanguageProvider.TranslationBuilder): Unit =
         for (action, name) <- Vector(
+          "deleteworld" -> "Shatter Demiplane",
+          "drop" -> "Rejection Distillation",
+          "dye_offhand" -> "Apply Pigment",
+          "empty_map" -> "Vacant Reflection: Map",
+          "erase" -> "Erase Block",
+          "extract" -> "Excisor's Gambit",
+          "fox" -> "Vulpine Gambit",
+          "free" -> "Deallocator's Gambit",
+          "get_other_caster" -> "Dual's Reflection",
+          "grep" -> "Refinement Distillation",
+          "jvm/class_of_iota" -> "Classifier Purification II",
+          "jvm/class_of_payload" -> "Classifier Purification I",
+          "jvm/newinstance_boxed" -> "Constructor Purification I",
+          "jvm/newinstance_unboxed" -> "Constructor Purification II",
+          "make_cme" -> "Thoth's Pseudogambit",
+          "makeworld" -> "Conjure Demiplane",
+          "malloc" -> "Allocator's Purification",
+          "metatable" -> "Patchwork Exaltation",
+          "modulo" -> "Modulus Distillation II",
+          "murmur" -> "Murmur Reflection",
+          "nbt/deserialize" -> "Importer's Purification",
           "nbt/lift1" -> "Secretary's Purification: Byte",
           "nbt/lift2" -> "Secretary's Purification: Short",
           "nbt/lift4" -> "Secretary's Purification: Integer",
           "nbt/lift8" -> "Secretary's Purification: Long",
-          "nbt/liftf" -> "Secretary's Purification: Float",
           "nbt/liftd" -> "Secretary's Purification: Double",
-          "nbt/literal/collection" -> "Secretary's Reflection: Collection",
-          "nbt/literal/list" -> "Secretary's Reflection: Vacant List",
+          "nbt/liftf" -> "Secretary's Purification: Float",
           "nbt/literal/array1" -> "Secretary's Reflection: Vacant Byte Array",
           "nbt/literal/array2" -> "Secretary's Reflection: Vacant Integer Array",
           "nbt/literal/array4" -> "Secretary's Reflection: Vacant Long Array",
-          "empty_map" -> "Vacant Reflection: Map",
+          "nbt/literal/collection" -> "Secretary's Reflection: Collection",
+          "nbt/literal/list" -> "Secretary's Reflection: Vacant List",
           "nbt/serialize" -> "Exporter's Purification",
-          "tripwire" -> "Tripwire Reflection",
-          "nbt/deserialize" -> "Importer's Purification",
-          "jvm/class_of_iota" -> "Classifier Purification II",
-          "jvm/class_of_payload" -> "Classifier Purification I",
-          "jvm/newinstance_unboxed" -> "Constructor Purification II",
-          "jvm/newinstance_boxed" -> "Constructor Purification I",
-          "malloc" -> "Allocator's Purification",
-          "free" -> "Deallocator's Gambit",
+          "reveal" -> "Greater Reveal",
+          "rotate" -> "Ferris Distillation",
+          "snow" -> "Summon Snow",
           "staffcast_factory" -> "Lani's Greater Gambit",
           "staffcast_factory/lazy" -> "Lani's Lesser Gambit",
-          "metatable" -> "Patchwork Exaltation",
-          "murmur" -> "Murmur Reflection",
-          "reveal" -> "Greater Reveal",
-          "dye_offhand" -> "Apply Pigment",
-          "rotate" -> "Ferris Distillation",
           "take" -> "Retention Distillation",
-          "drop" -> "Rejection Distillation",
-          "where" -> "Deductive Purification",
-          "whatthefuck" -> "Suffering",
-          "modulo" -> "Modulus Distillation II",
-          "extract" -> "Excisor's Gambit",
-          "erase" -> "Erase Block",
-          "fox" -> "Vulpine Gambit",
+          "tripwire" -> "Tripwire Reflection",
           "unfox" -> "Vulpine Expulsion",
-          "get_other_caster" -> "Dual's Reflection",
-          "grep" -> "Refinement Distillation",
-          "snow" -> "Summon Snow",
-          "make_cme" -> "Thoth's Pseudogambit",
-          "makeworld" -> "Conjure Demiplane",
-          "deleteworld" -> "Shatter Demiplane",
+          "whatthefuck" -> "Suffering",
+          "where" -> "Deductive Purification",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         gen.add("hexcasting.special.hexic:tuple", "Coupler's Gambit")
         gen.add("hexcasting.special.hexic:tuple.n", "Coupler's Gambit %s")
         for (klass, name) <- Vector(
+          "erase" -> "an item entity or vector",
           "int_or_list" -> "§aint§r or §5[§aint§5]§r",
-          "erase" -> "an item entity or vector"
         ) do gen.add(s"hexcasting.mishap.invalid_value.class.hexic:$klass", name)
         for (ty, name) <- Vector(
-          "tripwire" -> "Tripwire",
           "nbt" -> "Tag",
+          "tripwire" -> "Tripwire",
           "variant" -> "Concept",
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
-        gen.add("hexcasting.mishap.bad_item.hexic:erase", "a casting item or iota holder")
         gen.add("hexcasting.mishap.bad_block.hexic:erase", "a block holding a casting item or acting as an iota holder")
-        gen.add("itemGroup.hexic.group", "Hexic")
+        gen.add("hexcasting.mishap.bad_item.hexic:erase", "a casting item or iota holder")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
+        gen.add("itemGroup.hexic.group", "Hexic")
         gen.add("text.hexic.or_map", "%s or map")
 
         for (color, item) <- Mediaweave.colors do
@@ -394,26 +394,26 @@ def datagen(gen: FabricDataGenerator): Unit =
             case 6 => s"${item.color.humanName} Media Pouch"
             case 12 => s"Large ${item.color.humanName} Media Pouch"
             case s => throw IllegalStateException(s"Unhandled bundle size $s"))
+        gen.add(wizard, "Wizard")
         val hexLang = Seq("hexcasting", "oneironaut").flatMap(mod => Gson().fromJson(InputStreamReader(getClass.getResourceAsStream(s"/assets/$mod/lang/en_us.json")), new TypeToken[java.util.Map[String, String]]() {}).asScala).toMap
         Registries.ITEM.forEach:
           case p: PigmentItem => gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
           case e => println(e)
-        gen.add("tag.item.hexic.mediaweaves", "Mediaweave")
-        gen.add("hexic.media_bundle.items", "%s/%s")
-        gen.add("hexic.media.infinite", "%s: %s")
-        gen.add("hexic.media.finite", "%s: %s/%s (%s)")
-        gen.add("hexic.media.external", "Media")
-        gen.add("hexic.media.internal", "Trinkets")
-        gen.add("hexic.spell_memory", "Hex memorized")
-        gen.add("text.hexic.pigment_holder_item", "an item storing a pigment")
-        gen.add(wizard, "Wizard")
-        gen.add("hexdoc.hexic.title", "Hexic")
-        gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
         gen.add("book.hexic.page.dye_offhand", "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.")
-        gen.add("book.hexic.page.modulo", "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.")
         gen.add("book.hexic.page.erase", "Erases the _Hex or iota contained within a dropped item or block. Costs one dust per item.")
-        gen.add("book.hexic.page.murmur", "Adds the phrase on the $(o)tip of my tongue/$ to the stack, regardless of whether I intend to say it.")
         gen.add("book.hexic.page.get_other_caster", "Adds the closest sentient being, excluding me, to the stack.")
+        gen.add("book.hexic.page.modulo", "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.")
+        gen.add("book.hexic.page.murmur", "Adds the phrase on the $(o)tip of my tongue/$ to the stack, regardless of whether I intend to say it.")
+        gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
+        gen.add("hexdoc.hexic.title", "Hexic")
+        gen.add("hexic.media.external", "Media")
+        gen.add("hexic.media.finite", "%s: %s/%s (%s)")
+        gen.add("hexic.media.infinite", "%s: %s")
+        gen.add("hexic.media.internal", "Trinkets")
+        gen.add("hexic.media_bundle.items", "%s/%s")
+        gen.add("hexic.spell_memory", "Hex memorized")
+        gen.add("tag.item.hexic.mediaweaves", "Mediaweave")
+        gen.add("text.hexic.pigment_holder_item", "an item storing a pigment")
   pack.addProvider:
     new FabricRecipeProvider(_):
       override def generate(consumer: Consumer[RecipeJsonProvider]): Unit =
