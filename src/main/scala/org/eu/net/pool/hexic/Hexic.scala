@@ -86,7 +86,7 @@ import sun.misc.Unsafe
 import java.io.{File, FileNotFoundException, FileOutputStream, IOException, InputStream}
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
-import java.nio.file.{Files, Path, StandardOpenOption}
+import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
@@ -140,6 +140,7 @@ import org.eu.net.pool.hexic.mixin.{ItemStackAccess, LivingEntityAccess}
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 import at.petrak.hexcasting.common.casting.actions.spells.OpBreakBlock
+import kotlin.io.FileAlreadyExistsException
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
 import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -1130,7 +1131,7 @@ def init(): Unit =
     planeCache.computeIfAbsent(uuid, _ =>
       val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
       val handle = Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
-      handle.asWorld.setChunkForced(0, 0, true)
+      server.submit((() => handle.asWorld.getChunkManager.setChunkForced(ChunkPos.ORIGIN, true)): Runnable)
       handle
     )
   extension (server: MinecraftServer)
@@ -1343,6 +1344,7 @@ def init(): Unit =
                   var xpToSpawn: Long = 0
                   val chunk = world.getChunkManager.getChunk(0, 0, ChunkStatus.FULL, false)
                   chunk.asInstanceOf[WorldChunk].loadEntities()
+                  if isDev then world.dump(Files.createDirectories(Paths.get("deleted_world")))
                   boundary:
                     if isDev then println("Beginning lurker cleanup")
                     try
@@ -1350,7 +1352,7 @@ def init(): Unit =
                       // test dim: hexic:fresh-9116c992558d4aca854d75270e100b84, uuid 9116c992-558d-4aca-854d-75270e100b84
                       iterated(world.iterateEntities): (entities, recurse) =>
                         val entitySeq = entities.toSeq
-                        if isDev then println(s"Performing pass ${pass += 1} over ${entitySeq.size} entities")
+                        if isDev then println(s"Performing pass $pass over ${entitySeq.size} entities")
                         if entitySeq.nonEmpty then
                           for entity <- entitySeq do
                             entity match
@@ -1379,6 +1381,7 @@ def init(): Unit =
                                 if isDev then println(s"Killing nonliving entity $e")
                                 FabricDimensions.teleport(e, outer, TeleportTarget(pos, Vec3d.ZERO, e.getYaw, e.getPitch))
                                 e.kill()
+                          pass += 1
                           if isDev then println(s"Proceeding to pass ${pass}")
                           recurse
                       if isDev then println(s"Ledger: $itemsToSpawn, $xpToSpawn XP")
