@@ -87,6 +87,7 @@ import ram.talia.moreiotas.api.casting.iota.{EntityTypeIota, IotaTypeIota, ItemS
 import java.io.{File, FileNotFoundException, FileOutputStream, IOException, InputStream}
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
+import java.nio.ByteBuffer
 import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.{Optional, UUID}
 import java.{lang, util}
@@ -1375,8 +1376,8 @@ def init(): Unit =
     def meta: String MutableFunction Option[String] =
       val path = w.getServer.getSavePath(WorldSavePath.ROOT).resolve(s"dimensions/${w.getRegistryKey.getValue.getNamespace}/${w.getRegistryKey.getValue.getPath}")
       new MutableFunction:
-        def apply(name: String) = Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[String]]
-        def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.orNull)
+        def apply(name: String) = Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[ByteBuffer]].map(buf => String(buf.array, StandardCharsets.UTF_8))
+        def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.map(StandardCharsets.UTF_8.encode).orNull)
     def parentInfo: Option[(RegistryKey[World], BlockPos)] = w.meta("parent").flatMap(value => Option(Identifier.tryParse(value))).map(RegistryKey.of(RegistryKeys.WORLD, _)).filter(w.getServer.getWorld(_) ne null).map((_, BlockPos(Integer.parseInt(w.meta("bound_x").get), Integer.parseInt(w.meta("bound_y").get), Integer.parseInt(w.meta("bound_z").get))))
     def parentInfo_=(parent: Option[(RegistryKey[World], BlockPos)]) =
       parent.fold {
@@ -1560,6 +1561,36 @@ def init(): Unit =
         world.setBlockState(bp, state, 0)
       world.getServer.savedPlanes += uuid
       Seq(DimIota(world))
+  Patterns.register("attachworld", e"qaaqqwaeddeawqqaaqawwwawwwwwwwqwwwawwwqwwwwwwwawwwaqaaqqwaeddeawqqaaq"):
+    new SpellAction:
+      override def getArgc: Int = 2
+      override def awardsCastingStat(env: CastingEnvironment): Boolean = true
+      override def execute(stack: util.List[? <: Iota], env: CastingEnvironment): SpellAction.Result =
+        stack.toSeq match
+          case Seq(plane: DimIota, dest: Vec3Iota) if plane.getDimString.startsWith("hexic:fresh-") =>
+            val pos = BlockPos.ofFloored(dest.getVec3)
+            env.assertPosInRangeForEditing(pos)
+            val world = env.getWorld.getServer.getWorld(plane.getWorldKey)
+            given server: MinecraftServer = world.getServer
+            if world == env.getWorld then
+              throw new Mishap:
+                override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.PINK)
+                override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.literal("Cannot bind a demiplane to itself") // TODO: make translatable
+                override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
+                  if env.getWorld.getBlockState(pos).isReplaceable then
+                    env.getWorld.setBlockState(pos, Interop.VOID_AIR.getDefaultState)
+            SpellAction.Result(
+              new RenderedSpell:
+                override def cast(env: CastingEnvironment): Unit =
+                  world.parentInfo = Some(env.getWorld.getRegistryKey, pos)
+                override def cast(env: CastingEnvironment, image: CastingImage): CastingImage = { cast(env); image },
+                MediaConstants.SHARD_UNIT * 3,
+                Seq(),
+                1
+            )
+      override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
+      override def hasCastingSound(env: CastingEnvironment): Boolean = true
+      override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
   Patterns.register("deleteworld", e"qaaqqwaeddeawqqaaqawwwawwwwwwwaqaaqqwaeddeawqqaaqawwwwwwwawwwaqaaqqwaeddeawqqaaq"):
     new SpellAction:
       override def getArgc: Int = 2
