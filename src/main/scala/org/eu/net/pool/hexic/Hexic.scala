@@ -92,7 +92,7 @@ import java.nio.file.{Files, Path, StandardOpenOption}
 import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
-import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
+import scala.annotation.{elidable, experimental, showAsInfix, tailrec, targetName, unused}
 import scala.ref.WeakReference
 import scala.util.{Failure, Success, Try}
 export scala.collection.convert.ImplicitConversions.*
@@ -1376,7 +1376,7 @@ def init(): Unit =
     def meta: String MutableFunction Option[String] =
       val path = w.getServer.getSavePath(WorldSavePath.ROOT).resolve(s"dimensions/${w.getRegistryKey.getValue.getNamespace}/${w.getRegistryKey.getValue.getPath}")
       new MutableFunction:
-        def apply(name: String) = Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[ByteBuffer]].map(buf => String(buf.array, StandardCharsets.UTF_8))
+        def apply(name: String) = Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[Array[Byte]]].map(buf => String(buf, StandardCharsets.UTF_8))
         def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.map(StandardCharsets.UTF_8.encode).orNull)
     def parentInfo: Option[(RegistryKey[World], BlockPos)] = w.meta("parent").flatMap(value => Option(Identifier.tryParse(value))).map(RegistryKey.of(RegistryKeys.WORLD, _)).filter(w.getServer.getWorld(_) ne null).map((_, BlockPos(Integer.parseInt(w.meta("bound_x").get), Integer.parseInt(w.meta("bound_y").get), Integer.parseInt(w.meta("bound_z").get))))
     def parentInfo_=(parent: Option[(RegistryKey[World], BlockPos)]) =
@@ -1593,34 +1593,45 @@ def init(): Unit =
       override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
   Patterns.register("deleteworld", e"qaaqqwaeddeawqqaaqawwwawwwwwwwaqaaqqwaeddeawqqaaqawwwwwwwawwwaqaaqqwaeddeawqqaaq"):
     new SpellAction:
-      override def getArgc: Int = 2
+      override def getArgc: Int = 1
       override def awardsCastingStat(env: CastingEnvironment): Boolean = true
       override def execute(stack: util.List[? <: Iota], env: CastingEnvironment): SpellAction.Result =
         stack.toSeq match
-          case Seq(plane: DimIota, dest: Vec3Iota) if plane.getDimString.startsWith("hexic:fresh-") =>
-            val pos = dest.getVec3
-            env.assertPosInRangeForEditing(BlockPos.ofFloored(pos))
-            val world = env.getWorld.getServer.getWorld(plane.getWorldKey)
-            given server: MinecraftServer = world.getServer
+          case Seq(plane: DimIota) if plane.getDimString.startsWith("hexic:fresh-") =>
+            given server: MinecraftServer = env.getWorld.getServer
+            val planeWorld = server.getWorld(plane.getWorldKey)
+            val (outer, pos) = (for
+              (key, pos) <- planeWorld.parentInfo
+              world = server.getWorld(key)
+              if world != null
+            yield (world, pos.toCenterPos)).getOrElse:
+              throw new Mishap:
+                override def accentColor(env: CastingEnvironment, context: Context): FrozenPigment = dyeColor(DyeColor.PINK)
+                override def errorMessage(env: CastingEnvironment, context: Context): Text = "Cannot shatter a Demiplane that is not tethered" // TODO: translate
+                override def execute(env: CastingEnvironment, context: Context, list: util.List[Iota]): Unit =
+                  val r = planeWorld.random
+                  val pos = BlockPos.Mutable(r.nextBetween(1, 9), r.nextBetween(1, 9), r.nextBetween(1, 9))
+                  Seq(pos.setX, pos.setY, pos.setZ)(r.nextInt(2))(if r.nextBoolean() then 10 else 0)
+                  planeWorld.breakBlock(pos, true)
             val id = getPocketID(plane.getWorldKey.getValue).get
+            if isDev then println(s"Destroying pocket $id $planeWorld into $outer@$pos")
             SpellAction.Result(
               new RenderedSpell:
                 override def cast(env: CastingEnvironment): Unit =
-                  given outer: ServerWorld = env.getWorld
                   val loc = BlockPos.Mutable()
                   for x <- 1 to 9; y <- 1 to 9; z <- 1 to 9 do
                     loc.set(x, y, z)
-                    world.breakBlock(loc, true)
+                    planeWorld.breakBlock(loc, true)
                   val itemsToSpawn = mutable.Map[ItemVariant, Long]().withDefaultValue(0)
                   var xpToSpawn: Long = 0
-                  val chunk = world.getChunkManager.getChunk(0, 0, ChunkStatus.FULL, false)
+                  val chunk = planeWorld.getChunkManager.getChunk(0, 0, ChunkStatus.FULL, false)
                   chunk.asInstanceOf[WorldChunk].loadEntities()
                   boundary:
                     if isDev then println("Beginning lurker cleanup")
                     try
                       var pass = 0
                       // test dim: hexic:fresh-9116c992558d4aca854d75270e100b84, uuid 9116c992-558d-4aca-854d-75270e100b84
-                      iterated(world.iterateEntities): (entities, recurse) =>
+                      iterated(planeWorld.iterateEntities): (entities, recurse) =>
                         val entitySeq = entities.toSeq
                         if isDev then println(s"Performing pass ${pass += 1} over ${entitySeq.size} entities")
                         if entitySeq.nonEmpty then
@@ -1645,7 +1656,8 @@ def init(): Unit =
                                 if isDev then println(s"Killing living entity $e")
                                 var n = 0
                                 while !e.isRemoved do
-                                  if isDev then println(s"  Waiting ${n += 1} ticks to die")
+                                  n += 1
+                                  if isDev then println(s"Waiting $n ticks to die")
                                   (e: LivingEntityAccess).callUpdatePostDeath()
                               case e =>
                                 if isDev then println(s"Killing nonliving entity $e")
@@ -1656,7 +1668,7 @@ def init(): Unit =
                       if isDev then println(s"Ledger: $itemsToSpawn, $xpToSpawn XP")
                       for (item, count) <- itemsToSpawn do
                         if isDev then println(s"Spawning $item ($count)")
-                        spawnManyItems(dest.getVec3, item, count)
+                        spawnManyItems(pos, item, count)(using outer)
                       while xpToSpawn > 2477 do
                         if isDev then println(s"Spawning max XP orb, $xpToSpawn left")
                         ExperienceOrbEntity.spawn(outer, pos, 2477)
@@ -1677,10 +1689,8 @@ def init(): Unit =
               Seq(),
               1
             )
-          case Seq(plane: DimIota, x) if plane.getDimString.startsWith("hexic:fresh-") =>
-            throw MishapInvalidIota(x, 1, "vec3")
-          case Seq(x, _) =>
-            throw MishapInvalidIota(x, 2, "hexic:world")
+          case Seq(x) =>
+            throw MishapInvalidIota(x, 0, "hexic:world")
       override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
       override def hasCastingSound(env: CastingEnvironment): Boolean = true
       override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
