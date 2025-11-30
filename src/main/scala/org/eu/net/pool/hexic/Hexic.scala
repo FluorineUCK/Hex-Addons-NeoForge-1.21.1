@@ -890,6 +890,9 @@ def memo[T, R](f: T => R, limit: Option[Int] = Some(128)): T => R =
     cache.synchronized:
       cache.computeIfAbsent(x, f(_))
 
+trait MutableFunction[T, R] extends (T => R):
+  def update(key: T, value: R): Unit
+
 def init(): Unit =
   given_Logger.info:
     val possible = Seq(
@@ -1368,6 +1371,25 @@ def init(): Unit =
       handle.asWorld.setChunkForced(0, 0, true)
       handle
     )
+  extension (w: ServerWorld)
+    def meta: String MutableFunction Option[String] =
+      val path = w.getServer.getSavePath(WorldSavePath.ROOT).resolve(s"dimensions/${w.getRegistryKey.getValue.getNamespace}/${w.getRegistryKey.getValue.getPath}")
+      new MutableFunction:
+        def apply(name: String) = Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[String]]
+        def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.orNull)
+    def parentInfo: Option[(RegistryKey[World], BlockPos)] = w.meta("parent").flatMap(value => Option(Identifier.tryParse(value))).map(RegistryKey.of(RegistryKeys.WORLD, _)).filter(w.getServer.getWorld(_) ne null).map((_, BlockPos(Integer.parseInt(w.meta("bound_x").get), Integer.parseInt(w.meta("bound_y").get), Integer.parseInt(w.meta("bound_z").get))))
+    def parentInfo_=(parent: Option[(RegistryKey[World], BlockPos)]) =
+      parent.fold {
+        w.meta("parent") = None
+        w.meta("bound_x") = None
+        w.meta("bound_y") = None
+        w.meta("bound_z") = None
+      } { (world, pos) =>
+        w.meta("parent") = Some(world.getValue.toString)
+        w.meta("bound_x") = Some(pos.getX.toString)
+        w.meta("bound_y") = Some(pos.getY.toString)
+        w.meta("bound_z") = Some(pos.getZ.toString)
+      }
   extension (server: MinecraftServer)
     def savedPlanes =
       val file = server.getSavePath(WorldSavePath("fresh"))
