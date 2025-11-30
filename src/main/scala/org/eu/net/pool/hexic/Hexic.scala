@@ -1862,7 +1862,7 @@ def init(): Unit =
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
         val ls = ary.getList.toSeq
-        val n = iotaInt(nr, throw MishapInvalidIota.ofType(nr, 0, "int"))
+        val n = iotaInt(nr, under = ls.size, throw MishapInvalidIota.of(nr, 0, "int.positive.less", ls.size))
         Seq(ListIota(ls take n), ListIota(ls drop (n+1)), ls(n))
       case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
       case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
@@ -2066,6 +2066,20 @@ def iotaInt(iota: Iota, er: => Nothing): Int =
       else
         i
     case _ => er
+@targetName("iotaInt max")
+def iotaInt(iota: Iota, max: Int, er: => Nothing): Int =
+  val x = iotaInt(iota, er)
+  if x > max then
+    er
+  else
+    x
+@targetName("iotaInt under")
+def iotaInt(iota: Iota, under: Int, er: => Nothing): Int =
+  val x = iotaInt(iota, er)
+  if x >= under then
+    er
+  else
+    x
 
 extension [T, R] (f: T => R) def ∘ [U](g: U => T) = (x: U) => f(g(x))
 def wrapReturn[T](body: (T => Nothing) => T): T = body(return _)
