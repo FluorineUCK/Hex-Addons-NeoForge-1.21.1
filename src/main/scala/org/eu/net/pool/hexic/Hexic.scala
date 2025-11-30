@@ -1545,7 +1545,7 @@ def init(): Unit =
     for id <- server.savedPlanes do
       planes(id)
   Registries.BLOCK("border") = border
-  Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
+  Patterns.register("makeworld", e"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
     Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
       val uuid = UUID.randomUUID()
       val world = planes(uuid).asWorld
