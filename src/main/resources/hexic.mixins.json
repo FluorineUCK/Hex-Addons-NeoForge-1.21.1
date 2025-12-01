@@ -5,6 +5,9 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "ActionRegistryEntryMixin",
+    "BiomeMixin",
+    "CastingVMMixin",
+    "DimIotaMixin",
     "EntityMixin",
     "HopperEndpointRegistryMixin",
     "ItemMixin",
@@ -13,6 +16,7 @@
     "ItemStackMixin",
     "LivingEntityAccess",
     "MediafiedItemManagerIndexMixin",
+    "OpDimTeleport$SpellMixin",
     "OpEdifySaplingMixin",
     "OpEdifySaplingMixin$Spell",
     "OpObservePropertyMixin",
@@ -22,10 +26,10 @@
     "OpTickMixin$SpellMixin",
     "PacketByteBufMixin",
     "PatternIotaMixin",
-    "PhantomEntityMixin",
     "PlayerInventoryMixin",
     "SimpleRegistryMixin",
-    "StaffCastEnvMixin"
+    "StaffCastEnvMixin",
+    "WorldMixin"
   ],
   "injectors": {
     "defaultRequire": 1

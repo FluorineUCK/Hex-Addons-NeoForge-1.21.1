@@ -5,9 +5,10 @@ import org.gradle.api.publish.maven.internal.publication.MavenPomInternal
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import kotlin.io.path.exists
 import kotlin.io.path.readText
+import groovy.json.JsonOutput
 
 plugins {
-    id("fabric-loom") version "1.10-SNAPSHOT"
+    id("fabric-loom") version "1.13-SNAPSHOT"
     id("scala")
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
@@ -15,6 +16,29 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
+try {
+    tasks.named("downloadRenderDoc") {
+        setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
+    }
+
+    tasks.named("extractRenderDoc") {
+        enabled = false
+    }
+
+    val erd by tasks.register<Sync>("myExtractRenderDoc") {
+        dependsOn("downloadRenderDoc")
+        from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
+        into("$buildDir/renderdoc")
+    }
+
+    tasks.named("runClientRenderDoc") {
+        dependsOn(erd)
+    }
+} catch (ignored: UnknownTaskException) {}
+
+loom.runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
+
+//tasks.withType<RenderDocR>()
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 val p = P(project)
@@ -122,6 +146,7 @@ repositories {
         "dev.kineticcat.hexportation",
         "miyucomics.hexcellular",
         "miyucomics.hexical",
+        "miyucomics.overevaluate",
         "org.eu.net.pool",
         "poollovernathan")
     exactRepo("https://maven.shedaniel.me/",
@@ -132,6 +157,8 @@ repositories {
         "dev.emi")
     exactRepo("https://repo.sleeping.town/",
         "com.unascribed")
+    exactRepo("https://masa.dy.fi/maven/",
+        "carpet")
     exactRepo("https://maven.nucleoid.xyz/",
         "xyz.nucleoid")
 }
@@ -234,21 +261,25 @@ dependencies {
     val minecraft_version = "1.20.1"
     modDepends(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
     modDepends(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")!!)
-    modDepends(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)
-    modDepends(include(modApi("org.eu.net.pool:common-curses:1.1.5-SNAPSHOT")!!)!!)
+    modDepends(include(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)!!)
     include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
     include(api("org.scala-lang:scala-library:2.13.6")!!)
     modDepends(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2-pre-751")!!)
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
-    include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
+    modDepends(include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
+    modCompileOnly("carpet:fabric-carpet:1.20-1.+")
+//    modRuntimeOnly("carpet:fabric-carpet:1.20-1.+")
+    compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
     compat("maven.modrinth:hexcassettes:1.1.4")
+    modLocalRuntime("maven.modrinth:trinkets:3.7.2")
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
     compat("miyucomics.hexical:hexical:main-SNAPSHOT")
+    compat("miyucomics.overevaluate:overevaluate:main-SNAPSHOT")
     modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("miyucomics.hexcellular:hexcellular:1.1.0")!!)
@@ -335,6 +366,7 @@ tasks.processResources {
             custom {
                 array("cardinal-components") {
                     put("hexic:player_wisp")
+                    put("hexic:server_info")
                 }
             }
         }
@@ -342,22 +374,24 @@ tasks.processResources {
 
     dependsOn(cloth)
     dependsOn(*downloadedBags.values.toTypedArray())
-    val itemsRoot = "$destinationDir/assets/hexic/textures/item"
+    val itemsRoot = destinationDir.resolve("assets/hexic/textures/item")
+    val langRoot = destinationDir.resolve("assets/hexic/lang")
+    val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
     doLast {
         for ((name, color) in colors) {
             exec {
-                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", "$itemsRoot/${name}_mediaweave.png")
+                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", itemsRoot.resolve("${name}_mediaweave.png"))
             }
             val bag = downloadedBags[name]!!.dest
             exec {
-                commandLine("env", "magick", bag, "-write", "$itemsRoot/large_${name}_bundle.png", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "$itemsRoot/small_${name}_bundle.png")
+                commandLine("env", "magick", bag, "-write", itemsRoot.resolve("large_${name}_bundle.png"), "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", itemsRoot.resolve("small_${name}_bundle.png"))
             }
         }
         exec {
-            commandLine("env", "magick", "wizard:", "$itemsRoot/wizard.png")
+            commandLine("env", "magick", "wizard:", itemsRoot.resolve("wizard.png"))
         }
         exec {
-            commandLine("env", "magick", "null:", "$itemsRoot/no.png")
+            commandLine("env", "magick", "null:", itemsRoot.resolve("no.png"))
         }
         exec {
             commandLine("env", "magick",
@@ -374,7 +408,7 @@ tasks.processResources {
                 "-compose", "copy_opacity",
                 "-composite",
                 "-fx", "u*2",
-                "$itemsRoot/stringworm.miff"
+                itemsRoot.resolve("stringworm.miff")
             )
         }
         for ((name, expr) in mapOf(
@@ -385,25 +419,71 @@ tasks.processResources {
             "pure" to "u",
         )) {
             exec {
-                commandLine("env", "magick", "$itemsRoot/stringworm.miff", "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
+                commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
             }
         }
         // people will hate this
         for (i in 0..31) {
-            file("$itemsRoot/stringworm_tinted_$i.png").outputStream().use {
+            itemsRoot.resolve("stringworm_tinted_$i.png").outputStream().use {
                 exec {
-                    commandLine("env", "magick", "$itemsRoot/stringworm.miff", "-fx", "i+j == $i ? u : Transparent", "png:-")
+                    commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-fx", "i+j == $i ? u : Transparent", "png:-")
                     standardOutput = it
                 }
             }
         }
         file("$itemsRoot/../block").mkdir()
         exec {
-            commandLine("env", "magick", "xc:#ffffff[16x16]", "$itemsRoot/../block/border.png")
+            commandLine("env", "magick", "xc:#ffffff[16x16]", itemsRoot.resolveSibling("block/border.png"))
         }
         //file("$itemsRoot/stringworm.miff").delete()
         exec {
-            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", "$itemsRoot/beans.png")
+            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", itemsRoot.resolve("beans.png"))
+        }
+    }
+
+    doLast {
+        for (lang in bookRoot.list()) {
+            val langFile = langRoot.resolve("$lang.json")
+            if (langFile.exists()) {
+                val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
+                var n = 0
+                for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
+                    if (bookFile.isFile) {
+                        val json = JsonSlurper().parseText(bookFile.readText())
+                        if (json !is Map<*, *>) continue
+                        json as MutableMap<Any, Any>
+                        val name = json["name"]
+                        if (name is String) {
+                            entries["text.hexic.book.${n}"] = name
+                            json["name"] = "text.hexic.book.${n}"
+                            n++
+                        }
+                        val pages = json["pages"]
+                        if (pages !is MutableList<*>) continue
+                        pages as MutableList<Any>
+                        for (i in pages.indices) {
+                            val page = pages[i]
+                            if (page is String) {
+                                entries["text.hexic.book.${n}"] = page
+                                pages[i] = "text.hexic.book.${n}"
+                                n++
+                            } else if (page is MutableMap<*, *>) {
+                                page as MutableMap<Any, Any>
+                                for (key in listOf("text", "title")) {
+                                    val text = page[key]
+                                    if (text != null && text is String) {
+                                        entries["text.hexic.book.${n}"] = text
+                                        page[key] = "text.hexic.book.${n}"
+                                        n++
+                                    }
+                                }
+                            }
+                        }
+                        bookFile.writeText(JsonOutput.toJson(json))
+                    }
+                }
+                langFile.writeText(JsonOutput.toJson(entries))
+            }
         }
     }
 
@@ -497,6 +577,13 @@ tasks.register<Exec>("pushWheels") {
     commandLine("git", "push", "origin", "+$wheelCommit:refs/heads/wheels")
 }
 
+tasks.named("clean") {
+    doLast {
+        file("src/main/generated").deleteRecursively()
+        file("dist").deleteRecursively()
+    }
+}
+
 open class Hexdoc: Exec() {
     init {
         environment["GITHUB_PAGES_URL"] = "https://hexic.pool.net.eu.org/"
@@ -558,7 +645,7 @@ val syncPip by tasks.register<Exec>("syncPip") {
     commandLine("env", "pip", "install", "-e", ".")
 }
 val hexdoc by tasks.register<Hexdoc>("hexdoc") {
-    dependsOn(syncPip, tasks.processResources, "runDatagen")
+    dependsOn(syncPip, "processWithDatagen")
     docsPrefix = file("_site/src/docs")
     cleanPrefix()
     hexdocArgs = listOf("build", "--branch", p.change_id)
@@ -574,6 +661,7 @@ val mergeHexdoc by tasks.register<Hexdoc>("mergeHexdoc") {
 }
 val wheel by tasks.register<Exec>("wheel") {
     dependsOn(hexdoc)
+    doFirst { file("dist").deleteRecursively() }
     commandLine("env", "uv", "build")
     outputs.file(wheelPath)
 }

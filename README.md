@@ -1,6 +1,6 @@
 <center>
 
-<img height="200" src="src/main/resources/assets/hexic/icon.png" title="hexic icon: a blue stringworm" width="200"/>
+<img height="200" src="https://codeberg.org/api/v1/repos/poollovernathan/hexic/raw/src/main/resources/assets/hexic/icon.png" title="hexic icon: a blue stringworm" width="200"/>
 
 <h1 style="margin-top: 0">hexic</h1>
 
@@ -33,3 +33,32 @@ a small [hex casting][hexcasting] addon adding whatever features i find neat or 
 
 [hexcasting]: https://modrinth.com/mod/hex-casting
 [siege]: https://hexic.pool.net.eu.org/siege.html
+
+---
+
+## development
+
+put code in the following files:
+
+* [`EarlyRiser.scala`](src/main/scala/org/eu/net/pool/hexic/EarlyRiser.scala) — something that needs to get loaded before launch, e.g. agents
+* [`Utils.scala`](src/main/scala/org/eu/net/pool/hexic/Utils.scala) — utilities that aren't specifically related to the mod
+* [`Hexic.scala`](src/main/scala/org/eu/net/pool/hexic/Hexic.scala) — anything else
+
+## building
+
+there are three major ways to build:
+
+* **nix**: `nix-shell`, `gradle runDatagen`, `gradle build`
+* **manual**: install aseprite, go, jujutsu, imagemagick, gradle 8.14, and gnu m4, then `gradle runDatagen; gradle build` as usual
+
+### docker
+
+isolated container environment gives you a guarantee of build reproducibility, if you don't care about build speed
+
+* **simple local build**: `docker build . -f build.Dockerfile -o some/output/path/`
+* **build without cloning**: `docker build https://codeberg.org/poollovernathan/hexic.git#main --build-arg BUILDKIT_CONTEXT_KEEP_GIT_DIR=1 -f build.Dockerfile -o some/output/path/`
+
+you can optimize your builds by using the cache, which requires creating a build container: `docker buildx create --driver docker-container --name hexic-builder`
+
+* **precached local build**: `docker build . -f build.Dockerfile -o some/output/path/ --builder hexic-builder --cache-from docker.pool.net.eu.org/hexic:cache`
+* **precached build without cloning**: `docker build https://codeberg.org/poollovernathan/hexic.git#main --build-arg BUILDKIT_CONTEXT_KEEP_GIT_DIR=1 -f build.Dockerfile -o some/output/path/ --builder hexic-builder --cache-from docker.pool.net.eu.org/hexic:cache`

@@ -10,6 +10,12 @@ if [ ! -f "$cache/nix" ]; then
     rm "$cache/nix.txz"
 fi
 shell="$cache/shell_$(sha256sum shell.nix)"
-[ -f "$shell" ] || "$cache/nix-build" shell.nix -o "$shell" --log-format bar --substituters https://poollovernathan.cachix.io'?'trusted=1
-. <(tail +5 "$shell")
-exec gradle "$@"
+nix_args=(--extra-experimental-features 'flakes' --keep-going --extra-substituters https://poollovernathan.cachix.org'?'trusted=1)
+if [ -n "${NO_CRASH:-}" ]; then
+  "$cache/nix-shell" "${nix_args[@]}" --command "$(printf '%q ' gradle "$@")"
+else
+  #[ -d "$cache/_nix" ] || "$cache/nix" --extra-experimental-features 'nix-command flakes' build github:nixos/nixpkgs/fe51d34885f7b5e3e7b59572796e1bcb427eccb1#nix -o "$cache/_nix"
+  [ -f "$shell" ] || "$cache/nix-build" "${nix_args[@]}" shell.nix -o "$shell" --log-format bar
+  . <(tail +5 "$shell")
+  exec gradle "$@"
+fi

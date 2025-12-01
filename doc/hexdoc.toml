@@ -6,7 +6,6 @@ default_branch = "main"
 resource_dirs = [
     "resources",
     "../build2001/resources/main",
-    "../src/main/generated",
     { modid="hexcasting" },
     { modid="minecraft" },
     { modid="hexdoc" },
@@ -25,7 +24,7 @@ path = "../build/datagen/patterns.csv"
 regex = "{^_pattern_regex}"
 
 [textures]
-missing = ["hexic:preferred_mediaweave", "minecraft:chest"]
+missing = ["hexic:preferred_mediaweave", "minecraft:chest", "hexic:chisel"]
 
 [template]
 icon = "../src/main/resources/assets/hexic/icon.png"
@@ -36,6 +35,9 @@ mod_name = "Hexic"
 author = "PoolloverNathan"
 show_landing_text = false
 
+[[template.args.navbar.center]]
+text = "Download"
+href = "https://modrinth.com/mod/hexic"
 [[template.args.navbar.center]]
 text = "Source"
 href = "https://codeberg.org/poollovernathan/hexic"

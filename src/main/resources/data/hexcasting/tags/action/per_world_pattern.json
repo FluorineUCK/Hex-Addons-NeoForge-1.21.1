@@ -1,6 +1,7 @@
 {
   "values": [
     "hexcasting:craft/artifact",
-    "hexcasting:craft/trinket"
+    "hexcasting:craft/trinket",
+    "hexic:snow"
   ]
 }
