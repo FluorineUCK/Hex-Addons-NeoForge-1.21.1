@@ -1655,8 +1655,11 @@ def init(): Unit =
           staffcast.setImage(img)
           val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
           try
-            propagateMishaps(vm.getEnv):
+            if cfg("hexic.compat.laniSwallowsMishaps") then
               vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
+            else
+              propagateMishaps(vm.getEnv):
+                vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
           finally
             staffcast.setImage(oldImage)
             HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
@@ -1680,8 +1683,11 @@ def init(): Unit =
             null // kotlin bullshit
           ))
           try
-            propagateMishaps(vm.getEnv):
-              vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
+            if cfg("hexic.compat.laniSwallowsMishaps") then
+              vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
+            else
+              propagateMishaps(vm.getEnv):
+                vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
           finally
             staffcast.setImage(new CastingImage(
               stack = vm.getImage.getStack,
