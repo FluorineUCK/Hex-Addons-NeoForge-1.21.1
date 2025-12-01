@@ -47,7 +47,7 @@ public abstract class EntityMixin {
                 return;
             }
         }
-        CuboidBlockIterator iter = new CuboidBlockIterator(MathHelper.floor(box.minX), MathHelper.floor(box.minY), MathHelper.floor(box.minZ), MathHelper.ceil(box.maxX), MathHelper.ceil(box.maxY), MathHelper.ceil(box.maxZ));
+        CuboidBlockIterator iter = new CuboidBlockIterator(MathHelper.ceil(box.minX), MathHelper.ceil(box.minY), MathHelper.ceil(box.minZ), MathHelper.ceil(box.maxX), MathHelper.ceil(box.maxY), MathHelper.ceil(box.maxZ));
         while (iter.step()) {
             hexic$scanPos.set(iter.getX(), iter.getY(), iter.getZ());
             if (world.getBlockState(hexic$scanPos).isOf(VOID_AIR)) {
