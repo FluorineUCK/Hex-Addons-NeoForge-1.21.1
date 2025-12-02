@@ -12,3 +12,5 @@ pluginManagement {
         }
     }
 }
+
+includeBuild("vendor/hexcellular")

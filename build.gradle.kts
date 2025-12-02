@@ -144,7 +144,6 @@ repositories {
         "dev.onyxstudios")
     exactRepo("https://maven.pool.net.eu.org/",
         "dev.kineticcat.hexportation",
-        "miyucomics.hexcellular",
         "miyucomics.hexical",
         "miyucomics.overevaluate",
         "org.eu.net.pool",
@@ -469,7 +468,7 @@ tasks.processResources {
                                 n++
                             } else if (page is MutableMap<*, *>) {
                                 page as MutableMap<Any, Any>
-                                for (key in listOf("text", "title")) {
+                                for (key in listOf("text", "title", "header")) {
                                     val text = page[key]
                                     if (text != null && text is String) {
                                         entries["text.hexic.book.${n}"] = text
