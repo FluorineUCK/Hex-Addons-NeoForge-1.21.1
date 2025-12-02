@@ -3,4 +3,4 @@
 	url = https://github.com/ipfs/kubo
 [submodule "vendor/hexcellular"]
 	path = vendor/hexcellular
-	url = https://github.com/poollovernathan/hexcellular
+	url = https://github.com/miyucomics/hexcellular

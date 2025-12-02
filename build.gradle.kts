@@ -144,6 +144,7 @@ repositories {
         "dev.onyxstudios")
     exactRepo("https://maven.pool.net.eu.org/",
         "dev.kineticcat.hexportation",
+        "miyucomics.hexcellular",
         "miyucomics.hexical",
         "miyucomics.overevaluate",
         "org.eu.net.pool",
