@@ -21,6 +21,15 @@
       "input": "imprint, vec",
       "output": "",
       "text": "Binds the given demiplane to a position. This position is used when exiting the demiplane, as well as in case of any $(o)unfortunate accidents/$. Mishaps if I bind a demiplane to the plane I'm in."
+    },
+    "My mind is drifting drifting $(o)spinning/$, $(o)running/$ from me with every slice I take of Nature. Every passing moment my grip oh my hands weakening my mind passing through like sand$(2br)I must steady myself. The price of sanity is outright shattering the planes I've made — a burst of media worth 750 shards, and the pocket will crumple like a villager, spewing its contents into where it was bound.$(2br)Testing this process on living creatures is unwise.",
+    {
+      "type": "hexcasting:pattern",
+      "op_id": "hexic:attachworld",
+      "anchor": "hexic:attachworld",
+      "input": "imprint, vec",
+      "output": "",
+      "text": "Ruptures the boundaries of the given demiplane, destroying its contents. All dropped items and experience are spewed at the plane's attachment point."
     }
   ]
 }
