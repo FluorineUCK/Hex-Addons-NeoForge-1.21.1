@@ -1720,7 +1720,7 @@ def init(): Unit =
           staffcast.setImage(img)
           val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
           try
-            if cfg("hexic.compat.laniSwallowsMishaps") then
+            if cfg("hexic.compat.laniSwallowsMishaps").getOrElse(false) then
               vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
             else
               propagateMishaps(vm.getEnv):
@@ -1748,7 +1748,7 @@ def init(): Unit =
             null // kotlin bullshit
           ))
           try
-            if cfg("hexic.compat.laniSwallowsMishaps") then
+            if cfg("hexic.compat.laniSwallowsMishaps").getOrElse(false) then
               vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
             else
               propagateMishaps(vm.getEnv):
