@@ -2183,18 +2183,14 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   object Events:
     val forEntity: Event[Entity => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[Entity => ServerWorld ?=> Seq[InventoryView]](classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
     val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]](classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
-  class OfEntity(entity: => Entity)(using ServerWorld) extends InventoryView:
-    def views = Events.forEntity.invoker()(entity)
+  class OfMerged(views: => Seq[InventoryView]) extends InventoryView:
+    def getViews = views
     override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
     override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
     override def entities(using TransactionContext): Iterable[Entity] = views.flatMap(_.entities)
     override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = views.iterator∃(_.teleportEntity(ent))
-  class OfBlock(pos: BlockPos)(using world: ServerWorld) extends InventoryView:
-    def views = Events.forBlock.invoker()(pos, world.getBlockState(pos))
-    override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
-    override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
-    override def entities(using TransactionContext): Iterable[Entity] = views.flatMap(_.entities)
-    override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = views.iterator∃(_.teleportEntity(ent))
+  class OfEntity(entity: => Entity)(using ServerWorld) extends OfMerged(Events.forEntity.invoker()(entity))
+  class OfBlock(pos: BlockPos)(using world: ServerWorld) extends OfMerged(Events.forBlock.invoker()(pos, world.getBlockState(pos)))
 
 object SlotReference extends Registrar[SlotReference.Type[?]]("slot"):
   class Type[T <: SlotReference: Codec]
