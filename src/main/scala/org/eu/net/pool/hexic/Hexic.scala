@@ -2170,6 +2170,7 @@ def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
 
 trait InventoryView(val viewType: InventoryView.Type[?]):
   def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = None
+  def isTruthy = true
   @throws[Mishap]
   def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
   def entities(using TransactionContext): Set[Entity] = Set()
@@ -2185,6 +2186,7 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
     val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]](classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
   abstract class OfMerged(viewType: InventoryView.Type[?], views: => Seq[InventoryView]) extends InventoryView(viewType):
     def getViews = views
+    override def isTruthy = views ∃(_.isTruthy)
     override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
     override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
     override def entities(using TransactionContext) = views.flatMap(_.entities).toSet
