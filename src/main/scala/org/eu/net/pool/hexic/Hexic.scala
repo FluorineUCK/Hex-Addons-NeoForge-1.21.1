@@ -2201,12 +2201,12 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
       views.flatMap:
         case v: OfSum => v.views
         case v => Iterable(v)
-  )
+    )
   class OfEntity(id: UUID)(using server: MinecraftServer) extends OfMerged(typeOfEntity, server.getWorlds.collectFirst(hexicVisibilityHack.unlifted(w => Option(w.getEntity(id)).map(Events.forEntity.invoker()(_)(using w)))).getOrElse(Seq())):
     override def serialize =
-      val c: NbtCompound()
-      c.put("m", id.getMostSignificantBits)
-      c.put("l", id.getLeastSignificantBits)
+      val c = NbtCompound()
+      c.putLong("m", id.getMostSignificantBits)
+      c.putLong("l", id.getLeastSignificantBits)
       c
   class OfBlock(pos: BlockPos)(using world: ServerWorld) extends OfMerged(typeOfBlock, Events.forBlock.invoker()(pos, world.getBlockState(pos))):
     override def serialize =
@@ -2217,9 +2217,14 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
       c.put("u", pos.getX)
       c.put("x", pos.getY)
       c.put("v", pos.getZ)
+      c
   class OfExactEntity(entity: => Entity)(using ServerWorld) extends InventoryView(typeOfExactEntity):
     override val viewType = typeOfExactEntity
     override def entities(using TransactionContext) = Set(entity)
+    override def serialize =
+      val c = NbtCompound()
+      // TODO
+      c
   private given typeOfSum: InventoryView.Type[OfSum]:
     override def deserialize(data: NbtCompound)(using ServerWorld): OfSum = ???
   private given typeOfEntity: InventoryView.Type[OfEntity]:
