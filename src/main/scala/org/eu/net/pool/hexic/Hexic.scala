@@ -915,6 +915,7 @@ def init(): Unit =
   iotaTypeRegistry("map") = MapIota
   iotaTypeRegistry("tripwire") = TripwireIota.getType
   iotaTypeRegistry("access") = PropertyAccessIota.Type
+  iotaTypeRegistry("reference") = BoxedView
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
   hexXplat.getContinuationTypeRegistry("tripwire") = TripwireIota.Frame
   for (color, item) <- Mediaweave.colors do
@@ -2176,11 +2177,11 @@ trait InventoryView(val viewType: InventoryView.Type[?]):
   def entities(using TransactionContext): Set[Entity] = Set()
   @throws[Mishap]
   def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = false
-  def serialize = NbtCompound()
+  def serialize: NbtCompound = NbtCompound().tap(_.putString("id", InventoryView.registry.getId(viewType).toString))
 
 object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   trait Type[+T <: InventoryView]:
-    def deserialize(data: NbtCompound)(using ServerWorld): T
+    def deserialize(data: NbtCompound)(using ServerWorld): Option[T]
   object Events:
     val forEntity: Event[Entity => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[Entity => ServerWorld ?=> Seq[InventoryView]](classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
     val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]](classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
@@ -2228,17 +2229,35 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
       // TODO
       c
   private given typeOfSum: InventoryView.Type[OfSum]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): OfSum = ???
+    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfSum] = ???
   private given typeOfEntity: InventoryView.Type[OfEntity]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): OfEntity = ???
+    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfEntity] = ???
   private given typeOfBlock: InventoryView.Type[OfBlock]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): OfBlock = ???
+    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfBlock] = ???
   private given typeOfExactEntity: InventoryView.Type[OfExactEntity]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): OfExactEntity = ???
+    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfExactEntity] = ???
   registry("sum") = typeOfSum
   registry("entity") = typeOfEntity
   registry("block") = typeOfBlock
   registry("exact") = typeOfExactEntity
+
+object BoxedView extends IotaType[BoxedView.Instance]:
+  class Instance(val view: InventoryView) extends Iota(BoxedView, view):
+    override def isTruthy = view.isTruthy
+    override def toleratesOther(that: Iota): Boolean = that match
+      case that: BoxedView.Instance => view == that.view
+      case _ => false
+    override def serialize: NbtElement = view.serialize
+  override def deserialize(tag: NbtElement, world: ServerWorld): Instance =
+    given ServerWorld = world;
+    (for
+      case c: NbtCompound <- Some(tag)
+      id <- Option(Identifier.tryParse(c.getString("id")))
+      viewType <- Option(InventoryView.registry.get(id))
+      view <- viewType.deserialize(c)
+    yield Instance(view)).orNull
+  override def display(tag: NbtElement): Text = "[View]".styled(_.withColor(color))
+  override def color: Int = 0xa59e7c
 
 object SlotReference extends Registrar[SlotReference.Type[?]]("slot"):
   class Type[T <: SlotReference: Codec]
