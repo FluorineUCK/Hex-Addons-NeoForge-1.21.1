@@ -94,7 +94,7 @@ import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{elidable, experimental, showAsInfix, tailrec, targetName, unused}
-import scala.collection.IterableOnceOps
+import scala.collection.{IterableOps, IterableOnceOps}
 import scala.ref.WeakReference
 import scala.util.{Failure, Success, Try}
 export scala.collection.convert.ImplicitConversions.*
@@ -2380,7 +2380,17 @@ object itsGiving:
       case y: T => Some((x, y))
       case _ => None
 
-implicit class IterExt[T](i: IterableOnceOps[T, ?, ?]):
+implicit class IterExt[T](i: IterableOps[T, ?, ?]):
+  export i.{exists => ∃, forall => ∀}
+  def findFirstOrLast(p: T => Boolean): Option[T] =
+    boundary:
+      (None /: i):
+        case (ctx, x) =>
+          if p(x) then
+            boundary.break(Some(x))
+          else
+            Some(x)
+implicit class IterOnceExt[T](i: IterableOnceOps[T, ?, ?]):
   export i.{exists => ∃, forall => ∀}
   def findFirstOrLast(p: T => Boolean): Option[T] =
     boundary:
