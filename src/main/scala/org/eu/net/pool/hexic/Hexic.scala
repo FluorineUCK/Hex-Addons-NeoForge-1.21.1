@@ -2172,7 +2172,7 @@ trait InventoryView:
   def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = None
   @throws[Mishap]
   def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
-  def entities(using TransactionContext): Iterable[Entity] = Iterable()
+  def entities(using TransactionContext): Set[Entity] = Set()
   @throws[Mishap]
   def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = false
 
@@ -2187,10 +2187,12 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
     def getViews = views
     override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
     override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
-    override def entities(using TransactionContext): Iterable[Entity] = views.flatMap(_.entities)
+    override def entities(using TransactionContext) = views.flatMap(_.entities).toSet
     override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = views.iterator∃(_.teleportEntity(ent))
-  class OfEntity(entity: => Entity)(using ServerWorld) extends OfMerged(Events.forEntity.invoker()(entity))
+  class OfEntity(entity: => Option[Entity])(using world: ServerWorld) extends OfMerged(entity.fold(Seq())(Events.forEntity.invoker()(_)))
   class OfBlock(pos: BlockPos)(using world: ServerWorld) extends OfMerged(Events.forBlock.invoker()(pos, world.getBlockState(pos)))
+  class OfExactEntity(entity: => Entity)(using ServerWorld) extends InventoryView:
+    override def entities(using TransactionContext) = Set(entity)
 
 object SlotReference extends Registrar[SlotReference.Type[?]]("slot"):
   class Type[T <: SlotReference: Codec]
