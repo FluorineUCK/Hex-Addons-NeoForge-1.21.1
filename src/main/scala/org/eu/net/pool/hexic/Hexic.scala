@@ -46,6 +46,7 @@ import miyucomics.hexical.features.hopper.{HopperDestination, HopperEndpoint, Ho
 import miyucomics.hexical.features.pigments.{PigmentIota, PigmentIotaKt}
 import net.fabricmc.fabric.api.`object`.builder.v1.block.FabricBlockSettings
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
+import net.fabricmc.fabric.api.event.{Event, EventFactory}
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings
 import net.fabricmc.fabric.api.transfer.v1.fluid.{FluidConstants, FluidVariant}
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
@@ -848,15 +849,6 @@ object MediaBundle:
 val wizard = Item(Item.Settings().rarity(Rarity.EPIC).maxCount(1))
 
 val aLotOfMedia = (200000 /* max phial size */ * 6 /* phials per small pouch */ * 4 /* small pouches per large pouch */ * (36 /* inventory slots */ + 4 /* armor slots */ + 2 /* offhands */) + 20 /* healthcasting */) * MediaConstants.DUST_UNIT
-
-class Event[T, R](default: T => R) extends (T => R):
-  private var current = default
-  def apply(x: T): R = current(x)
-  def apply(fn: PartialFunction[T, R]): Unit =
-    val old = current
-    current = fn.applyOrElse(_, old)
-
-val useItemEvent = Event[(Item, ItemUsageContext, ItemUsageContext => ActionResult), ActionResult](p => p._3(p._2))
 
 trait HasCodec:
   def getCodec: Codec[? <: this.type]
@@ -2174,6 +2166,24 @@ def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
   if x < min then min
   else if x > max then max
   else x
+
+trait InventoryView:
+  def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = None
+  @throws[Mishap]
+  def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
+  def entities(using TransactionContext): Iterable[Entity] = Iterable()
+  @throws[Mishap]
+  def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Unit = ??? // TODO: make a mishap for this
+
+object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
+  trait Type[T <: InventoryView]:
+    def serialize(view: T): NbtCompound
+    def deserialize(data: NbtCompound)(using ServerWorld): T
+  object Events:
+    val forEntity: Event[Entity => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[Entity => ServerWorld ?=> Seq[InventoryView]](classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
+    val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]](classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
+object SlotReference extends Registrar[SlotReference.Type[?]]("slot"):
+  class Type[T <: SlotReference: Codec]
 
 object isIota:
   def unapply[T <: Iota: IotaType as ty: ClassTag, I <: Int: Const as i](iota: Iota): Some[T] =
