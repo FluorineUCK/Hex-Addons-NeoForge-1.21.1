@@ -94,6 +94,7 @@ import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{elidable, experimental, showAsInfix, tailrec, targetName, unused}
+import scala.collection.IterableOnceOps
 import scala.ref.WeakReference
 import scala.util.{Failure, Success, Try}
 export scala.collection.convert.ImplicitConversions.*
@@ -2173,7 +2174,7 @@ trait InventoryView:
   def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
   def entities(using TransactionContext): Iterable[Entity] = Iterable()
   @throws[Mishap]
-  def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Unit = ??? // TODO: make a mishap for this
+  def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = false
 
 object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   trait Type[T <: InventoryView]:
@@ -2182,6 +2183,19 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   object Events:
     val forEntity: Event[Entity => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[Entity => ServerWorld ?=> Seq[InventoryView]](classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
     val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]](classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
+  class OfEntity(entity: => Entity)(using ServerWorld) extends InventoryView:
+    def views = Events.forEntity.invoker()(entity)
+    override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
+    override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
+    override def entities(using TransactionContext): Iterable[Entity] = views.flatMap(_.entities)
+    override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = views.iterator∃(_.teleportEntity(ent))
+  class OfBlock(pos: BlockPos)(using world: ServerWorld) extends InventoryView:
+    def views = Events.forBlock.invoker()(pos, world.getBlockState(pos))
+    override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
+    override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
+    override def entities(using TransactionContext): Iterable[Entity] = views.flatMap(_.entities)
+    override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = views.iterator∃(_.teleportEntity(ent))
+
 object SlotReference extends Registrar[SlotReference.Type[?]]("slot"):
   class Type[T <: SlotReference: Codec]
 
@@ -2321,6 +2335,17 @@ object itsGiving:
     summonFrom:
       case y: T => Some((x, y))
       case _ => None
+
+implicit class IterExt[T](i: IterableOnceOps[T, ?, ?]):
+  export i.{exists => ∃, forall => ∀}
+  def findFirstOrLast(p: T => Boolean): Option[T] =
+    boundary:
+      (None /: i):
+        case (ctx, x) =>
+          if p(x) then
+            boundary.break(Some(x))
+          else
+            Some(x)
 
 //noinspection UnstableApiUsage
 object MediaVariant extends TransferVariant[MediaVariant.type]:
