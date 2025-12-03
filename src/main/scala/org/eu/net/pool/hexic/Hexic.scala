@@ -2168,31 +2168,70 @@ def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
   else if x > max then max
   else x
 
-trait InventoryView:
+trait InventoryView(val viewType: InventoryView.Type[?]):
   def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = None
   @throws[Mishap]
   def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
   def entities(using TransactionContext): Set[Entity] = Set()
   @throws[Mishap]
   def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = false
+  def serialize = NbtCompound()
 
 object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
-  trait Type[T <: InventoryView]:
-    def serialize(view: T): NbtCompound
+  trait Type[+T <: InventoryView]:
     def deserialize(data: NbtCompound)(using ServerWorld): T
   object Events:
     val forEntity: Event[Entity => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[Entity => ServerWorld ?=> Seq[InventoryView]](classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
     val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]](classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
-  class OfMerged(views: => Seq[InventoryView]) extends InventoryView:
+  abstract class OfMerged(viewType: InventoryView.Type[?], views: => Seq[InventoryView]) extends InventoryView(viewType):
     def getViews = views
     override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
     override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
     override def entities(using TransactionContext) = views.flatMap(_.entities).toSet
     override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = views.iterator∃(_.teleportEntity(ent))
-  class OfEntity(entity: => Option[Entity])(using world: ServerWorld) extends OfMerged(entity.fold(Seq())(Events.forEntity.invoker()(_)))
-  class OfBlock(pos: BlockPos)(using world: ServerWorld) extends OfMerged(Events.forBlock.invoker()(pos, world.getBlockState(pos)))
-  class OfExactEntity(entity: => Entity)(using ServerWorld) extends InventoryView:
+  class OfSum private(private[InventoryView] val views: Seq[InventoryView]) extends OfMerged(typeOfSum, views):
+    override def serialize =
+      val c = NbtCompound()
+      val list = NbtList()
+      for view <- views do list.add(view.serialize)
+      c.put("c", list)
+      c
+  object OfSum:
+    def apply(views: InventoryView*) = new OfSum(
+      views.flatMap:
+        case v: OfSum => v.views
+        case v => Iterable(v)
+  )
+  class OfEntity(id: UUID)(using server: MinecraftServer) extends OfMerged(typeOfEntity, server.getWorlds.collectFirst(hexicVisibilityHack.unlifted(w => Option(w.getEntity(id)).map(Events.forEntity.invoker()(_)(using w)))).getOrElse(Seq())):
+    override def serialize =
+      val c: NbtCompound()
+      c.put("m", id.getMostSignificantBits)
+      c.put("l", id.getLeastSignificantBits)
+      c
+  class OfBlock(pos: BlockPos)(using world: ServerWorld) extends OfMerged(typeOfBlock, Events.forBlock.invoker()(pos, world.getBlockState(pos))):
+    override def serialize =
+      val c = NbtCompound()
+      val w = world.getRegistryKey.getValue
+      if w.getNamespace != "minecraft" then c.put("m", w.getNamespace)
+      if w.getPath != "overworld" then c.put("w", w.getPath)
+      c.put("u", pos.getX)
+      c.put("x", pos.getY)
+      c.put("v", pos.getZ)
+  class OfExactEntity(entity: => Entity)(using ServerWorld) extends InventoryView(typeOfExactEntity):
+    override val viewType = typeOfExactEntity
     override def entities(using TransactionContext) = Set(entity)
+  private given typeOfSum: InventoryView.Type[OfSum]:
+    override def deserialize(data: NbtCompound)(using ServerWorld): OfSum = ???
+  private given typeOfEntity: InventoryView.Type[OfEntity]:
+    override def deserialize(data: NbtCompound)(using ServerWorld): OfEntity = ???
+  private given typeOfBlock: InventoryView.Type[OfBlock]:
+    override def deserialize(data: NbtCompound)(using ServerWorld): OfBlock = ???
+  private given typeOfExactEntity: InventoryView.Type[OfExactEntity]:
+    override def deserialize(data: NbtCompound)(using ServerWorld): OfExactEntity = ???
+  registry("sum") = typeOfSum
+  registry("entity") = typeOfEntity
+  registry("block") = typeOfBlock
+  registry("exact") = typeOfExactEntity
 
 object SlotReference extends Registrar[SlotReference.Type[?]]("slot"):
   class Type[T <: SlotReference: Codec]
