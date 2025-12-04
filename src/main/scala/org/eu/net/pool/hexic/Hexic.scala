@@ -2110,7 +2110,7 @@ def init(): Unit =
               val image = CastingImage(context :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
               val instrs = s.getList.asScala.toSeq
               val vm = CastingVM(image, env)
-              val view = vm.queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld, SpellContinuation.NotDone(MessageFrame(player.getUuid, stack.getName, player), SpellContinuation.Done.INSTANCE))
+              val view = vm.queueExecuteAndWrapIotas(instrs :+ ContinuationIota(SpellContinuation.NotDone(MessageFrame(player.getUuid, stack.getName, player), SpellContinuation.Done.INSTANCE)), player.getServerWorld)
               val packet = MsgNewSpiralPatternsS2C(player.getUuid, instrs.collect { case p: PatternIota => p.getPattern }.asJava, 140)
               hexXplat.sendPacketToPlayer(player, packet)
               hexXplat.sendPacketTracking(player, packet)
