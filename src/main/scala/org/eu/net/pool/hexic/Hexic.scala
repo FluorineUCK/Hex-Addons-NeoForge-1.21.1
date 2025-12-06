@@ -2228,8 +2228,19 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
       val c = NbtCompound()
       // TODO
       c
+  def deserialize(data: NbtCompound)(using ServerWorld): Option[InventoryView] = for
+    id <- Option(Identifier.tryParse(data.getString("id")))
+    viewType <- Option(InventoryView.registry.get(id))
+    view <- viewType.deserialize(data)
+  yield view
   private given typeOfSum: InventoryView.Type[OfSum]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfSum] = ???
+    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfSum] =
+      Some(OfSum((for
+        n <- 0 until data.getInt("n")
+        key = "_" + Integer.toString(n + 10, 36)
+        c = data.getCompound(key)
+        view <- InventoryView.deserialize(c)
+      yield view)*))
   private given typeOfEntity: InventoryView.Type[OfEntity]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfEntity] = ???
   private given typeOfBlock: InventoryView.Type[OfBlock]:
@@ -2242,19 +2253,17 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   registry("exact") = typeOfExactEntity
 
 object BoxedView extends IotaType[BoxedView.Instance]:
+  InventoryView
   class Instance(val view: InventoryView) extends Iota(BoxedView, view):
-    override def isTruthy = view.isTruthy
+    export view.{isTruthy, serialize}
     override def toleratesOther(that: Iota): Boolean = that match
       case that: BoxedView.Instance => view == that.view
       case _ => false
-    override def serialize: NbtElement = view.serialize
   override def deserialize(tag: NbtElement, world: ServerWorld): Instance =
     given ServerWorld = world;
     (for
       case c: NbtCompound <- Some(tag)
-      id <- Option(Identifier.tryParse(c.getString("id")))
-      viewType <- Option(InventoryView.registry.get(id))
-      view <- viewType.deserialize(c)
+      view <- InventoryView.deserialize(c)
     yield Instance(view)).orNull
   override def display(tag: NbtElement): Text = "[View]".styled(_.withColor(color))
   override def color: Int = 0xa59e7c
