@@ -5,12 +5,12 @@ import at.petrak.hexcasting.api.addldata.ADMediaHolder
 import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
-import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler}
+import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler, SpellAction}
 import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect.DoMishap
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, FrameEvaluate, SpellContinuation}
-import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
+import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, CastingEnvironmentComponent, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
@@ -35,6 +35,7 @@ import dev.kineticcat.hexportation.fabric.api.casting.iota.{ConduitIota, Storage
 import dev.onyxstudios.cca.api.v3.component.{Component, ComponentKey, ComponentRegistry}
 import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
 import dev.onyxstudios.cca.api.v3.entity.{EntityComponentFactoryRegistry, EntityComponentInitializer, RespawnCopyStrategy}
+import dev.onyxstudios.cca.api.v3.level.{LevelComponentFactoryRegistry, LevelComponentInitializer}
 import kotlin.Pair
 import kotlin.text.Charsets
 import miyucomics.hexcellular.{PropertyIota, StateStorage}
@@ -54,7 +55,7 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, Transaction
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.Bootstrap
 import net.minecraft.block.{AbstractBlock, Block, BlockRenderType, BlockState, BlockWithEntity, ShapeContext}
-import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType}
+import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType, UuidArgumentType}
 import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.Fluid
@@ -70,9 +71,10 @@ import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntit
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
-import net.minecraft.util.math.{BlockPos, Direction, Vec3d}
+import net.minecraft.util.math.{BlockPos, ChunkPos, Direction, Vec3d}
 import net.minecraft.util.{ActionResult, Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
-import net.minecraft.world.{BlockView, World}
+import net.minecraft.world.biome.Biome
+import net.minecraft.world.{BlockView, TeleportTarget, World}
 import org.eu.net.pool.hexic
 import org.eu.net.pool.hexic.ducks.SimpleRegistryDuck
 import org.objectweb.asm.{ClassWriter, tree}
@@ -85,11 +87,14 @@ import ram.talia.moreiotas.api.casting.iota.{EntityTypeIota, IotaTypeIota, ItemS
 import java.io.{File, FileNotFoundException, FileOutputStream, IOException, InputStream}
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
-import java.nio.file.{Files, Path, StandardOpenOption}
+import java.nio.ByteBuffer
+import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
-import scala.annotation.{experimental, showAsInfix, tailrec, targetName, unused}
+import scala.annotation.{elidable, experimental, showAsInfix, tailrec, targetName, unused}
+import scala.ref.WeakReference
+import scala.util.{Failure, Success, Try}
 export scala.collection.convert.ImplicitConversions.*
 import scala.collection.mutable
 import scala.compiletime.summonFrom
@@ -137,9 +142,10 @@ import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
 import net.minecraft.block.AbstractBlock
 import net.minecraft.entity.passive.FoxEntity
 import net.minecraft.stat.Stats
-import org.eu.net.pool.hexic.mixin.ItemStackAccess
+import org.eu.net.pool.hexic.mixin.{ItemStackAccess, LivingEntityAccess}
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+import at.petrak.hexcasting.common.casting.actions.spells.OpBreakBlock
 import at.petrak.hexcasting.common.casting.actions.spells.OpErase
 import at.petrak.hexcasting.api.casting.mishaps.MishapBadEntity
 import net.minecraft.entity.ItemEntity
@@ -167,13 +173,18 @@ import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 import scala.util.matching.Regex
 import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
+import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
 import xyz.nucleoid.fantasy.util.VoidChunkGenerator
-import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig}
+import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig, RuntimeWorldHandle}
 
 import java.nio.charset.StandardCharsets
 import java.math.BigInteger
+import net.minecraft.entity.ItemEntity
+import net.minecraft.entity.ExperienceOrbEntity
+import net.minecraft.network.packet.s2c.play.PositionFlag
+import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 
 import scala.concurrent.duration.Duration
 
@@ -447,10 +458,24 @@ class PlayerInfoComponent(
     c.put("chat", NbtList().tap(_.addAll(chatLines.map(Text.Serializer.toJsonTree).map(JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, _)))))
     foxType.fold(c.remove("fox"))(f => c.putString("fox", f.name))
 object PlayerInfoComponent:
-  val key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
+  given key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
   given Conversion[PlayerEntity, PlayerInfoComponent] = _.getComponent(key)
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
     fac.registerForPlayers(key, PlayerInfoComponent(_), RespawnCopyStrategy.LOSSLESS_ONLY)
+
+class ServerInfoComponent(
+  var endSnowTick: Long = 0
+) extends Component, AutoSyncedComponent:
+  override def readFromNbt(tag: NbtCompound): Unit =
+    endSnowTick = tag.getLong("snow")
+  override def writeToNbt(tag: NbtCompound): Unit =
+    tag.putLong("snow", endSnowTick)
+object ServerInfoComponent:
+  given key: ComponentKey[ServerInfoComponent] = ComponentRegistry.getOrCreate("server_info", classOf[ServerInfoComponent])
+  given get: (server: MinecraftServer) => ServerInfoComponent = server.getOverworld.getLevelProperties.getComponent(key)
+  def sync()(using server: MinecraftServer): Unit = server.getOverworld.getLevelProperties.syncComponent(key)
+  private[hexic] def register(using fac: LevelComponentFactoryRegistry) =
+    fac.register(key, _ => ServerInfoComponent())
 
 extension [S, T <: ArgumentBuilder[S, T]] (builder: T)
   def literal(name: String)(body: LiteralArgumentBuilder[S] => Unit): T = builder.`then`(LiteralArgumentBuilder.literal[S](name).tap(body))
@@ -725,6 +750,12 @@ def toRoman(value: Int): String =
   "M" * (value / 1000) + ("", "C", "CC", "CCC", "CD", "D", "DC", "DCC", "DCCC", "CM").productElement(value % 1000 / 100) + ("", "X", "XX", "XXX", "XL", "L", "LX", "LXX", "LXXX", "XC").productElement(value % 100 / 10) + ("", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX").productElement(value % 10)
 
 private [hexic] object Extern:
+  private [hexic] val worlds = mutable.Set[WeakReference[World]]()
+  private [hexic] def getWorld(biome: Biome): World =
+    worlds.collect:
+      case WeakReference(world) if world.getRegistryManager.get(RegistryKeys.BIOME).getId(biome) != null => return world
+      case dropped => worlds -= dropped
+    null
   private [hexic] def getStringworm(idx: Int) = stringworms(Stringworm.flavors(idx))
   private [hexic] def observePropertyHook(args: util.List[? <: Iota], idx: Int, argc: Int)(original: => String)(using cir: CallbackInfoReturnable[util.List[Iota]]) =
     args.lastOption match
@@ -852,12 +883,16 @@ lazy val itemGroup = FabricItemGroup.builder()
 val goodModulo = ne"daawdda"
 val getEntity: PartialFunction[Iota, Entity] = { case e: EntityIota => e.getEntity }
 
-def memo[T, R](f: T => R, limit: Int = 128): T => R =
-  val cache = new ju.LinkedHashMap[T, R](limit + 1, 1, true):
-    override def removeEldestEntry(eldest: ju.Map.Entry[T, R]): Boolean = size > limit
+def memo[T, R](f: T => R, limit: Option[Int] = Some(128)): T => R =
+  val cache = limit.fold(ju.HashMap()): cap =>
+    new ju.LinkedHashMap[T, R](cap + 1, 1, true):
+      override def removeEldestEntry(eldest: ju.Map.Entry[T, R]): Boolean = size > cap
   x =>
     cache.synchronized:
       cache.computeIfAbsent(x, f(_))
+
+trait MutableFunction[T, R] extends (T => R):
+  def update(key: T, value: R): Unit
 
 def init(): Unit =
   given_Logger.info:
@@ -1328,6 +1363,44 @@ def init(): Unit =
   Patterns.register("unfox", se"wqwqwqwaeeaw"):
     fox { case Some(_) => None }
   hexXplat.getArithmeticRegistry("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
+  val planeCaches = ju.WeakHashMap[MinecraftServer, mutable.Map[UUID, RuntimeWorldHandle]]()
+  def planeCache(using server: MinecraftServer): mutable.Map[UUID, RuntimeWorldHandle] = planeCaches.computeIfAbsent(server, _ => mutable.Map())
+  def planes(uuid: UUID)(using server: MinecraftServer) =
+    planeCache.computeIfAbsent(uuid, _ =>
+      val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
+      val handle = Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setDimensionType RegistryKey.of(RegistryKeys.DIMENSION_TYPE, "cell") setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
+      server.submit((() => handle.asWorld.getChunkManager.setChunkForced(ChunkPos.ORIGIN, true)): Runnable)
+      handle
+    )
+  extension (w: ServerWorld)
+    def meta: String MutableFunction Option[String] =
+      val path = w.getServer.getSavePath(WorldSavePath.ROOT).resolve(s"dimensions/${w.getRegistryKey.getValue.getNamespace}/${w.getRegistryKey.getValue.getPath}")
+      new MutableFunction:
+        def apply(name: String) = Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[Array[Byte]]].map(buf => String(buf, StandardCharsets.UTF_8))
+        def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.map(StandardCharsets.UTF_8.encode).orNull)
+    def parentInfo: Option[(RegistryKey[World], BlockPos)] = w.meta("parent").flatMap(value => Option(Identifier.tryParse(value))).map(RegistryKey.of(RegistryKeys.WORLD, _)).filter(w.getServer.getWorld(_) ne null).map((_, BlockPos(Integer.parseInt(w.meta("bound_x").get), Integer.parseInt(w.meta("bound_y").get), Integer.parseInt(w.meta("bound_z").get))))
+    def parentInfo_=(parent: Option[(RegistryKey[World], BlockPos)]) =
+      parent.fold {
+        w.meta("parent") = None
+        w.meta("bound_x") = None
+        w.meta("bound_y") = None
+        w.meta("bound_z") = None
+      } { (world, pos) =>
+        w.meta("parent") = Some(world.getValue.toString)
+        w.meta("bound_x") = Some(pos.getX.toString)
+        w.meta("bound_y") = Some(pos.getY.toString)
+        w.meta("bound_z") = Some(pos.getZ.toString)
+      }
+  extension (server: MinecraftServer)
+    def savedPlanes =
+      val file = server.getSavePath(WorldSavePath("fresh"))
+      if Files.exists(file) then
+        Files.readAllLines(file, StandardCharsets.UTF_8).toSet.filter(!_.isBlank).map(UUID.fromString)
+      else
+        Set.empty
+    def savedPlanes_=(planes: Set[UUID]) =
+      val file = server.getSavePath(WorldSavePath("fresh"))
+      Files.write(file, planes.map(_.toString))
   hexXplat.getArithmeticRegistry("list_math") = arith("list_math",
     Arithmetic.MUL -> ((a: ListIota, b: ListIota) => ListIota(for x <- a.getList.toSeq; y <- b.getList yield ListIota(Seq(x, y)))),
     Arithmetic.DIV -> ((a: ListIota, b: ListIota) => ListIota(for (x, y) <- a.getList.toSeq zip b.getList yield ListIota(Seq(x, y)))),
@@ -1376,6 +1449,36 @@ def init(): Unit =
             1
           ).build()
       ).build())
+    def planeAction(name: String)(body: MinecraftServer ?=> UUID => Int): Unit =
+      d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource](name).pipe: c =>
+        c.requires(_.hasPermissionLevel(2))
+        c.argument("id", UuidArgumentType.uuid()): c =>
+          c.executes: (ctx: CommandContext[ServerCommandSource]) =>
+            given MinecraftServer = ctx.getSource.getServer
+            body(UuidArgumentType.getUuid(ctx, "id"))
+        c.build()
+      )
+    planeAction("pin_plane"): id =>
+      summon[MinecraftServer].savedPlanes += id
+      1
+    planeAction("un_plane"): id =>
+      summon[MinecraftServer].savedPlanes -= id
+      1
+    planeAction("touch_plane"): id =>
+      planes(id)
+      1
+    planeAction("unmap_plane"): id =>
+      planeCache.remove(id) match
+        case Some(h) =>
+          h.unload()
+          1
+        case None => throw CommandException(Text.literal("Plane not mapped"))
+    planeAction("delete_plane"): id =>
+      planeCache.remove(id) match
+        case Some(h) =>
+          h.delete()
+          1
+        case None => throw CommandException(Text.literal("Plane not mapped"))
     d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("property").pipe: c =>
       c.requires(_.hasPermissionLevel(2))
       c.`then`(LiteralArgumentBuilder.literal("get")
@@ -1436,21 +1539,7 @@ def init(): Unit =
       )
       c.build())
   Registries.BLOCK("void_air") = Interop.VOID_AIR
-  val planes = memo { (uuid: UUID) => (server: MinecraftServer) ?=>
-    val dimID: Identifier = s"fresh-${uuid.toString.replace("-", "")}"
-    Fantasy get server getOrOpenPersistentWorld(dimID, new RuntimeWorldConfig setGenerator new VoidChunkGenerator(server.getOverworld.getRegistryManager get RegistryKeys.BIOME))
-  }
   given (env: CastingEnvironment) => MinecraftServer = env.getWorld.getServer
-  extension (server: MinecraftServer)
-    def savedPlanes =
-      val file = server.getSavePath(WorldSavePath("fresh"))
-      if Files.exists(file) then
-        Files.readAllLines(file, StandardCharsets.UTF_8).toSeq.filter(!_.isBlank).map(UUID.fromString)
-      else
-        Seq.empty
-    def savedPlanes_=(planes: Seq[UUID]) =
-      val file = server.getSavePath(WorldSavePath("fresh"))
-      Files.write(file, planes.map(_.toString))
   ServerLifecycleEvents.SERVER_STARTED.register: server =>
     given MinecraftServer = server
     for id <- server.savedPlanes do
@@ -1470,8 +1559,158 @@ def init(): Unit =
         world.setBlockState(bp, state, 0)
         bp.set(k, i, j)
         world.setBlockState(bp, state, 0)
-      world.getServer.savedPlanes :+= uuid
+      world.getServer.savedPlanes += uuid
       Seq(DimIota(world))
+  Patterns.register("attachworld", e"qaaqqwaeddeawqqaaqawwwawwwwwwwqwwwawwwqwwwwwwwawwwaqaaqqwaeddeawqqaaq"):
+    new SpellAction:
+      override def getArgc: Int = 2
+      override def awardsCastingStat(env: CastingEnvironment): Boolean = true
+      override def execute(stack: util.List[? <: Iota], env: CastingEnvironment): SpellAction.Result =
+        stack.toSeq match
+          case Seq(plane: DimIota, dest: Vec3Iota) if plane.getDimString.startsWith("hexic:fresh-") =>
+            val pos = BlockPos.ofFloored(dest.getVec3)
+            env.assertPosInRangeForEditing(pos)
+            val world = env.getWorld.getServer.getWorld(plane.getWorldKey)
+            given server: MinecraftServer = world.getServer
+            if world == env.getWorld then
+              throw new Mishap:
+                override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.PINK)
+                override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.literal("Cannot bind a demiplane to itself") // TODO: make translatable
+                override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
+                  if env.getWorld.getBlockState(pos).isReplaceable then
+                    env.getWorld.setBlockState(pos, Interop.VOID_AIR.getDefaultState)
+            SpellAction.Result(
+              new RenderedSpell:
+                override def cast(env: CastingEnvironment): Unit =
+                  world.parentInfo = Some(env.getWorld.getRegistryKey, pos)
+                override def cast(env: CastingEnvironment, image: CastingImage): CastingImage = { cast(env); image },
+                MediaConstants.SHARD_UNIT * 3,
+                Seq(),
+                1
+            )
+      override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
+      override def hasCastingSound(env: CastingEnvironment): Boolean = true
+      override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
+  Patterns.register("deleteworld", e"qaaqqwaeddeawqqaaqawwwawwwwwwwaqaaqqwaeddeawqqaaqawwwwwwwawwwaqaaqqwaeddeawqqaaq"):
+    new SpellAction:
+      override def getArgc: Int = 1
+      override def awardsCastingStat(env: CastingEnvironment): Boolean = true
+      override def execute(stack: util.List[? <: Iota], env: CastingEnvironment): SpellAction.Result =
+        stack.toSeq match
+          case Seq(plane: DimIota) if plane.getDimString.startsWith("hexic:fresh-") =>
+            given server: MinecraftServer = env.getWorld.getServer
+            val planeWorld = server.getWorld(plane.getWorldKey)
+            val (outer, pos) = (for
+              (key, pos) <- planeWorld.parentInfo
+              world = server.getWorld(key)
+              if world != null
+            yield (world, pos.toCenterPos)).getOrElse:
+              throw new Mishap:
+                override def accentColor(env: CastingEnvironment, context: Context): FrozenPigment = dyeColor(DyeColor.PINK)
+                override def errorMessage(env: CastingEnvironment, context: Context): Text = "Cannot shatter a Demiplane that is not tethered" // TODO: translate
+                override def execute(env: CastingEnvironment, context: Context, list: util.List[Iota]): Unit =
+                  val r = planeWorld.random
+                  val pos = BlockPos.Mutable(r.nextBetween(1, 9), r.nextBetween(1, 9), r.nextBetween(1, 9))
+                  Seq(pos.setX, pos.setY, pos.setZ)(r.nextInt(2))(if r.nextBoolean() then 10 else 0)
+                  planeWorld.breakBlock(pos, true)
+            val id = getPocketID(plane.getWorldKey.getValue).get
+            if isDev then println(s"Destroying pocket $id $planeWorld into $outer@$pos")
+            SpellAction.Result(
+              new RenderedSpell:
+                override def cast(env: CastingEnvironment): Unit =
+                  val loc = BlockPos.Mutable()
+                  for x <- 1 to 9; y <- 1 to 9; z <- 1 to 9 do
+                    loc.set(x, y, z)
+                    planeWorld.breakBlock(loc, true)
+                  val itemsToSpawn = mutable.Map[ItemVariant, Long]().withDefaultValue(0)
+                  var xpToSpawn: Long = 0
+                  val chunk = planeWorld.getChunkManager.getChunk(0, 0, ChunkStatus.FULL, false)
+                  chunk.asInstanceOf[WorldChunk].loadEntities()
+                  if isDev then planeWorld.dump(Files.createDirectories(Paths.get("deleted_world")))
+                  boundary:
+                    if isDev then println("Beginning lurker cleanup")
+                    try
+                      var pass = 0
+                      // test dim: hexic:fresh-9116c992558d4aca854d75270e100b84, uuid 9116c992-558d-4aca-854d-75270e100b84
+                      iterated(planeWorld.iterateEntities): (entities, recurse) =>
+                        val entitySeq = entities.toSeq
+                        if isDev then println(s"Performing pass $pass over ${entitySeq.size} entities")
+                        if entitySeq.nonEmpty then
+                          for entity <- entitySeq do
+                            entity match
+                              case e: ItemEntity =>
+                                val stack = e.getStack
+                                itemsToSpawn(ItemVariant.of(stack)) += stack.getCount
+                                if isDev then println(s"Collecting item entity $stack, need to spawn: $itemsToSpawn")
+                                e.discard()
+                              case e: ExperienceOrbEntity =>
+                                xpToSpawn += e.getExperienceAmount
+                                if isDev then println(s"Collecting XP orb, need to spawn: $xpToSpawn")
+                                e.discard()
+                              case p: PlayerEntity =>
+                                // thanks but please stop eating my ears
+                                if isDev then println(s"Teleporting player $p")
+                                FabricDimensions.teleport(p, outer, TeleportTarget(pos, Vec3d.ZERO, p.getYaw, p.getPitch))
+                                if !p.isCreative && !p.isSpectator then p.kill()
+                              case e: LivingEntity =>
+                                e.kill()
+                                if isDev then println(s"Killing living entity $e")
+                                var n = 0
+                                while !e.isRemoved do
+                                  n += 1
+                                  if isDev then println(s"Waiting $n ticks to die")
+                                  (e: LivingEntityAccess).callUpdatePostDeath()
+                              case e =>
+                                if isDev then println(s"Killing nonliving entity $e")
+                                FabricDimensions.teleport(e, outer, TeleportTarget(pos, Vec3d.ZERO, e.getYaw, e.getPitch))
+                                e.kill()
+                          pass += 1
+                          if isDev then println(s"Proceeding to pass ${pass}")
+                          recurse
+                      if isDev then println(s"Ledger: $itemsToSpawn, $xpToSpawn XP")
+                      for (item, count) <- itemsToSpawn do
+                        if isDev then println(s"Spawning $item ($count)")
+                        spawnManyItems(pos, item, count)(using outer)
+                      while xpToSpawn > 2477 do
+                        if isDev then println(s"Spawning max XP orb, $xpToSpawn left")
+                        ExperienceOrbEntity.spawn(outer, pos, 2477)
+                        xpToSpawn -= 2477
+                      if xpToSpawn > 0 then
+                        if isDev then println(s"Spawning final XP orb, $xpToSpawn")
+                        ExperienceOrbEntity.spawn(outer, pos, xpToSpawn.toInt)
+                    catch case e: Throwable =>
+                      println(s"FAILED TO REMOVE DIMENSION!! $id. Not unloading.")
+                      e.printStackTrace()
+                      boundary.break()
+                      throw e
+                    // FIN.
+                    server.savedPlanes -= id
+                    planes(id).unload()
+                override def cast(env: CastingEnvironment, image: CastingImage): CastingImage = { cast(env); image },
+              MediaConstants.SHARD_UNIT * 750,
+              Seq(),
+              1
+            )
+          case Seq(x) =>
+            throw MishapInvalidIota(x, 0, "hexic:world")
+      override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
+      override def hasCastingSound(env: CastingEnvironment): Boolean = true
+      override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
+  Patterns.register("snow", nw"eewwweewdadadaddwwwaqwwq"):
+    Patterns.mkAction: (img, cont) =>
+      (img, cont, HexEvalSounds.SPELL, Seq(
+        OperatorSideEffect.ConsumeMedia(12 * MediaConstants.DUST_UNIT),
+        OperatorSideEffect.AttemptSpell(
+          new RenderedSpell:
+            override def cast(env: CastingEnvironment): Unit =
+              given MinecraftServer = env.getWorld.getServer
+              val duration = env.getWorld.random.nextBetween(15, 30) * 20 * 60
+              env.getWorld.setWeather(0, duration, true, false)
+              ServerInfoComponent.get.endSnowTick = env.getWorld.getTime + duration
+              ServerInfoComponent.sync()
+            override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+        , true, true)
+      ))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
@@ -1481,7 +1720,11 @@ def init(): Unit =
           staffcast.setImage(img)
           val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
           try
-            vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
+            if cfg("hexic.compat.laniSwallowsMishaps").getOrElse(false) then
+              vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
+            else
+              propagateMishaps(vm.getEnv):
+                vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
           finally
             staffcast.setImage(oldImage)
             HexCardinalComponents.STAFFCAST_IMAGE.sync(caster)
@@ -1505,7 +1748,11 @@ def init(): Unit =
             null // kotlin bullshit
           ))
           try
-            vm.queueExecuteAndWrapIota(PatternIota((HexDir.SOUTH_EAST, "deaqq")), summon)
+            if cfg("hexic.compat.laniSwallowsMishaps").getOrElse(false) then
+              vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
+            else
+              propagateMishaps(vm.getEnv):
+                vm.queueExecuteAndWrapIota(PatternIota(se"deaqq"), summon)
           finally
             staffcast.setImage(new CastingImage(
               stack = vm.getImage.getStack,
@@ -1686,7 +1933,7 @@ def init(): Unit =
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
         val ls = ary.getList.toSeq
-        val n = iotaInt(nr, throw MishapInvalidIota.ofType(nr, 0, "int"))
+        val n = iotaInt(nr, under = ls.size, throw MishapInvalidIota.of(nr, 0, "int.positive.less", ls.size))
         Seq(ListIota(ls take n), ListIota(ls drop (n+1)), ls(n))
       case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
       case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
@@ -1795,6 +2042,24 @@ def init(): Unit =
     override def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(false, stack.toSeq)
     override def size = 0
   hexXplat.getContinuationTypeRegistry("send_message") = messageFrameType
+  CastingEnvironment.addCreateEventListener: (env: CastingEnvironment, data: NbtCompound) =>
+    val id = env.getWorld.getRegistryKey.getValue
+    if isDev then println(s"Environment created in $id")
+    for pocketID <- getPocketID(id) do
+      if isDev then println(s"Preparing pocket $pocketID for environment $env")
+      env.addExtension:
+        new CastingEnvironmentComponent with CastingEnvironmentComponent.IsVecInRange with CastingEnvironmentComponent.HasEditPermissionsAt:
+          object getKey extends CastingEnvironmentComponent.Key[this.type]
+          override def onIsVecInRange(vec: Vec3d, current: Boolean): Boolean = boundary:
+            for axis <- Direction.Axis.values do
+              val x = vec.getComponentAlongAxis(axis)
+              if x < 0 || x >= 11 then boundary.break(false)
+            true
+          override def onHasEditPermissionsAt(pos: BlockPos, current: Boolean): Boolean = boundary:
+            for axis <- Direction.Axis.values do
+              val x = pos.getComponentAlongAxis(axis)
+              if x < 0 || x >= 11 then boundary.break(false)
+            true
   ServerPlayNetworking.registerGlobalReceiver("sync_mediaweave", (_, player, _, buf, _) =>
     val flags = buf.readByte()
     val c = player.getComponent(PlayerInfoComponent.key)
@@ -1845,7 +2110,7 @@ def init(): Unit =
               val image = CastingImage(context :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
               val instrs = s.getList.asScala.toSeq
               val vm = CastingVM(image, env)
-              val view = vm.queueExecuteAndWrapIotas(instrs.asJava, player.getServerWorld, SpellContinuation.NotDone(MessageFrame(player.getUuid, stack.getName, player), SpellContinuation.Done.INSTANCE))
+              val view = vm.queueExecuteAndWrapIotas(instrs :+ ContinuationIota(SpellContinuation.NotDone(MessageFrame(player.getUuid, stack.getName, player), SpellContinuation.Done.INSTANCE)), player.getServerWorld)
               val packet = MsgNewSpiralPatternsS2C(player.getUuid, instrs.collect { case p: PatternIota => p.getPattern }.asJava, 140)
               hexXplat.sendPacketToPlayer(player, packet)
               hexXplat.sendPacketTracking(player, packet)
@@ -1872,6 +2137,37 @@ def iotaInt(iota: Iota, er: => Nothing): Int =
       else
         i
     case _ => er
+@targetName("iotaInt max")
+def iotaInt(iota: Iota, max: Int, er: => Nothing): Int =
+  val x = iotaInt(iota, er)
+  if x > max then
+    er
+  else
+    x
+@targetName("iotaInt under")
+def iotaInt(iota: Iota, under: Int, er: => Nothing): Int =
+  val x = iotaInt(iota, er)
+  if x >= under then
+    er
+  else
+    x
+
+extension [T, R] (f: T => R) def ∘ [U](g: U => T) = (x: U) => f(g(x))
+def wrapReturn[T](body: (T => Nothing) => T): T = body(return _)
+def wrapThrow[T, E <: Throwable](body: (E => Nothing) => T): T = wrapReturn[Try[T]](r => Success(body(r∘Failure))).get
+
+def propagateMishaps[T](env: CastingEnvironment)(body: => T): T =
+  wrapThrow[T, Mishap]: doThrow =>
+    object key extends CastingEnvironmentComponent.Key[?]
+    env.addExtension:
+      new CastingEnvironmentComponent with CastingEnvironmentComponent.PostExecution:
+        override def getKey: CastingEnvironmentComponent.Key[?] = key
+        override def onPostExecution(result: CastResult): Unit =
+          result.getSideEffects.collectFirst:
+            case m: OperatorSideEffect.DoMishap =>
+              if isDev then println(s"Propagating mishap: $m")
+              doThrow(m.getMishap)
+    try body finally env.removeExtension(key)
 
 def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
   assume(max > min)
@@ -1892,9 +2188,11 @@ case class Const[T](value: T)
 inline given [T <: Singleton] => Const[T] = Const[T](compiletime.constValue[T])
 given [T] => Conversion[Const[T], T] = _.value
 
-private[hexic] class ComponentInit extends EntityComponentInitializer:
+private[hexic] class ComponentInit extends EntityComponentInitializer, LevelComponentInitializer:
   override def registerEntityComponentFactories(using EntityComponentFactoryRegistry): Unit =
     PlayerInfoComponent.register
+  override def registerLevelComponentFactories(using LevelComponentFactoryRegistry): Unit =
+    ServerInfoComponent.register
 
 opaque type Attrition = Unit
 object Attrition extends Registrar[Attrition]("attrition")
@@ -2121,6 +2419,7 @@ trait PigmentHolderItem:
   def setPigment(stack: ItemStack)(pigment: FrozenPigment): Unit
 given Conversion[ItemPackagedHex, PigmentHolderItem] = _.asInstanceOf // by mixin
 given Conversion[ItemStack, ItemStackAccess] = _.asInstanceOf // by mixin
+given Conversion[LivingEntity, LivingEntityAccess] = _.asInstanceOf // by mixin
 
 given Conversion[Double, DoubleIota] = DoubleIota(_)
 given Conversion[Int, DoubleIota] = DoubleIota(_)
@@ -2151,6 +2450,17 @@ given Conversion[IotaDuck, Iota] = _.asInstanceOf
 
 def copy[T <: Iota](iota: T)(using ServerWorld): T | Null = iota.getType.deserialize(iota, summon[ServerWorld]).asInstanceOf[T | Null]
 
+def spawnItem(pos: Vec3d, stack: ItemStack)(using world: ServerWorld): ItemEntity =
+  ItemEntity(world, pos.getX, pos.getY, pos.getZ, stack).tap(world.spawnEntity(_))
+def spawnManyItems(pos: Vec3d, variant: ItemVariant, amount: Long)(using ServerWorld): Seq[ItemEntity] =
+  assume(amount >= 0)
+  if amount > Int.MaxValue then
+    spawnItem(pos, variant.toStack(Int.MaxValue)) +: spawnManyItems(pos, variant, amount - Int.MaxValue)
+  else if amount > 0 then
+    List(spawnItem(pos, variant.toStack(amount.toInt)))
+  else
+    Nil
+
 class IotaComponent[R: Codec](val id: Identifier):
   def apply(target: Iota): Option[R] =
     val data: NbtCompound = target
@@ -2177,8 +2487,8 @@ given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
 
 object border extends Block(AbstractBlock.Settings.create().dropsNothing().allowsSpawning((_, _, _, _) => false).sounds(BlockSoundGroup.STONE).requiresTool().strength(100.0F, 1200.0F).luminance(_ => 14))
 def getPocketID(key: Identifier): Option[UUID] =
-  if key.getNamespace == "hexic" && key.getPath.startsWith("fresh_") then
-    val hash = key.getPath.replace("fresh_", "")
+  if key.getNamespace == "hexic" && key.getPath.startsWith("fresh-") then
+    val hash = key.getPath.replace("fresh-", "")
     val bi1 = BigInteger(hash.substring(0, 16), 16)
     val bi2 = BigInteger(hash.substring(16, 32), 16)
     Some(UUID(bi1.longValue, bi2.longValue))

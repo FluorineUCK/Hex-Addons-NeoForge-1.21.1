@@ -60,6 +60,8 @@ extension (n: Int)
       b
     }
 
+def iterated[T, R](get: => T)(body: (T, => R) => R): R = body(get, iterated(get)(body))
+
 def eitherTypes(using q: Quotes)(t: q.reflect.TypeRepr): Seq[q.reflect.TypeRepr] =
   import q.reflect.*
   t match

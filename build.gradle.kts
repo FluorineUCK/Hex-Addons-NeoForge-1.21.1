@@ -146,6 +146,7 @@ repositories {
         "dev.kineticcat.hexportation",
         "miyucomics.hexcellular",
         "miyucomics.hexical",
+        "miyucomics.overevaluate",
         "org.eu.net.pool",
         "poollovernathan")
     exactRepo("https://maven.shedaniel.me/",
@@ -274,9 +275,11 @@ dependencies {
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
     compat("maven.modrinth:hexcassettes:1.1.4")
+    modLocalRuntime("maven.modrinth:trinkets:3.7.2")
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
     compat("miyucomics.hexical:hexical:main-SNAPSHOT")
+    compat("miyucomics.overevaluate:overevaluate:main-SNAPSHOT")
     modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0") { exclude(module = "serialization-hooks") })
     modDepends(modImplementation("miyucomics.hexcellular:hexcellular:1.1.0")!!)
@@ -363,6 +366,7 @@ tasks.processResources {
             custom {
                 array("cardinal-components") {
                     put("hexic:player_wisp")
+                    put("hexic:server_info")
                 }
             }
         }
@@ -465,7 +469,7 @@ tasks.processResources {
                                 n++
                             } else if (page is MutableMap<*, *>) {
                                 page as MutableMap<Any, Any>
-                                for (key in listOf("text", "title")) {
+                                for (key in listOf("text", "title", "header")) {
                                     val text = page[key]
                                     if (text != null && text is String) {
                                         entries["text.hexic.book.${n}"] = text
