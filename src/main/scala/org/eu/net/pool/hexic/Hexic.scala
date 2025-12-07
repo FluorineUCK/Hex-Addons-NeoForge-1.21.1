@@ -49,8 +49,8 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.{Event, EventFactory}
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings
 import net.fabricmc.fabric.api.transfer.v1.fluid.{FluidConstants, FluidVariant}
-import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
-import net.fabricmc.fabric.api.transfer.v1.storage.TransferVariant
+import net.fabricmc.fabric.api.transfer.v1.item.{ItemStorage, ItemVariant}
+import net.fabricmc.fabric.api.transfer.v1.storage.{Storage, TransferVariant}
 import net.fabricmc.fabric.api.transfer.v1.transaction.base.SnapshotParticipant
 import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, TransactionContext}
 import net.fabricmc.loader.api.FabricLoader
@@ -72,7 +72,7 @@ import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntit
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
-import net.minecraft.util.math.{BlockPos, ChunkPos, Direction, Vec3d}
+import net.minecraft.util.math.{BlockPos, ChunkPos, Direction, Vec3d, Box as MCBox}
 import net.minecraft.util.{ActionResult, Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
 import net.minecraft.world.biome.Biome
 import net.minecraft.world.{BlockView, TeleportTarget, World}
@@ -94,9 +94,9 @@ import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{elidable, experimental, showAsInfix, tailrec, targetName, unused}
-import scala.collection.{IterableOps, IterableOnceOps}
+import scala.collection.{IterableOnceOps, IterableOps}
 import scala.ref.WeakReference
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success, Try, Using}
 export scala.collection.convert.ImplicitConversions.*
 import scala.collection.mutable
 import scala.compiletime.summonFrom
@@ -2169,30 +2169,39 @@ def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
   else if x > max then max
   else x
 
-trait InventoryView(val viewType: InventoryView.Type[?]):
-  def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = None
+trait InventoryView(val viewType: InventoryView.Type[?]) extends InventoryView.Handler:
   def isTruthy = true
-  @throws[Mishap]
-  def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
-  def entities(using TransactionContext): Set[Entity] = Set()
-  @throws[Mishap]
-  def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = false
   def serialize: NbtCompound = NbtCompound().tap(_.putString("id", InventoryView.registry.getId(viewType).toString))
-
 object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   trait Type[+T <: InventoryView]:
     def deserialize(data: NbtCompound)(using ServerWorld): Option[T]
+  trait Handler:
+    def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = None
+    def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
+    def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
+    def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment): Long =
+      Using(summon[TransactionContext].openNested()): tx =>
+        given TransactionContext = tx
+        tryExtract(variant, Long.MaxValue)
+      match
+        case Success(n) => n
+        case Failure(ex) =>
+          given_Logger.error("capacity", ex)
+          0L
+    def entities(using TransactionContext): Set[Entity] = Set()
+    @throws[Mishap]
+    def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = false
   object Events:
-    val forEntity: Event[Entity => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[Entity => ServerWorld ?=> Seq[InventoryView]](classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
-    val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]] = EventFactory.createArrayBacked[(BlockPos, BlockState) => ServerWorld ?=> Seq[InventoryView]](classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
-  abstract class OfMerged(viewType: InventoryView.Type[?], views: => Seq[InventoryView]) extends InventoryView(viewType):
+    val forEntity: Event[Entity => ServerWorld ?=> Seq[Handler]] = EventFactory.createArrayBacked(classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
+    val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[Handler]] = EventFactory.createArrayBacked(classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
+  abstract class OfMerged(viewType: InventoryView.Type[?], views: => Seq[Handler]) extends InventoryView(viewType):
     def getViews = views
-    override def isTruthy = views ∃(_.isTruthy)
     override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
     override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
     override def entities(using TransactionContext) = views.flatMap(_.entities).toSet
     override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = views.iterator∃(_.teleportEntity(ent))
   class OfSum private(private[InventoryView] val views: Seq[InventoryView]) extends OfMerged(typeOfSum, views):
+    override def isTruthy = views ∃(_.isTruthy)
     override def serialize =
       val c = NbtCompound()
       val list = NbtList()
@@ -2244,13 +2253,26 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   private given typeOfEntity: InventoryView.Type[OfEntity]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfEntity] = ???
   private given typeOfBlock: InventoryView.Type[OfBlock]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfBlock] = ???
+    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfBlock] = Some(data.get("p")).map(_.downcast[NbtLong].longValue).map(BlockPos.fromLong).map(OfBlock(_))
   private given typeOfExactEntity: InventoryView.Type[OfExactEntity]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfExactEntity] = ???
   registry("sum") = typeOfSum
   registry("entity") = typeOfEntity
   registry("block") = typeOfBlock
   registry("exact") = typeOfExactEntity
+  Events.forBlock.register: (pos, state) =>
+    val storage = ItemStorage.SIDED.find(summon, pos, null): Storage[ItemVariant]
+    val allowTP = state.isTransparent(summon, pos)
+    if storage == null then Seq()
+    else Seq(
+      new Handler:
+        override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long =
+          variant match
+            case i: ItemVariant => storage.extract(i, amount, summon)
+            case _ => 0
+        override def entities(using TransactionContext): Set[Entity] = summon[World].getOtherEntities(null, MCBox.of(pos.toCenterPos, 0.5, 0.5, 0.5), _ => true).toSet
+        override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = super.teleportEntity(ent)
+    )
 
 object BoxedView extends IotaType[BoxedView.Instance]:
   InventoryView
