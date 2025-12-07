@@ -2178,7 +2178,7 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   trait Handler:
     def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = None
     def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
-    def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
+    def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
     def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment): Long =
       Using(summon[TransactionContext].openNested()): tx =>
         given TransactionContext = tx
@@ -2197,7 +2197,9 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   abstract class OfMerged(viewType: InventoryView.Type[?], views: => Seq[Handler]) extends InventoryView(viewType):
     def getViews = views
     override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
-    override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryWithdraw(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
+    override def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryExtract(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
+    override def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryInsert(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
+    override def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment) = views.map(_.capacity(variant)).sum
     override def entities(using TransactionContext) = views.flatMap(_.entities).toSet
     override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = views.iterator∃(_.teleportEntity(ent))
   class OfSum private(private[InventoryView] val views: Seq[InventoryView]) extends OfMerged(typeOfSum, views):
@@ -2266,12 +2268,19 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
     if storage == null then Seq()
     else Seq(
       new Handler:
-        override def tryWithdraw(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long =
+        override def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long =
+          variant match
+            case i: ItemVariant => storage.insert(i, amount, summon)
+            case _ => 0
+        override def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long =
           variant match
             case i: ItemVariant => storage.extract(i, amount, summon)
             case _ => 0
         override def entities(using TransactionContext): Set[Entity] = summon[World].getOtherEntities(null, MCBox.of(pos.toCenterPos, 0.5, 0.5, 0.5), _ => true).toSet
-        override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = super.teleportEntity(ent)
+        override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean =
+          if allowTP then
+            ???
+          else false
     )
 
 object BoxedView extends IotaType[BoxedView.Instance]:
