@@ -4,6 +4,7 @@
     "hexcasting:craft/trinket",
     "hexic:snow",
     "hexic:findview",
+    "hexic:moveconcept",
     "hexic:moveentity"
   ]
 }

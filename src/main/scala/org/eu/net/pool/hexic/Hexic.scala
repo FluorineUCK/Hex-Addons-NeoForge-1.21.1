@@ -13,7 +13,7 @@ import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, Contin
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, CastingEnvironmentComponent, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInternalException, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.{HexUtils, MediaHelper}
 import at.petrak.hexcasting.common.lib.{HexAttributes, HexItems, HexRegistries, HexSounds}
@@ -1791,7 +1791,7 @@ def init(): Unit =
     Patterns.mkConstAction(4):
       case Seq(isIota[BoxedView.Instance, 3](from), isIota[BoxedView.Instance, 2](into), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
         Using.resource(Transaction.openOuter()):
-          case given TransactionContext =>
+          case tx@given TransactionContext =>
             val scale = conceptScale(ClassTag(typ.getClass))
             val toExtract = (scale * count.getDouble).toLong
             val extract = from.view.tryExtract(typ.data, toExtract)
@@ -1800,6 +1800,7 @@ def init(): Unit =
             val insert = into.view.tryInsert(typ.data, extract)
             if insert < extract then
               ??? // TODO: mishap
+            tx.commit()
             Seq(DoubleIota(insert / scale))
   Patterns.register("moveentity", e"edeeewawdweaaddaqwqwqaddaaewdwawewdqd"):
     Patterns.mkConstAction(3):
@@ -2188,6 +2189,16 @@ extension [T, R] (f: T => R) def ∘ [U](g: U => T) = (x: U) => f(g(x))
 def wrapReturn[T](body: (T => Nothing) => T): T = body(return _)
 def wrapThrow[T, E <: Throwable](body: (E => Nothing) => T): T = wrapReturn[Try[T]](r => Success(body(r∘Failure))).get
 
+inline def debugln(inline msg: String): Unit =
+  if isDev then println(msg) else ()
+
+extension [T] (inline x: T) inline def trace(inline key: String): T =
+  debugln(s"$key: ${compiletime.codeOf(x)} = $x")
+  x
+extension [T] (inline x: T) inline def trace(): T =
+  debugln(s"${compiletime.codeOf(x)} = $x")
+  x
+
 def propagateMishaps[T](env: CastingEnvironment)(body: => T): T =
   wrapThrow[T, Mishap]: doThrow =>
     object key extends CastingEnvironmentComponent.Key[?]
@@ -2256,25 +2267,23 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
     )
   class OfEntity(id: UUID)(using server: MinecraftServer) extends OfMerged(typeOfEntity, server.getWorlds.collectFirst(hexicVisibilityHack.unlifted(w => Option(w.getEntity(id)).map(Events.forEntity.invoker()(_)(using w)))).getOrElse(Seq())):
     override def serialize =
-      val c = NbtCompound()
+      val c = super.serialize
       c.putLong("m", id.getMostSignificantBits)
       c.putLong("l", id.getLeastSignificantBits)
       c
   class OfBlock(pos: BlockPos)(using world: ServerWorld) extends OfMerged(typeOfBlock, Events.forBlock.invoker()(pos, world.getBlockState(pos))):
     override def serialize =
-      val c = NbtCompound()
+      val c = super.serialize
       val w = world.getRegistryKey.getValue
       if w.getNamespace != "minecraft" then c.put("m", w.getNamespace)
       if w.getPath != "overworld" then c.put("w", w.getPath)
-      c.put("u", pos.getX)
-      c.put("x", pos.getY)
-      c.put("v", pos.getZ)
+      c.putLong("p", pos.asLong)
       c
   class OfExactEntity(entity: => Entity)(using ServerWorld) extends InventoryView(typeOfExactEntity):
     override val viewType = typeOfExactEntity
     override def entities(using TransactionContext) = Set(entity)
     override def serialize =
-      val c = NbtCompound()
+      val c = super.serialize
       // TODO
       c
   def deserialize(data: NbtCompound)(using ServerWorld): Option[InventoryView] = for
@@ -2293,7 +2302,15 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   private given typeOfEntity: InventoryView.Type[OfEntity]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfEntity] = ???
   private given typeOfBlock: InventoryView.Type[OfBlock]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfBlock] = Some(data.get("p")).map(_.downcast[NbtLong].longValue).map(BlockPos.fromLong).map(OfBlock(_))
+    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfBlock] =
+      for
+        case posLong: NbtLong <- Option(data.get("p")).trace("key")
+        pos = BlockPos.fromLong(posLong.longValue)
+        namespace = Option(data.getString("m")).filter(!_.isBlank) getOrElse "minecraft"
+        path = Option(data.getString("w")).filter(!_.isBlank) getOrElse "overworld"
+        key = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(namespace, path)).trace("key")
+        given ServerWorld <- Option(summon[ServerWorld].getServer.getWorld(key))
+      yield OfBlock(pos)
   private given typeOfExactEntity: InventoryView.Type[OfExactEntity]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfExactEntity] = ???
   registry("sum") = typeOfSum
