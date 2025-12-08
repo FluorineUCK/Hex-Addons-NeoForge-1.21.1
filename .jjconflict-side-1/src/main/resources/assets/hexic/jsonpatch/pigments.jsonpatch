@@ -1,0 +1,11 @@
+@version "1";
+@target "hexcasting:patchouli_books/thehexbook/en_us/entries/patterns/spells/pigments.json";
+
+$pages = arrays.push($pages, {
+  type: "hexcasting:pattern",
+  op_id: "hexic:dye_offhand",
+  anchor: "hexic:dye_offhand",
+  input: "pigment",
+  output: "",
+  text: "book.hexic.page.dye_offhand"
+});

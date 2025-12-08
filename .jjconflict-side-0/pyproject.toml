@@ -1,0 +1,61 @@
+[project]
+name = "hexdoc-hexic"
+description = "Miscellaneous neat features and QoL patterns for Hex Casting."
+readme = "README.md"
+license = "LGPL-3.0"
+dynamic = ["version"]
+dependencies = [
+    "hexdoc>=1!0.1.0a31",
+    "hexdoc-hexcasting",
+    "hexdoc-minecraft==1.20.1.*",
+    "hexdoc-moreiotas==0.1.1.*",
+    "hexdoc-hexal",
+    "hexdoc-hexcellular",
+]
+requires-python = ">=3.12"
+
+[[project.authors]]
+name = "PoolloverNathan"
+
+[project.urls]
+Homepage = "https://modrinth.com/mod/hexic"
+Source = "https://codeberg.org/PoolloverNathan/hexic"
+Issues = "https://codeberg.org/PoolloverNathan/hexic/issues"
+
+[tool.uv.sources]
+hexdoc-hexal = { url = "https://github.com/FallingColors/Hexal/raw/a5d1dbc6528e4a6c7c8f67ba3adc4c143dafb6e5/docs/v/latest/main/dist/hexdoc_hexal-0.3.0.1.0rc4.dev0-py3-none-any.whl" }
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project.entry-points.hexdoc]
+hexic = "hexdoc_hexic._hooks:HexicPlugin"
+
+[build-system]
+requires = [
+    "hatchling",
+    "hatch-gradle-version>=0.8.0",
+]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+scheme = "gradle"
+source = "gradle-properties"
+py-path = "doc/src/hexdoc_hexic/__version__.py"
+key = "mod_version"
+
+# directory inclusion
+
+[tool.hatch.build]
+only-include = [
+    "doc/src",
+    "gradle.properties",
+]
+artifacts = [
+    "/doc/src/hexdoc_hexic/_export/generated",
+    "/doc/src/hexdoc_hexic/__version__.py",
+    "/doc/src/hexdoc_hexic/__gradle_version__.py",
+]
+
+[tool.hatch.build.targets.wheel]
+sources = ["doc/src"]

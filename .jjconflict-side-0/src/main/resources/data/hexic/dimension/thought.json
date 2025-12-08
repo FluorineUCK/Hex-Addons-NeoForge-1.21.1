@@ -1,0 +1,9 @@
+{
+  "type": "hexic:thought",
+  "generator": {
+    "type": "flat",
+    "settings": {
+      "layers": []
+    }
+  }
+}
