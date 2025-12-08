@@ -2,6 +2,7 @@
   "values": [
     "hexcasting:craft/artifact",
     "hexcasting:craft/trinket",
-    "hexic:snow"
+    "hexic:snow",
+    "hexic:moveentity"
   ]
 }

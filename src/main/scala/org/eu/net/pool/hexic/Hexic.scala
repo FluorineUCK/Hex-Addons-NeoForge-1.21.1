@@ -1769,6 +1769,12 @@ def init(): Unit =
             null // kotlin bullshit
           ), cont, HexEvalSounds.HERMES, Seq())
         case _ => throw MishapBadCaster()
+  Patterns.register("moveentity", e"edeeewawdweaaddaqwqwqaddaaewdwawewdqd"):
+    Patterns.mkConstAction(3):
+      case Seq(isIota[BoxedView.Instance, 2](from), isIota[BoxedView.Instance, 1](into), isIota[DoubleIota, 0](count)) =>
+        Using.resource(Transaction.openOuter()):
+          case given TransactionContext =>
+            Seq(DoubleIota(from.view.entities.count(into.view.teleportEntity)))
   Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
     Patterns.mkConstAction(4):
       case Seq(userdata, display, isIota[Vec3Iota, 1](color), isIota[PropertyIota, 0](metatable)) =>
@@ -2298,6 +2304,7 @@ object BoxedView extends IotaType[BoxedView.Instance]:
     yield Instance(view)).orNull
   override def display(tag: NbtElement): Text = "[View]".styled(_.withColor(color))
   override def color: Int = 0xa59e7c
+  given this.type = this
 
 object SlotReference extends Registrar[SlotReference.Type[?]]("slot"):
   class Type[T <: SlotReference: Codec]
