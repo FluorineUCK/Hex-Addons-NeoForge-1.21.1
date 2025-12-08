@@ -1806,8 +1806,10 @@ def init(): Unit =
     Patterns.mkConstAction(3):
       case Seq(isIota[BoxedView.Instance, 2](from), isIota[BoxedView.Instance, 1](into), isIota[DoubleIota, 0](count)) =>
         Using.resource(Transaction.openOuter()):
-          case given TransactionContext =>
-            Seq(DoubleIota(from.view.entities.count(into.view.teleportEntity)))
+          case tx@given TransactionContext =>
+            val count = from.view.entities.count(into.view.teleportEntity)
+            if count > 0 then tx.commit()
+            Seq(DoubleIota(count))
   Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
     Patterns.mkConstAction(4):
       case Seq(userdata, display, isIota[Vec3Iota, 1](color), isIota[PropertyIota, 0](metatable)) =>
@@ -2319,7 +2321,6 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   registry("exact") = typeOfExactEntity
   Events.forBlock.register: (pos, state) =>
     val storage = ItemStorage.SIDED.find(summon, pos, null): Storage[ItemVariant]
-    val allowTP = state.isTransparent(summon, pos)
     if storage == null then Seq()
     else Seq(
       new Handler:
@@ -2331,12 +2332,22 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
           variant match
             case i: ItemVariant => storage.extract(i, amount, summon)
             case _ => 0
+    )
+  Events.forBlock.register: (pos, state) =>
+    if state.isTransparent(summon, pos) then
+      Seq(new Handler:
         override def entities(using TransactionContext): Set[Entity] = summon[World].getOtherEntities(null, MCBox.of(pos.toCenterPos, 0.5, 0.5, 0.5), _ => true).toSet
         override def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean =
-          if allowTP then
-            ???
-          else false
-    )
+          var currEnt = ent
+          object partip extends SnapshotParticipant[(Vec3d, ServerWorld)]:
+            override def createSnapshot(): (Vec3d, ServerWorld) = (currEnt.getPos, currEnt.getWorld.asInstanceOf[ServerWorld])
+            override def readSnapshot(snapshot: (Vec3d, ServerWorld)): Unit =
+              currEnt = FabricDimensions.teleport(currEnt, snapshot._2, TeleportTarget(snapshot._1, currEnt.getVelocity, currEnt.getYaw, currEnt.getPitch))
+          partip.updateSnapshots(summon)
+          partip.readSnapshot(pos.toCenterPos.subtract(0, 0.25, 0), summon)
+          true
+      )
+    else Seq()
 
 object BoxedView extends IotaType[BoxedView.Instance]:
   InventoryView
