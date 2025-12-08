@@ -751,6 +751,13 @@ object dyedStringworm extends Stringworm:
 def toRoman(value: Int): String =
   "M" * (value / 1000) + ("", "C", "CC", "CCC", "CD", "D", "DC", "DCC", "DCCC", "CM").productElement(value % 1000 / 100) + ("", "X", "XX", "XXX", "XL", "L", "LX", "LXX", "LXXX", "XC").productElement(value % 100 / 10) + ("", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX").productElement(value % 10)
 
+private [hexic] val conceptScale = mutable.Map[ClassTag[? <: TransferVariant[?]], Double]().withDefaultValue(1.0)
+def setConceptScale[T <: TransferVariant[?]: ClassTag as ct](scale: Int) =
+  if conceptScale.isDefinedAt(ct) && conceptScale(ct) != scale then
+    throw IllegalStateException(s"Conflicting scales ${conceptScale(ct)} and $scale defined for class $ct")
+  else
+    conceptScale(ct) = scale
+
 private [hexic] object Extern:
   private [hexic] val worlds = mutable.Set[WeakReference[World]]()
   private [hexic] def getWorld(biome: Biome): World =
@@ -1769,6 +1776,20 @@ def init(): Unit =
             null // kotlin bullshit
           ), cont, HexEvalSounds.HERMES, Seq())
         case _ => throw MishapBadCaster()
+  Patterns.register("moveconcept", se"wawdwawqdewewedqwawdwaw"):
+    Patterns.mkConstAction(4):
+      case Seq(isIota[BoxedView.Instance, 3](from), isIota[BoxedView.Instance, 2](into), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
+        Using.resource(Transaction.openOuter()):
+          case given TransactionContext =>
+            val scale = conceptScale(ClassTag(typ.getClass))
+            val toExtract = (scale * count.getDouble).toLong
+            val extract = from.view.tryExtract(typ.data, toExtract)
+            if extract < toExtract then
+              ??? // TODO: mishap
+            val insert = into.view.tryInsert(typ.data, extract)
+            if insert < extract then
+              ??? // TODO: mishap
+            Seq(DoubleIota(insert / scale))
   Patterns.register("moveentity", e"edeeewawdweaaddaqwqwqaddaaewdwawewdqd"):
     Patterns.mkConstAction(3):
       case Seq(isIota[BoxedView.Instance, 2](from), isIota[BoxedView.Instance, 1](into), isIota[DoubleIota, 0](count)) =>
@@ -2839,6 +2860,7 @@ case class VariantIota[T: ClassTag](data: TransferVariant[T], key: RegistryKey[V
     data.toNbt tap(_.putString("type", key.getValue.toString))
 //noinspection UnstableApiUsage
 object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reader]("transfer_variants"):
+  given IotaType[VariantIota[?]] = this
   type Reader = NbtCompound => Option[VariantIota.TaggedVariant]
   trait TaggedVariant:
     type T: ClassTag
