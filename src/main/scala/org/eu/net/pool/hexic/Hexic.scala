@@ -1778,11 +1778,15 @@ def init(): Unit =
           ), cont, HexEvalSounds.HERMES, Seq())
         case _ => throw MishapBadCaster()
   Patterns.register("findview", e"addaadewewedaaddqwawqddaadewewedaaddqwawdeeweee"):
+    inline def lookup = InventoryView.Events.forIota.invoker()(using compiletime.summonInline)
     Patterns.mkConstAction(1):
-      case Seq(block: Vec3Iota) =>
-        val pos = BlockPos.ofFloored(block.getVec3)
-        summon[CastingEnvironment].assertPosInRangeForEditing(pos)
-        Seq(BoxedView.Instance(InventoryView.OfBlock(pos)))
+      case Seq(lookup(view)) => Seq(BoxedView.Instance(view))
+      case Seq(iota) => throw MishapInvalidIota.ofType(iota, 0, "hexic:view")
+  InventoryView.Events.forIota.register:
+    case block: Vec3Iota =>
+      val pos = BlockPos.ofFloored(block.getVec3)
+      summon[CastingEnvironment].assertPosInRangeForEditing(pos)
+      InventoryView.OfBlock(pos)
   hexXplat.getArithmeticRegistry("view") = arith("view",
     Arithmetic.ADD -> {
       (view1: BoxedView.Instance, view2: BoxedView.Instance) => Seq(BoxedView.Instance(InventoryView.OfSum(view1.view, view2.view)))
@@ -2249,6 +2253,10 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   object Events:
     val forEntity: Event[Entity => ServerWorld ?=> Seq[Handler]] = EventFactory.createArrayBacked(classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
     val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[Handler]] = EventFactory.createArrayBacked(classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
+    // 'implementation restriction' my ass
+    val forIota: Event[CastingEnvironment ?=> PartialFunction[Iota, InventoryView]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, new util.function.Function[Array[CastingEnvironment ?=> PartialFunction[Iota, InventoryView]], CastingEnvironment ?=> PartialFunction[Iota, InventoryView]]:
+      def apply(fns: Array[CastingEnvironment ?=> PartialFunction[Iota, InventoryView]]): CastingEnvironment ?=> PartialFunction[Iota, InventoryView] = (((_: CastingEnvironment) ?=> PartialFunction.empty[Iota, InventoryView]) /: fns) { _ orElse _ }
+    )
   abstract class OfMerged(viewType: InventoryView.Type[?], views: => Seq[Handler]) extends InventoryView(viewType):
     def getViews = views
     override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
