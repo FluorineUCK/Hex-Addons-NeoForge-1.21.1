@@ -1776,6 +1776,17 @@ def init(): Unit =
             null // kotlin bullshit
           ), cont, HexEvalSounds.HERMES, Seq())
         case _ => throw MishapBadCaster()
+  Patterns.register("findview", e"addaadewewedaaddqwawqddaadewewedaaddqwawdeeweee"):
+    Patterns.mkConstAction(1):
+      case Seq(block: Vec3Iota) =>
+        val pos = BlockPos.ofFloored(block.getVec3)
+        summon[CastingEnvironment].assertPosInRangeForEditing(pos)
+        Seq(BoxedView.Instance(InventoryView.OfBlock(pos)))
+  hexXplat.getArithmeticRegistry("view") = arith("view",
+    Arithmetic.ADD -> {
+      (view1: BoxedView.Instance, view2: BoxedView.Instance) => Seq(BoxedView.Instance(InventoryView.OfSum(view1.view, view2.view)))
+    }
+  )
   Patterns.register("moveconcept", se"wawdwawqdewewedqwawdwaw"):
     Patterns.mkConstAction(4):
       case Seq(isIota[BoxedView.Instance, 3](from), isIota[BoxedView.Instance, 2](into), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
