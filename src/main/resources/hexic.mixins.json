@@ -4,6 +4,7 @@
   "package": "org.eu.net.pool.hexic.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
+    "AbstractFurnaceBlockEntityMixin",
     "ActionRegistryEntryMixin",
     "BiomeMixin",
     "CastingVMMixin",

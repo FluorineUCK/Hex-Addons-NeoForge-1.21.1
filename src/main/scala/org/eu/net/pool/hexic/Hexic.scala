@@ -56,6 +56,7 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.base.SnapshotParticipant
 import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, TransactionContext}
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.Bootstrap
+import net.minecraft.block.entity.AbstractFurnaceBlockEntity
 import net.minecraft.block.{AbstractBlock, Block, BlockRenderType, BlockState, BlockWithEntity, ShapeContext}
 import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType, UuidArgumentType}
 import net.minecraft.command.{CommandException, EntitySelector}
@@ -93,6 +94,7 @@ import java.nio.ByteBuffer
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}
 import java.util.{Optional, UUID}
 import java.{lang, util}
+import scala.annotation.meta.getter
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{elidable, experimental, showAsInfix, tailrec, targetName, unused}
 import scala.collection.{IterableOnceOps, IterableOps}
@@ -1794,14 +1796,15 @@ def init(): Unit =
   )
   setConceptScale[FluidVariant](81000)
   setConceptScale[MediaVariant.type](10000)
+  setConceptScale[HeatVariant.type](20)
   Patterns.register("moveconcept", se"wawdwawqdewewedqwawdwaw"):
     Patterns.mkConstAction(4):
       case Seq(isIota[BoxedView.Instance, 3](from), isIota[BoxedView.Instance, 2](into), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
         Using.resource(Transaction.openOuter()):
           case tx@given TransactionContext =>
-            val key = ClassTag(typ.data.getClass).trace("class")
-            val scale = conceptScale(key).trace("scale")
-            val toExtract = (scale * count.getDouble).toLong.trace("toExtract")
+            val key = ClassTag(typ.data.getClass)
+            val scale = conceptScale(key)
+            val toExtract = (scale * count.getDouble).toLong
             val extract = from.view.tryExtract(typ.data, toExtract)
             if extract < toExtract then
               ??? // TODO: mishap
@@ -2318,11 +2321,11 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   private given typeOfBlock: InventoryView.Type[OfBlock]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfBlock] =
       for
-        case posLong: NbtLong <- Option(data.get("p")).trace("key")
+        case posLong: NbtLong <- Option(data.get("p"))
         pos = BlockPos.fromLong(posLong.longValue)
         namespace = Option(data.getString("m")).filter(!_.isBlank) getOrElse "minecraft"
         path = Option(data.getString("w")).filter(!_.isBlank) getOrElse "overworld"
-        key = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(namespace, path)).trace("key")
+        key = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(namespace, path))
         given ServerWorld <- Option(summon[ServerWorld].getServer.getWorld(key))
       yield OfBlock(pos)
   private given typeOfExactEntity: InventoryView.Type[OfExactEntity]:
@@ -2355,27 +2358,51 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
           true
       )
     else Seq()
+  trait SingleVariantHandler(variant: TransferVariant[?]) extends Handler:
+    override def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = if variant == this.variant then trySubtract(amount) else 0L
+    override def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = if variant == this.variant then tryAdd(amount) else 0L
+    override def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment): Long = if variant == this.variant then cap else 0L
+    def trySubtract(amount: Long)(using TransactionContext, CastingEnvironment): Long
+    def tryAdd(amount: Long)(using TransactionContext, CastingEnvironment): Long
+    def cap(using TransactionContext, CastingEnvironment): Long
+
   Events.forBlock.register: (pos, state) =>
     summon[ServerWorld].getBlockEntity(pos) match
-      case e: BlockEntityAbstractImpetus => Seq(new Handler {
+      case e: BlockEntityAbstractImpetus => Seq(new SingleVariantHandler(MediaVariant) {
         private def mediaCapacity = 9000000000000000000L - e.getMedia
-        override def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long =
-          if variant == MediaVariant then
-            val toExtract = amount min e.getMedia
-            doSnapshot(e.getMedia, e.setMedia)(e.getMedia - toExtract)
-            toExtract
-          else 0L
-        override def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long =
-          if variant == MediaVariant then
-            val toInsert = amount min mediaCapacity
-            doSnapshot(e.getMedia, e.setMedia)(e.getMedia + toInsert)
-            toInsert
-          else 0L
-        override def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment): Long =
-          if variant == MediaVariant then
-            mediaCapacity
-          else 0L
+        override def trySubtract(amount: Long)(using TransactionContext, CastingEnvironment): Long =
+          val toExtract = amount min e.getMedia
+          doSnapshot(e.getMedia, e.setMedia)(e.getMedia - toExtract)
+          toExtract
+        override def tryAdd(amount: Long)(using TransactionContext, CastingEnvironment): Long =
+          val toInsert = amount min mediaCapacity
+          doSnapshot(e.getMedia, e.setMedia)(e.getMedia + toInsert)
+          toInsert
+        override def cap(using TransactionContext, CastingEnvironment): Long = mediaCapacity
       })
+      case _ => Seq()
+  Events.forBlock.register: (pos, state) =>
+    summon[ServerWorld].getBlockEntity(pos) match
+      case e: AbstractFurnaceBlockEntity => Seq(
+        new SingleVariantHandler(HeatVariant):
+          override def trySubtract(amount: Long)(using TransactionContext, CastingEnvironment): Long =
+            val action = (amount min e.burnTime).toInt
+            doSnapshot(e.burnTime, e.burnTime = _)(e.burnTime - action)
+            action
+          override def tryAdd(amount: Long)(using TransactionContext, CastingEnvironment): Long =
+            val action = (amount min cap).toInt
+            doSnapshot(e.burnTime, e.burnTime = _)(e.burnTime + action)
+            doSnapshot(e.fuelTime, e.fuelTime = _)(e.fuelTime max e.burnTime)
+            action
+          override def cap(using TransactionContext, CastingEnvironment): Long = (5*60*20) - e.burnTime
+      )
+      case _ => Seq()
+given Conversion[AbstractFurnaceBlockEntity, AbstractFurnaceBlockEntityAccess] = _.asInstanceOf // by mixin
+trait AbstractFurnaceBlockEntityAccess:
+  def burnTime: Int
+  def burnTime_=(burnTime: Int): Unit
+  def fuelTime: Int
+  def fuelTime_=(fuelTime: Int): Unit
 
 def doSnapshot[T](current: => T, apply: T => Unit)(toApply: T)(using tx: TransactionContext): Unit =
   object partip extends SnapshotParticipant[T]:
@@ -2563,12 +2590,15 @@ implicit class IterOnceExt[T](i: IterableOnceOps[T, ?, ?]):
             Some(x)
 
 //noinspection UnstableApiUsage
-object MediaVariant extends TransferVariant[MediaVariant.type]:
+class NoDataVariant extends TransferVariant[NoDataVariant]:
   def getNbt = NbtCompound()
-  def getObject: MediaVariant.type = MediaVariant
+  def getObject: this.type = this
   def isBlank = false
   def toNbt = NbtCompound()
   def toPacket(buf: net.minecraft.network.PacketByteBuf): Unit = ()
+object MediaVariant extends NoDataVariant
+object HeatVariant extends NoDataVariant
+object EnergyVariant extends NoDataVariant
 
 trait FromIota[T]:
   def convert(iota: Iota): Option[T]
@@ -2975,11 +3005,14 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
         type T = Fluid
         def variant: TransferVariant[Fluid] = s
         def display: MutableText = t"${s.getFluid.getDefaultState.getBlockState.getBlock.getName}: ${ItemInlineData.make(s.getFluid.getBucketItem.getDefaultStack)}"
-  registry("media") = c =>
-    Some(new TaggedVariant:
-      type T = MediaVariant.type
-      def variant: MediaVariant.type = MediaVariant
-      def display: Text = Text.literal("Media").styled(_.withColor(0x74b3f2)))
+  def singleton(x: NoDataVariant, disp: Text): NbtCompound => Some[TaggedVariant] =
+    val ret = Some(new TaggedVariant:
+      type T = NoDataVariant
+      def variant: x.type = x
+      def display: Text = disp)
+    _ => ret
+  registry("media") = singleton(MediaVariant, Text.literal("Media").styled(_.withColor(0x74b3f2)))
+  registry("heat") = singleton(HeatVariant, Text.literal("Heat").styled(_.withColor(0xe08355)))
 
 object registerHopperEndpoint extends (() => Unit):
   def apply(): Unit =
