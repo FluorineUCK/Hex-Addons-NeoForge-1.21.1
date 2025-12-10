@@ -357,6 +357,8 @@ tasks.processResources {
                 }
             }
 
+            conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
+
             entrypoint("org.eu.net.pool.hexic.Hexic\$package::init")
             entrypoint("org.eu.net.pool.hexic.client.HexicClient\$package::init", Environment.Client)
             entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client.HexicClient\$package::datagen")
