@@ -16,25 +16,27 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
-try {
-    tasks.named("downloadRenderDoc") {
-        setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
-    }
+allprojects {
+    try {
+        tasks.named("downloadRenderDoc") {
+            setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
+        }
 
-    tasks.named("extractRenderDoc") {
-        enabled = false
-    }
+        tasks.named("extractRenderDoc") {
+            enabled = false
+        }
 
-    val erd by tasks.register<Sync>("myExtractRenderDoc") {
-        dependsOn("downloadRenderDoc")
-        from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
-        into("$buildDir/renderdoc")
-    }
+        val erd by tasks.register<Sync>("myExtractRenderDoc") {
+            dependsOn("downloadRenderDoc")
+            from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
+            into("$buildDir/renderdoc")
+        }
 
-    tasks.named("runClientRenderDoc") {
-        dependsOn(erd)
-    }
-} catch (ignored: UnknownTaskException) {}
+        tasks.named("runClientRenderDoc") {
+            dependsOn(erd)
+        }
+    } catch (ignored: UnknownTaskException) {}
+}
 
 loom.runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
 
@@ -97,70 +99,72 @@ fabricApi {
 //    into("$buildDir/hexxy4")
 //}
 
-repositories {
-    fun exactRepo(url: String, vararg groups: String, recursive: Boolean = true) {
-        exclusiveContent {
-            forRepository {
-                maven(url)
-            }
-            filter {
-                for (group in groups) {
-                    if (recursive) {
-                        includeGroupAndSubgroups(group)
-                    } else {
-                        includeGroup(group)
+allprojects {
+    repositories {
+        fun exactRepo(url: String, vararg groups: String, recursive: Boolean = true) {
+            exclusiveContent {
+                forRepository {
+                    maven(url)
+                }
+                filter {
+                    for (group in groups) {
+                        if (recursive) {
+                            includeGroupAndSubgroups(group)
+                        } else {
+                            includeGroup(group)
+                        }
                     }
                 }
             }
         }
-    }
 
-    mavenCentral()
-    exactRepo("https://api.modrinth.com/maven",
-        "maven.modrinth")
-    exactRepo("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/",
-        "com.eliotlash.mclib",
-        "software.bernie.geckolib")
-    exactRepo("https://jitpack.io/",
-        "com.github.Chocohead",
-        "com.github.LlamaLad7",
-        "com.github.Virtuoel",
-        "com.github.mattidragon")
-    exactRepo("https://maven.blamejared.com/",
-        "at.petra-k",
-        "com.samsthenerd.inline",
-        "gay.object",
-        "miyucomics.hexpose",
-        "net.darkhax.openloader",
-        "vazkii.patchouli")
-    exactRepo("https://maven.hexxy.media/",
-        "io.github.tropheusj",
-        "ram.talia")
-    exactRepo("https://maven.jamieswhiteshirt.com/libs-release/",
-        "com.jamieswhiteshirt")
-    exactRepo("https://maven.kosmx.dev/",
-        "dev.kosmx")
-    exactRepo("https://maven.ladysnake.org/releases/",
-        "dev.onyxstudios")
-    exactRepo("https://maven.pool.net.eu.org/",
-        "dev.kineticcat.hexportation",
-        "miyucomics.hexcellular",
-        "miyucomics.hexical",
-        "miyucomics.overevaluate",
-        "org.eu.net.pool",
-        "poollovernathan")
-    exactRepo("https://maven.shedaniel.me/",
-        "dev.architectury",
-        "me.shedaniel")
-    exactRepo("https://maven.terraformersmc.com/",
-        "com.terraformersmc",
-        "dev.emi")
-    exactRepo("https://repo.sleeping.town/",
-        "com.unascribed")
-    exactRepo("https://masa.dy.fi/maven/",
-        "carpet")
-    exactRepo("https://maven.nucleoid.xyz/",
-        "xyz.nucleoid")
+        mavenCentral()
+        exactRepo("https://api.modrinth.com/maven",
+            "maven.modrinth")
+        exactRepo("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/",
+            "com.eliotlash.mclib",
+            "software.bernie.geckolib")
+        exactRepo("https://jitpack.io/",
+            "com.github.Chocohead",
+            "com.github.LlamaLad7",
+            "com.github.Virtuoel",
+            "com.github.mattidragon")
+        exactRepo("https://maven.blamejared.com/",
+            "at.petra-k",
+            "com.samsthenerd.inline",
+            "gay.object",
+            "miyucomics.hexpose",
+            "net.darkhax.openloader",
+            "vazkii.patchouli")
+        exactRepo("https://maven.hexxy.media/",
+            "io.github.tropheusj",
+            "ram.talia")
+        exactRepo("https://maven.jamieswhiteshirt.com/libs-release/",
+            "com.jamieswhiteshirt")
+        exactRepo("https://maven.kosmx.dev/",
+            "dev.kosmx")
+        exactRepo("https://maven.ladysnake.org/releases/",
+            "dev.onyxstudios")
+        exactRepo("https://maven.pool.net.eu.org/",
+            "dev.kineticcat.hexportation",
+            "miyucomics.hexcellular",
+            "miyucomics.hexical",
+            "miyucomics.overevaluate",
+            "org.eu.net.pool",
+            "poollovernathan")
+        exactRepo("https://maven.shedaniel.me/",
+            "dev.architectury",
+            "me.shedaniel")
+        exactRepo("https://maven.terraformersmc.com/",
+            "com.terraformersmc",
+            "dev.emi")
+        exactRepo("https://repo.sleeping.town/",
+            "com.unascribed")
+        exactRepo("https://masa.dy.fi/maven/",
+            "carpet")
+        exactRepo("https://maven.nucleoid.xyz/",
+            "xyz.nucleoid")
+    }
 }
 
 fun download(url: String, name: String = file(url).name): Download {
@@ -260,12 +264,10 @@ dependencies {
 
     val minecraft_version = "1.20.1"
     modDepends(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
-    modDepends(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")!!)
-    modDepends(include(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)!!)
-    include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
-    include(api("org.scala-lang:scala-library:2.13.6")!!)
-    modDepends(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2-pre-751")!!)
-    modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
+    implementation(project(":util", "namedElements"))
+    modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
+    modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
+    modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modDepends(include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
@@ -273,7 +275,6 @@ dependencies {
     modLocalRuntime("maven.modrinth:lithium:mc1.20.1-0.11.4-fabric")
 //    modRuntimeOnly("carpet:fabric-carpet:1.20-1.+")
     compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
-    modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
     compat("maven.modrinth:hexcassettes:1.1.4")
     modLocalRuntime("maven.modrinth:trinkets:3.7.2")
@@ -359,10 +360,10 @@ tasks.processResources {
 
             conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
 
-            entrypoint("org.eu.net.pool.hexic.Hexic\$package::init")
-            entrypoint("org.eu.net.pool.hexic.client.HexicClient\$package::init", Environment.Client)
-            entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client.HexicClient\$package::datagen")
-            entrypoint("mm:early_risers", "org.eu.net.pool.hexic.EarlyRiser\$package::warCrimes")
+            entrypoint("org.eu.net.pool.hexic.main\$package::init")
+            entrypoint("org.eu.net.pool.hexic.client.main\$package::init", Environment.Client)
+            entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client.main\$package::datagen")
+            entrypoint("mm:early_risers", "org.eu.net.pool.hexic.early_riser\$package::warCrimes")
             entrypoint("cardinal-components", "org.eu.net.pool.hexic.ComponentInit")
             mixins("hexic.mixins.json")
             mixins("hexic.client.mixins.json", Environment.Client)
@@ -708,21 +709,22 @@ tasks.register("docs") {
 }
 
 // configure the maven publication
-publishing {
-    publications {
-        create<MavenPublication>("mavenJava") {
-            artifactId = project.property("archives_base_name") as String
-            from(components["java"])
-        }
-    }
+allprojects {
+    afterEvaluate {
+        publishing {
+            publications {
+                create<MavenPublication>("mavenJava") {
+                    artifactId = project.property("archives_base_name") as String
+                    from(components["java"])
+                }
+            }
 
-    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
-    repositories {
-        maven("https://maven.pool.net.eu.org/") {
-            name = "poolMaven"
-            credentials {
-                username = System.getenv("username")
-                password = System.getenv("password")
+            // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+            repositories {
+                maven("https://files.pool.net.eu.org/maven") {
+                    name = "poolMaven"
+                    credentials(PasswordCredentials::class.java)
+                }
             }
         }
     }

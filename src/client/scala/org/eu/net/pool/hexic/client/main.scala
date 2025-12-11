@@ -1,4 +1,5 @@
-package org.eu.net.pool.hexic
+package org.eu.net.pool
+package hexic
 package client
 
 import at.petrak.hexcasting.api.item.PigmentItem
@@ -49,6 +50,8 @@ import scala.reflect.Selectable.reflectiveSelectable
 import scala.util.boundary
 import scala.util.boundary.Label
 import scala.util.chaining.scalaUtilChainingOps
+
+import phlib.{_, given}
 
 given client: MinecraftClient = MinecraftClient.getInstance
 

@@ -17,3 +17,5 @@ pluginManagement {
         }
     }
 }
+
+include("util")

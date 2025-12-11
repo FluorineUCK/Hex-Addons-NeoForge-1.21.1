@@ -1,4 +1,5 @@
-package org.eu.net.pool.hexic
+package org.eu.net.pool
+package hexic
 
 import com.chocohead.mm.api.{ClassTinkerers, EnumAdder}
 import com.google.common.base.Charsets

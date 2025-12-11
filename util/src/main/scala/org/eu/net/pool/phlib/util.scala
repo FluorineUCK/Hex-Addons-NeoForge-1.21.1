@@ -1,5 +1,6 @@
 //noinspection NotImplementedCode
-package org.eu.net.pool.hexic
+package org.eu.net.pool
+package phlib
 
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
@@ -13,7 +14,6 @@ import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.common.lib.HexItems
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
-import com.chocohead.mm.api.EnumAdder
 import com.mojang.serialization.{Codec, DynamicOps}
 import net.fabricmc.fabric.api.event.registry.FabricRegistryBuilder
 import net.minecraft.entity.LivingEntity
@@ -49,10 +49,6 @@ def uninline(using q: Quotes)(t: q.reflect.Term): q.reflect.Term = t match
   case r => r
 
 def unless(cond: Boolean)(body: => Unit): Unit = if (!cond) body
-
-def generateAppropriateColors_impl(e: Expr[EnumAdder])(using q: Quotes): Expr[EnumAdder] =
-  // FIXME: this is wrong
-  DyeColor.values.foldLeft(e)((e, c) => '{ ${ e }.addEnum(${ Expr(s"HEXIC$$PEN_WITH_COLOR_${c.asString}") }, (${Expr(c.getMapColor.color)}: Int): Integer, (${Expr(c.getSignColor)}: Int): Integer, java.lang.Boolean.TRUE) })
 
 extension (n: Int)
   def times(b: => Unit) =
