@@ -38,48 +38,58 @@ allprojects {
     } catch (ignored: UnknownTaskException) {}
 }
 
-loom.runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
-
-//tasks.withType<RenderDocR>()
-
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
-val p = P(project)
-project.ext.set("p", p)
-version = project.property("mod_version") as String
-val py_version: String by project.properties
-val wheelPath = file("dist/hexdoc_hexic-$version.$py_version-py3-none-any.whl")
-if (!release) version = "$version+${p.commit_id.take(7)}"
-group = project.property("maven_group") as String
+allprojects {
+    val p = P(project)
+    val modid: String by project.properties
+    ext.set("p", p)
+    version = project.property("mod_version") as String
+    if (!release) version = "${version}+${p.commit_id.take(7)}"
+    group = rootProject.property("maven_group") as String
+    println("configuring $modid ($project) v$version @ $group")
+    plugins.withId("java") {
+        base {
+            archivesName.set(modid)
+        }
+        java {
+            toolchain.languageVersion = JavaLanguageVersion.of(17)
+            withSourcesJar()
+        }
 
-base {
-    archivesName.set(project.property("archives_base_name") as String)
-}
-
-val targetJavaVersion = 17
-java {
-    toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
-    // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
-    // if it is present.
-    // If you remove this line, sources will not be generated.
-    withSourcesJar()
-}
-
-scala {
-    scalaVersion = "3.7.1"
-}
-
-loom {
-    splitEnvironmentSourceSets()
-
-    mods {
-        register("hexic") {
-            sourceSet("main")
-            sourceSet("client")
+        tasks.named<Jar>("jar").configure {
+            from("LICENSE") {
+                rename { "LICENSE_$modid" }
+            }
+            duplicatesStrategy = DuplicatesStrategy.WARN
         }
     }
 
-    mixin.useLegacyMixinAp = false
+    plugins.withId("scala") {
+        scala {
+            scalaVersion = "3.7.1"
+        }
+    }
+
+    plugins.withId("fabric-loom") {
+        loom {
+            splitEnvironmentSourceSets()
+            runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
+
+            mods {
+                register(modid) {
+                    sourceSet("main")
+                    sourceSet("client")
+                }
+            }
+
+            mixin.useLegacyMixinAp = false
+        }
+    }
+    println("configured $project: release=$release, configured version: $version ($group)")
 }
+val p: P by ext
+val py_version: String by project.properties
+val wheelPath = file("dist/hexdoc_hexic-$version.$py_version-py3-none-any.whl")
 
 fabricApi {
     configureDataGeneration {
@@ -145,7 +155,7 @@ allprojects {
             "dev.kosmx")
         exactRepo("https://maven.ladysnake.org/releases/",
             "dev.onyxstudios")
-        exactRepo("https://maven.pool.net.eu.org/",
+        exactRepo("https://pool.net.eu.org/",
             "dev.kineticcat.hexportation",
             "miyucomics.hexcellular",
             "miyucomics.hexical",
@@ -506,29 +516,24 @@ tasks.processResources {
     }
 }
 
-tasks.withType<AbstractArchiveTask> {
-    isPreserveFileTimestamps = false
-    isReproducibleFileOrder = true
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    // ensure that the encoding is set to UTF-8, no matter what the system default is
-    // this fixes some edge cases with special characters not displaying correctly
-    // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
-    // If Javadoc is generated, this must be specified in that task too.
-    options.encoding = "UTF-8"
-    options.release.set(targetJavaVersion)
-}
-
-tasks.withType<ScalaCompile>().configureEach {
-    scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature", "-Ycc-debug"))
-}
-
-tasks.jar {
-    from("LICENSE") {
-        rename { "${it}_${project.base.archivesName}" }
+allprojects {
+    tasks.withType<AbstractArchiveTask> {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
     }
-    duplicatesStrategy = DuplicatesStrategy.WARN
+
+    tasks.withType<JavaCompile>().configureEach {
+        // ensure that the encoding is set to UTF-8, no matter what the system default is
+        // this fixes some edge cases with special characters not displaying correctly
+        // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
+        // If Javadoc is generated, this must be specified in that task too.
+        options.encoding = "UTF-8"
+        options.release.set(17)
+    }
+
+    tasks.withType<ScalaCompile>().configureEach {
+        scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature", "-Ycc-debug"))
+    }
 }
 
 val wheelFiles by lazy {
@@ -714,14 +719,14 @@ allprojects {
         publishing {
             publications {
                 create<MavenPublication>("mavenJava") {
-                    artifactId = project.property("archives_base_name") as String
+                    artifactId = project.property("modid") as String
                     from(components["java"])
                 }
             }
 
             // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
             repositories {
-                maven("https://files.pool.net.eu.org/maven") {
+                maven("https://pool.net.eu.org/maven") {
                     name = "poolMaven"
                     credentials(PasswordCredentials::class.java)
                 }

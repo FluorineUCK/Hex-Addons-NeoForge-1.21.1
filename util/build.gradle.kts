@@ -7,10 +7,6 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
-val version: String by project.properties
-project.version = version
-project.group = "org.eu.net.pool"
-
 dependencies {
     minecraft("com.mojang:minecraft:${project.property("minecraft_version")}")
     mappings("net.fabricmc:yarn:${project.property("yarn_mappings")}:v2")
@@ -27,7 +23,7 @@ dependencies {
 
 tasks.processResources {
     preprocessor {
-        fabricMod("phlib", version) {
+        fabricMod("phlib", version as String) {
             name = "PoolHexLib"
             description = "Internal library for my Hex Casting addons."
             license = "LGPL-3.0"
