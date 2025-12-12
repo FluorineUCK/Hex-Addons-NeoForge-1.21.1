@@ -1732,8 +1732,10 @@ def init(): Unit =
       case (p, vm, given ServerWorld, cont) =>
         given CastingEnvironment = vm.getEnv
         // this is probably cursed
-        for case m: AbstractMetatableIota <- vm.getStack.lastOption; x <- m mro p.getPattern yield
-          m.callMetamethod(p.getPattern)(vm.getImage.withStack(_.init), cont)
+        for
+          case rest:+(m: AbstractMetatableIota) <- Option(vm.getStack).map(_.toSeq)
+          result <- m.callMetamethod(p.getPattern)(vm.getImage.withStack(_ => rest), cont)
+        yield result
   Patterns.register("get_other_caster", nw"ede"):
     Patterns.mkLiteral:
       val players: Set[LivingEntity] = summon[CastingEnvironment].getWorld.getPlayers.toSet
@@ -2466,12 +2468,12 @@ abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleto
         case _ => None
   override def isTruthy: Boolean = true
   override def executable: Boolean = true
-  override def execute(using vm: CastingVM, world: ServerWorld, continuation: SpellContinuation): CastResult = callMetamethod(se"deaqq")(vm.getImage, continuation)
+  override def execute(using vm: CastingVM, world: ServerWorld, continuation: SpellContinuation): CastResult = callMetamethod(se"deaqq")(vm.getImage, continuation).getOrElse(super.execute(vm, world, continuation))
   override def size = userdata.size + 1
-  def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): CastResult =
-    val callee = mro(key).getOrElse(PatternIota(key))
-    val result = OpEval.INSTANCE.exec(env, image, continuation, image.getStack.init :+ userdata, callee)
-    CastResult(callee, result.getNewContinuation, result.getNewImage, result.getSideEffects, ResolvedPatternType.EVALUATED, result.getSound)
+  def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): Option[CastResult] =
+    for callee <- mro(key) yield
+      val result = OpEval.INSTANCE.exec(env, image, continuation, image.getStack :+ userdata, callee)
+      CastResult(callee, result.getNewContinuation, result.getNewImage, result.getSideEffects, ResolvedPatternType.EVALUATED, result.getSound)
   class MishapBadMetatable(name: String, value: Iota, readonly: Boolean) extends Mishap():
     override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.translatable("hexic.bad_metatable", name, value.display)
     override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.GRAY)
