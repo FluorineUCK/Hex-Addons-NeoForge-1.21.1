@@ -19,3 +19,5 @@ pluginManagement {
 }
 
 include("util")
+include("iotaworks")
+project(":iotaworks").projectDir = file("project/iotaworks")

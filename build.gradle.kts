@@ -726,7 +726,7 @@ allprojects {
 
             // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
             repositories {
-                maven("https://pool.net.eu.org/maven") {
+                maven("https://pool.net.eu.org/") {
                     name = "poolMaven"
                     credentials(PasswordCredentials::class.java)
                 }
