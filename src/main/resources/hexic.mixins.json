@@ -26,7 +26,6 @@
     "OpTickMixin",
     "OpTickMixin$SpellMixin",
     "PacketByteBufMixin",
-    "PatternIotaMixin",
     "PlayerInventoryMixin",
     "SimpleRegistryMixin",
     "StaffCastEnvMixin",

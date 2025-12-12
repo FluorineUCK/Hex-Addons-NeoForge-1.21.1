@@ -187,7 +187,7 @@ import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 
 import scala.concurrent.duration.Duration
 
-import phlib.{_, given}
+import phlib.{Events => PhEvents, _, given}
 
 given Logger = LoggerFactory.getLogger("hexic")
 
@@ -1727,6 +1727,13 @@ def init(): Unit =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
+  PhEvents.beforePatternExecute.register:
+    Function.unlift:
+      case (p, vm, given ServerWorld, cont) =>
+        given CastingEnvironment = vm.getEnv
+        // this is probably cursed
+        for case m: AbstractMetatableIota <- vm.getStack.lastOption; x <- m mro p.getPattern yield
+          m.callMetamethod(p.getPattern)(vm.getImage.withStack(_.init), cont)
   Patterns.register("get_other_caster", nw"ede"):
     Patterns.mkLiteral:
       val players: Set[LivingEntity] = summon[CastingEnvironment].getWorld.getPlayers.toSet
@@ -2471,16 +2478,6 @@ abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleto
     override def execute(env: CastingEnvironment, ctx: Context, stack: ju.List[Iota]): Unit =
       stack(stack.length - 1) = GarbageIota()
       if !readonly then StateStorage.Companion.setProperty(env.getWorld, name, GarbageIota())
-
-private[hexic] object metatableHook:
-  extension (p: PatternIota) def executeHook(using Label[CastResult], ServerWorld)(using vm: CastingVM)(continuation: SpellContinuation): Unit =
-    vm.getStack.lastOption match
-      case Some(m: AbstractMetatableIota) =>
-        for x <- m mro p.getPattern do
-          // this is probably cursed
-          val result = m.callMetamethod(p.getPattern)(vm.getImage.withStack(_.init), continuation)
-          boundary.break(result)
-      case _ =>
 
 case class MetatableIotaType private[hexic](override val color: Int) extends IotaType[AbstractMetatableIota]:
   class Instance(userdata: Iota, display: Text, metatable: String, readonlyMetatable: Boolean) extends AbstractMetatableIota(MetatableIotaType.this, userdata, display, metatable, readonlyMetatable)

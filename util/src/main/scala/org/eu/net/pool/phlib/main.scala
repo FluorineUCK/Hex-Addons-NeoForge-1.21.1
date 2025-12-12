@@ -28,6 +28,8 @@ import net.minecraft.registry.Registry
 import net.minecraft.registry.RegistryKey
 import net.minecraft.text.MutableText
 import net.minecraft.text.Text
+import net.fabricmc.fabric.api.event.Event
+import net.fabricmc.fabric.api.event.EventFactory
 
 val fabric = FabricLoader.getInstance
 val isDev = fabric.isDevelopmentEnvironment
@@ -97,3 +99,6 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
     `then`
   else
     `else`
+
+object Events:
+  val beforePatternExecute: Event[PartialFunction[(PatternIota, CastingVM, ServerWorld, SpellContinuation), CastResult]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, ary => (PartialFunction.empty /: ary) (_ orElse _))
