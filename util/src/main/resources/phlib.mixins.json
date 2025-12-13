@@ -4,6 +4,7 @@
   "package": "org.eu.net.pool.phlib.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "PatternIotaMixin"
+    "PatternIotaMixin",
+    "SimpleRegistryMixin"
   ]
 }

@@ -215,8 +215,12 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
 def init() =
   hexXplat.getIotaTypeRegistry("map") = MapIota
   hexXplat.getArithmeticRegistry("maps") = mapArithmetic
+  Events.registryLookup.register:
+    case (r, i) if r == hexXplat.getIotaTypeRegistry && i == Identifier.of("hexic", "map") => MapIota
   Patterns.register("empty_map", e"dqdwdqd"):
     Patterns.mkLiteral(MapIota())
 
 object Events:
-  val beforePatternExecute: Event[PartialFunction[(PatternIota, CastingVM, ServerWorld, SpellContinuation), CastResult]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, ary => (PartialFunction.empty /: ary) (_ orElse _))
+  def partialEvent[T, R]: Event[PartialFunction[T, R]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, ary => (PartialFunction.empty /: ary) (_ orElse _))
+  val beforePatternExecute: Event[PartialFunction[(PatternIota, CastingVM, ServerWorld, SpellContinuation), CastResult]] = partialEvent
+  val registryLookup: Event[PartialFunction[(Registry[?], Identifier), ?]] = partialEvent
