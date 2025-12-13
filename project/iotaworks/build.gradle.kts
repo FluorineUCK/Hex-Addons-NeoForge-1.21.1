@@ -25,7 +25,7 @@ tasks.processResources {
     preprocessor {
         fabricMod("iotaworks", version as String) {
             name = "Iotaworks"
-            description = "A Hex Casting addon about the manipulation of iotas."
+            description = "A Hex Casting addon for manipulating iotas."
             license = "LGPL-3.0"
             icon = "assets/iotaworks/icon.png"
 
