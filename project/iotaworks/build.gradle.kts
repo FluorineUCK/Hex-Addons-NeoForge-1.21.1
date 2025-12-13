@@ -40,7 +40,7 @@ tasks.processResources {
             recommends("hexpose", "*")
             breaks("hexic", "<2.0.0")
 
-            entrypoint("org.eu.net.pool.iotaworks.main\$package")
+            entrypoint("org.eu.net.pool.iotaworks.main\$package::init")
         }
     }
 }

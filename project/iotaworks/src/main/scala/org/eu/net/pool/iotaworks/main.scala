@@ -91,6 +91,8 @@ def init() =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
+  PhEvents.registryLookup.register:
+    case (r, i) if r == hexXplat.getIotaTypeRegistry && i.getNamespace == "hexic" && i.getPath.startsWith("meta/") => r(i.getPath)
   PhEvents.beforePatternExecute.register:
     Function.unlift:
       case (p, vm, given ServerWorld, cont) =>
