@@ -9,6 +9,7 @@ import at.petrak.hexcasting.api.casting.mishaps.Mishap
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
+import miyucomics.hexcellular.StateStorage
 import net.minecraft.nbt.{NbtCompound, NbtElement}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.Text
@@ -20,6 +21,7 @@ import java.{lang, util, util as ju}
 
 private[iotaworks] given Logger = LoggerFactory.getLogger("iotaworks")
 private[iotaworks] given Conversion[String, Identifier] = Identifier.of("iotaworks", _)
+given IotaType[PropertyIota] = PropertyIota.TYPE
 
 abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleton, userdata: Iota, override val display: Text, metatable: String, readonlyMetatable: Boolean) extends Iota(iotaType, (userdata, display, metatable, readonlyMetatable)):
   override def subIotas(): lang.Iterable[Iota] = util.List.of(userdata)
@@ -75,6 +77,8 @@ object MetatableIotaType:
   println(s"Metatables: $colors")
 
 def init() =
+  iotaTypeRegistry("map") = MapIota
+  for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
   Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
     Patterns.mkConstAction(4):
       case Seq(userdata, display, isIota[Vec3Iota, 1](color), isIota[PropertyIota, 0](metatable)) =>

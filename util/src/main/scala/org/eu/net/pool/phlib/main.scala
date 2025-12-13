@@ -17,8 +17,9 @@ import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, Mishap
 import net.minecraft.server.world.ServerWorld
 
 import scala.annotation.tailrec
+import scala.math.Ordered.orderingToOrdered
 import scala.reflect.ClassTag
-import scala.util.{Success, Try}
+import scala.util.{Failure, Success, Try}
 export scala.collection.convert.ImplicitConversions.*
 export scala.util.chaining._
 import java.util
@@ -40,7 +41,8 @@ val isDev = fabric.isDevelopmentEnvironment
 lazy val iotaTypeRegistry = hexXplat.getIotaTypeRegistry
 lazy val actionRegistry = hexXplat.getActionRegistry
 
-private given logger: Logger = LoggerFactory.getLogger("phlib")
+private[phlib] given logger: Logger = LoggerFactory.getLogger("phlib")
+private[phlib] given Conversion[String, Identifier] = Identifier.of("phlib", _)
 
 implicit class RegistryOps[T](r: Registry[T]) extends AnyRef:
   def apply(key: Identifier | RegistryKey[?] | Int) =
@@ -116,7 +118,6 @@ object isIota:
       case iota: T => Some(iota)
       case _ => throw MishapInvalidIota(iota, compiletime.constValue[I], ty.typeName)
 
-given IotaType[PropertyIota] = PropertyIota.TYPE
 given IotaType[Vec3Iota] = Vec3Iota.TYPE
 
 object Patterns:
@@ -162,6 +163,11 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
     `then`
   else
     `else`
+
+// this is out-of-scope for phlib but I have no idea where else to put it
+def init() =
+  Patterns.register("empty_map", e"dqdwdqd"):
+    Patterns.mkLiteral(MapIota())
 
 object Events:
   val beforePatternExecute: Event[PartialFunction[(PatternIota, CastingVM, ServerWorld, SpellContinuation), CastResult]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, ary => (PartialFunction.empty /: ary) (_ orElse _))

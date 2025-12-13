@@ -64,6 +64,7 @@ def eitherTypes(using q: Quotes)(t: q.reflect.TypeRepr): Seq[q.reflect.TypeRepr]
     case t => Seq(t)
 
 // My level of sanity is slightly lower than the Hex Caster's sanity.
+inline def arith(name: String, inline ops: (HexPattern, AnyRef)*) = ${ arithImpl('name, 'ops) }
 def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, AnyRef)]]): Expr[Arithmetic] =
   import q.reflect.*
   val Varargs(xs) = args: @unchecked
