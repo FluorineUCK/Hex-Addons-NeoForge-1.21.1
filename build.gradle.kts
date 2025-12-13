@@ -270,6 +270,7 @@ dependencies {
     modDepends(include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
     modCompileOnly("carpet:fabric-carpet:1.20-1.+")
+    modLocalRuntime("maven.modrinth:lithium:mc1.20.1-0.11.4-fabric")
 //    modRuntimeOnly("carpet:fabric-carpet:1.20-1.+")
     compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
@@ -355,6 +356,8 @@ tasks.processResources {
                     println("Attempt to add dependency '$p' to modDepends, which is not a Fabric mod.")
                 }
             }
+
+            conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
 
             entrypoint("org.eu.net.pool.hexic.Hexic\$package::init")
             entrypoint("org.eu.net.pool.hexic.client.HexicClient\$package::init", Environment.Client)

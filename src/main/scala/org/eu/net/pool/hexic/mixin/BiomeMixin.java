@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(Biome.class)
 public class BiomeMixin {
-    @Inject(at = @At("HEAD"), method = "getTemperature*", cancellable = true)
+    @Inject(at = @At("HEAD"), method = {"getTemperature()F", "getTemperature(Lnet/minecraft/util/math/BlockPos;)F"}, cancellable = true)
     void preGetTemperature(CallbackInfoReturnable<Float> ci) {
         World world = Extern.getWorld((Biome) (Object) this);
         if (world.getLevelProperties().getComponent(ServerInfoComponent.key()).endSnowTick() > world.getTime()) ci.setReturnValue(0.1f);
