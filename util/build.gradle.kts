@@ -14,11 +14,20 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
     api("org.scala-lang:scala3-library_3:3.7.1")
     api("org.scala-lang:scala-library:2.13.6")
-    modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
+    modApi("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
+    modApi("vazkii.patchouli:Patchouli:$minecraft_version-84-FABRIC")
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
-    modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
+    modApi("io.github.tropheusj:serialization-hooks:0.4.99999")
+    val cardinal_version = "5.2.3"
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")
+    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")
+    modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
 }
 
 tasks.processResources {
@@ -35,7 +44,9 @@ tasks.processResources {
 
             depends("mod-tools", "^1.1.5+1.20.1")
             depends("hexcasting", ">=0.11.2")
+            breaks("hexic", "<2.0.0")
 
+            entrypoint("org.eu.net.pool.phlib.main\$package::init")
             mixins("phlib.mixins.json")
         }
     }

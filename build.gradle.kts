@@ -302,14 +302,6 @@ dependencies {
     include(modApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
-    val cardinal_version = "5.2.3"
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")!!)
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")!!)
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")!!)
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")!!)
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")!!)
-    modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
     include(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
     include(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
 

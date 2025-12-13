@@ -9,8 +9,9 @@ import at.petrak.hexcasting.api.casting.mishaps.Mishap
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
+import com.google.gson.JsonElement
 import miyucomics.hexcellular.{PropertyIota, StateStorage}
-import net.minecraft.nbt.{NbtCompound, NbtElement}
+import net.minecraft.nbt.{NbtCompound, NbtElement, NbtString}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.Text
 import net.minecraft.util.{DyeColor, Identifier}
@@ -73,7 +74,7 @@ case class MetatableIotaType private[pool](override val color: Int) extends Iota
 
 object MetatableIotaType:
   val validValues = Seq(0x0, 0x3, 0x6, 0x9, 0xC, 0xF)
-  val colors: (Int, Int, Int) :> MetatableIotaType = (for r <- validValues; g <- validValues; b <- validValues yield (r, g, b) -> MetatableIotaType((r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b)).toMap
+  val colors: Map[(Int, Int, Int), MetatableIotaType] = (for r <- validValues; g <- validValues; b <- validValues yield (r, g, b) -> MetatableIotaType((r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b)).toMap
   println(s"Metatables: $colors")
 
 def init() =

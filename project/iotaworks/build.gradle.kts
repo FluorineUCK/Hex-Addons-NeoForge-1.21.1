@@ -14,13 +14,11 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
     api("org.scala-lang:scala3-library_3:3.7.1")
     api("org.scala-lang:scala-library:2.13.6")
-    implementation(project(":util", "namedElements"))
-    modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
+    api(project(":util", "namedElements"))
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
-    modImplementation("miyucomics.hexcellular:hexcellular:1.1.0")
-    modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
+    modApi("miyucomics.hexcellular:hexcellular:1.1.0")
 }
 
 tasks.processResources {
@@ -36,10 +34,11 @@ tasks.processResources {
             }
 
             depends("mod-tools", "^1.1.5+1.20.1")
-            depends("phlib", "0.1.2")
+            depends("phlib", "0.1.1")
             depends("hexcasting", ">=0.11.2")
             depends("hexcellular", "^1.0.4")
             recommends("hexpose", "*")
+            breaks("hexic", "<2.0.0")
 
             entrypoint("org.eu.net.pool.iotaworks.main\$package")
         }
