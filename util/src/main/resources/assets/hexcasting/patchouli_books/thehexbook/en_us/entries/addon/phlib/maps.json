@@ -7,8 +7,8 @@
     "Maps are an efficient structure holding pairings of some iota to some other iota. While this is perfectly possible using merely list operations, dedicated map iotas use some arcane substance called a '$(thing)Hash/$'. While this doesn't reduce the $(o)operations/$ required to access a map, it desperately reduces the load on Nature, nearing O(1) for most access.",
     {
       "type": "hexcasting:pattern",
-      "op_id": "hexic:empty_map",
-      "anchor": "hexic:empty_map",
+      "op_id": "phlib:empty_map",
+      "anchor": "phlib:empty_map",
       "input": "",
       "output": "map<⊥, ⊥>",
       "text": "Creates a new empty map for my usage."

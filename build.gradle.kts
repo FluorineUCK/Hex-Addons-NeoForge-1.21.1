@@ -84,6 +84,57 @@ allprojects {
 
             mixin.useLegacyMixinAp = false
         }
+
+        tasks.processResources {
+            val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
+            val langRoot = destinationDir.resolve("assets/$modid/lang")
+
+            doLast {
+                for (lang in bookRoot.list()) {
+                    val langFile = langRoot.resolve("$lang.json")
+                    if (langFile.exists()) {
+                        val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
+                        var n = 0
+                        for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
+                            if (bookFile.isFile) {
+                                val json = JsonSlurper().parseText(bookFile.readText())
+                                if (json !is Map<*, *>) continue
+                                json as MutableMap<Any, Any>
+                                val name = json["name"]
+                                if (name is String) {
+                                    entries["text.$modid.book.${n}"] = name
+                                    json["name"] = "text.$modid.book.${n}"
+                                    n++
+                                }
+                                val pages = json["pages"]
+                                if (pages !is MutableList<*>) continue
+                                pages as MutableList<Any>
+                                for (i in pages.indices) {
+                                    val page = pages[i]
+                                    if (page is String) {
+                                        entries["text.$modid.book.${n}"] = page
+                                        pages[i] = "text.$modid.book.${n}"
+                                        n++
+                                    } else if (page is MutableMap<*, *>) {
+                                        page as MutableMap<Any, Any>
+                                        for (key in listOf("text", "title", "header")) {
+                                            val text = page[key]
+                                            if (text != null && text is String) {
+                                                entries["text.$modid.book.${n}"] = text
+                                                page[key] = "text.$modid.book.${n}"
+                                                n++
+                                            }
+                                        }
+                                    }
+                                }
+                                bookFile.writeText(JsonOutput.toJson(json))
+                            }
+                        }
+                        langFile.writeText(JsonOutput.toJson(entries))
+                    }
+                }
+            }
+        }
     }
     println("configured $project: release=$release, configured version: $version ($group)")
 }
@@ -381,8 +432,6 @@ tasks.processResources {
     dependsOn(cloth)
     dependsOn(*downloadedBags.values.toTypedArray())
     val itemsRoot = destinationDir.resolve("assets/hexic/textures/item")
-    val langRoot = destinationDir.resolve("assets/hexic/lang")
-    val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
     doLast {
         for ((name, color) in colors) {
             exec {
@@ -444,52 +493,6 @@ tasks.processResources {
         //file("$itemsRoot/stringworm.miff").delete()
         exec {
             commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", itemsRoot.resolve("beans.png"))
-        }
-    }
-
-    doLast {
-        for (lang in bookRoot.list()) {
-            val langFile = langRoot.resolve("$lang.json")
-            if (langFile.exists()) {
-                val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
-                var n = 0
-                for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
-                    if (bookFile.isFile) {
-                        val json = JsonSlurper().parseText(bookFile.readText())
-                        if (json !is Map<*, *>) continue
-                        json as MutableMap<Any, Any>
-                        val name = json["name"]
-                        if (name is String) {
-                            entries["text.hexic.book.${n}"] = name
-                            json["name"] = "text.hexic.book.${n}"
-                            n++
-                        }
-                        val pages = json["pages"]
-                        if (pages !is MutableList<*>) continue
-                        pages as MutableList<Any>
-                        for (i in pages.indices) {
-                            val page = pages[i]
-                            if (page is String) {
-                                entries["text.hexic.book.${n}"] = page
-                                pages[i] = "text.hexic.book.${n}"
-                                n++
-                            } else if (page is MutableMap<*, *>) {
-                                page as MutableMap<Any, Any>
-                                for (key in listOf("text", "title", "header")) {
-                                    val text = page[key]
-                                    if (text != null && text is String) {
-                                        entries["text.hexic.book.${n}"] = text
-                                        page[key] = "text.hexic.book.${n}"
-                                        n++
-                                    }
-                                }
-                            }
-                        }
-                        bookFile.writeText(JsonOutput.toJson(json))
-                    }
-                }
-                langFile.writeText(JsonOutput.toJson(entries))
-            }
         }
     }
 
