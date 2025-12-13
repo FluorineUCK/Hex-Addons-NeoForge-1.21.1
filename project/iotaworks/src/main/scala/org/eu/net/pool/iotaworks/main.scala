@@ -9,7 +9,7 @@ import at.petrak.hexcasting.api.casting.mishaps.Mishap
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
-import miyucomics.hexcellular.StateStorage
+import miyucomics.hexcellular.{PropertyIota, StateStorage}
 import net.minecraft.nbt.{NbtCompound, NbtElement}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.Text
@@ -77,7 +77,6 @@ object MetatableIotaType:
   println(s"Metatables: $colors")
 
 def init() =
-  iotaTypeRegistry("map") = MapIota
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
   Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
     Patterns.mkConstAction(4):

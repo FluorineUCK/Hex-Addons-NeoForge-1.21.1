@@ -8,6 +8,9 @@ import net.minecraft.nbt.NbtCompound
 import at.petrak.hexcasting.api.casting.iota.IotaType
 import net.minecraft.nbt.NbtList
 import net.minecraft.nbt.NbtElement
+import net.minecraft.text.{MutableText, Text}
+import net.minecraft.util.Formatting
+
 import java.util.List => JavaList
 import net.minecraft.server.world.ServerWorld
 import at.petrak.hexcasting.api.utils.HexUtils
@@ -17,24 +20,21 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map(), trusted: Boolean 
   def apply(key: Iota): Iota = get(key) getOrElse NullIota()
   def -(keys: Iota*): MapIota = MapIota(map -- (keys map IotaType.serialize))
   def --(other: MapIota): MapIota = MapIota(map -- other.map.keys)
-  def +(pairs: (Iota, Iota)*): MapIota = MapIota(map ++ pairs.map(_ both IotaType.serialize))
+  def +(pairs: (Iota, Iota)*): MapIota = MapIota(map ++ pairs.map(p => (IotaType.serialize(p._1), IotaType.serialize(p._2))))
   def ++(other: MapIota): MapIota = MapIota(map ++ other.map)
   def update(f: map.type => Map[NbtCompound, NbtCompound]): MapIota = MapIota(f(map))
-  def head: (Iota, Iota) = map.head both(IotaType.deserialize(_, summon))
+  def head: (Iota, Iota) = (IotaType.deserialize(map.head._1, summon), IotaType.deserialize(map.head._2, summon))
   def tail: MapIota = MapIota(map.tail)
   def init: MapIota = MapIota(map.init)
-  def last: (Iota, Iota) = map.last both(IotaType.deserialize(_, summon))
-  def headOption: Option[(Iota, Iota)] = map.headOption map(_.both(IotaType.deserialize(_, summon)))
-  def lastOption: Option[(Iota, Iota)] = map.lastOption map(_.both(IotaType.deserialize(_, summon)))
+  def last: (Iota, Iota) = (IotaType.deserialize(map.last._1, summon), IotaType.deserialize(map.last._2, summon))
+  def headOption: Option[(Iota, Iota)] = map.headOption.map(e => (IotaType.deserialize(e._1, summon), IotaType.deserialize(e._2, summon)))
+  def lastOption: Option[(Iota, Iota)] = map.lastOption.map(e => (IotaType.deserialize(e._1, summon), IotaType.deserialize(e._2, summon)))
   def &(other: MapIota): MapIota = MapIota(map.filter(_._1 pipe other.map.contains))
-  def ^(other: MapIota): MapIota = mutable.Map[NbtCompound, NbtCompound]().tap(m =>
-    m.addAll(map)
-    for ((k, v) <- other.map) do
-      if m contains k then
-        m -= k
-      else
-        m += (k -> v)
-  ) pipe (_.toMap) pipe (new MapIota(_))
+  def ^(other: MapIota): MapIota = new MapIota:
+    (map /: other.map): (map, e) =>
+      e match
+        case (k@map(_), _) => map - k
+        case (_, _) => map + e
   def toList: JavaList[Iota] = map.flatMap((k, v) => Seq(k: Iota, v: Iota)).toSeq
   override def isTruthy: Boolean = map.nonEmpty
   override def toleratesOther(iota: Iota): Boolean = iota match
@@ -45,7 +45,7 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map(), trusted: Boolean 
       c.put("k", p._1)
       c.put("v", p._2)) tap l.add)
   override def size = map.toSeq.map(_.size + _.size - 1).sum + 1
-  override def subIotas(): lang.Iterable[Iota] =
+  override def subIotas(): java.lang.Iterable[Iota] =
     if trusted then
       // skip deserialization for performance
       // this is safe because `trusted` can only be true if truenames have

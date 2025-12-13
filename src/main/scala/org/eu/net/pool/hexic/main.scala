@@ -1258,7 +1258,6 @@ def init(): Unit =
         ),
     )
   })
-  hexXplat.getArithmeticRegistry("maps") =
   def fox(tr: PlayerEntity ?=> PartialFunction[Option[FoxEntity.Type], Option[FoxEntity.Type]]): Action =
     Patterns.mkAction: (img, cont) =>
       img.getStack.lastOption match
@@ -2247,13 +2246,6 @@ def seqToNBT(data: Seq[NbtElement]) =
   data.forEach(l.add(_))
   l
 
-extension [T](l: util.AbstractList[T])
-  def apply(n: Int): T = l.get(n)
-  def update(n: Int, x: T): Unit = l.set(n, x)
-extension (c: NbtCompound)
-  def apply(k: String): NbtElement | Null = c.get(k)
-  def update(k: String, v: NbtElement | Null): Unit = c.put(k, v)
-
 trait PigmentHolderItem:
   this: Item =>
   def getPigment(stack: ItemStack): FrozenPigment
@@ -2312,12 +2304,6 @@ class IotaComponent[R: Codec](val id: Identifier):
     (data: Iota | Null) match
       case iota: target.type => iota
       case _ => throw IllegalStateException("Iota changed types or became null during serialization")
-
-inline given DynamicOps[JsonElement] = JsonOps.COMPRESSED
-extension [T: DynamicOps as t] (x: T) def convertDynamic[R: DynamicOps as r]: R = t.convertTo(r, x)
-
-given (vm: CastingVM) => CastingEnvironment = vm.getEnv
-given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
 
 object border extends Block(AbstractBlock.Settings.create().dropsNothing().allowsSpawning((_, _, _, _) => false).sounds(BlockSoundGroup.STONE).requiresTool().strength(100.0F, 1200.0F).luminance(_ => 14))
 def getPocketID(key: Identifier): Option[UUID] =
@@ -2400,38 +2386,6 @@ trait MediaContainerProvider:
   type Context: ClassTag;
   @targetName("hexic$MediaContainerProvider$getMediaContainer")
   def getMediaContainer(c: Context): Option[MediaContainer]
-
-given Codec[Text] = Codecs.TEXT
-given DynamicOps[NbtElement] = NbtOps.INSTANCE
-
-given IotaType[DoubleIota] = DoubleIota.TYPE
-given IotaType[StringIota] = StringIota.TYPE
-given IotaType[LocationIota] = LocationIota
-given IotaType[NbtIota] = NbtIota
-
-given (vm: CastingVM) => CastingImage = vm.getImage
-given Conversion[CastingVM, CastingImage] = _.getImage
-given Conversion[CastingVM, CastingEnvironment] = _.getEnv
-
-given Conversion[String, NbtString] = NbtString.of
-given Conversion[NbtString, String] = _.asString
-
-extension (e: NbtElement)
-  def downcast[T <: NbtElement: NbtType] = HexUtils.downcast(e, summon[NbtType[T]])
-
-given NbtType[NbtString] = NbtString.TYPE
-given NbtType[NbtByte] = NbtByte.TYPE
-given NbtType[NbtShort] = NbtShort.TYPE
-given NbtType[NbtInt] = NbtInt.TYPE
-given NbtType[NbtLong] = NbtLong.TYPE
-given NbtType[NbtFloat] = NbtFloat.TYPE
-given NbtType[NbtDouble] = NbtDouble.TYPE
-given NbtType[NbtByteArray] = NbtByteArray.TYPE
-given NbtType[NbtIntArray] = NbtIntArray.TYPE
-given NbtType[NbtLongArray] = NbtLongArray.TYPE
-given NbtType[NbtList] = NbtList.TYPE
-given NbtType[NbtCompound] = NbtCompound.TYPE
-given NbtType[NbtEnd] = NbtEnd.TYPE
 
 case class NbtIota(data: NbtElement) extends Iota(NbtIota, data):
   override def isTruthy: Boolean = data match

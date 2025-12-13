@@ -1,6 +1,11 @@
 package org.eu.net.pool
 package phlib
 
+import at.petrak.hexcasting.api.utils.HexUtils
+import com.google.gson.JsonElement
+import com.mojang.serialization.{Codec, DynamicOps, JsonOps}
+import net.minecraft.nbt.{NbtByte, NbtByteArray, NbtDouble, NbtEnd, NbtFloat, NbtInt, NbtIntArray, NbtList, NbtLong, NbtLongArray, NbtOps, NbtShort, NbtString, NbtType}
+import net.minecraft.util.dynamic.Codecs
 import at.petrak.hexcasting.api.addldata.ADMediaHolder
 import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
@@ -14,6 +19,7 @@ import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, Ca
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
+import net.minecraft.nbt.{NbtCompound, NbtElement}
 import net.minecraft.server.world.ServerWorld
 
 import scala.annotation.tailrec
@@ -55,7 +61,48 @@ implicit class RegistryOps[T](r: Registry[T]) extends AnyRef:
       case i: Identifier => Registry.register(r, i, value)
       case k: RegistryKey[?] => Registry.register(r, k.asInstanceOf[RegistryKey[T]], value)
 
+extension [T](l: util.AbstractList[T])
+  def apply(n: Int): T = l.get(n)
+  def update(n: Int, x: T): Unit = l.set(n, x)
+extension (c: NbtCompound)
+  def apply(k: String): NbtElement | Null = c.get(k)
+  def update(k: String, v: NbtElement | Null): Unit = c.put(k, v)
+
+inline given DynamicOps[JsonElement] = JsonOps.COMPRESSED
+extension [T: DynamicOps as t] (x: T) def convertDynamic[R: DynamicOps as r]: R = t.convertTo(r, x)
+
+given (vm: CastingVM) => CastingEnvironment = vm.getEnv
+given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
+
 given Conversion[String, MutableText] = Text.literal
+
+given Codec[Text] = Codecs.TEXT
+given DynamicOps[NbtElement] = NbtOps.INSTANCE
+
+given IotaType[DoubleIota] = DoubleIota.TYPE
+
+given (vm: CastingVM) => CastingImage = vm.getImage
+given Conversion[CastingVM, CastingImage] = _.getImage
+given Conversion[CastingVM, CastingEnvironment] = _.getEnv
+given Conversion[String, NbtString] = NbtString.of
+given Conversion[NbtString, String] = _.asString
+
+extension (e: NbtElement)
+  def downcast[T <: NbtElement: NbtType] = HexUtils.downcast(e, summon[NbtType[T]])
+
+given NbtType[NbtString] = NbtString.TYPE
+given NbtType[NbtByte] = NbtByte.TYPE
+given NbtType[NbtShort] = NbtShort.TYPE
+given NbtType[NbtInt] = NbtInt.TYPE
+given NbtType[NbtLong] = NbtLong.TYPE
+given NbtType[NbtFloat] = NbtFloat.TYPE
+given NbtType[NbtDouble] = NbtDouble.TYPE
+given NbtType[NbtByteArray] = NbtByteArray.TYPE
+given NbtType[NbtIntArray] = NbtIntArray.TYPE
+given NbtType[NbtLongArray] = NbtLongArray.TYPE
+given NbtType[NbtList] = NbtList.TYPE
+given NbtType[NbtCompound] = NbtCompound.TYPE
+given NbtType[NbtEnd] = NbtEnd.TYPE
 
 @tailrec
 def finishOperation(p: OperationResult)(using env: CastingEnvironment): OperationResult =
@@ -166,6 +213,8 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
 
 // this is out-of-scope for phlib but I have no idea where else to put it
 def init() =
+  hexXplat.getIotaTypeRegistry("map") = MapIota
+  hexXplat.getArithmeticRegistry("maps") = mapArithmetic
   Patterns.register("empty_map", e"dqdwdqd"):
     Patterns.mkLiteral(MapIota())
 
