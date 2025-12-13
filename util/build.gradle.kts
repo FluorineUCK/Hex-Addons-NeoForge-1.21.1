@@ -35,6 +35,8 @@ tasks.processResources {
 
             depends("mod-tools", "^1.1.5+1.20.1")
             depends("hexcasting", ">=0.11.2")
+
+            mixins("phlib.mixins.json")
         }
     }
 }

@@ -15,6 +15,10 @@ import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
 import net.minecraft.server.world.ServerWorld
+
+import scala.annotation.tailrec
+import scala.reflect.ClassTag
+import scala.util.{Success, Try}
 export scala.collection.convert.ImplicitConversions.*
 export scala.util.chaining._
 import java.util
@@ -28,6 +32,8 @@ import net.minecraft.registry.Registry
 import net.minecraft.registry.RegistryKey
 import net.minecraft.text.MutableText
 import net.minecraft.text.Text
+import net.fabricmc.fabric.api.event.Event
+import net.fabricmc.fabric.api.event.EventFactory
 
 val fabric = FabricLoader.getInstance
 val isDev = fabric.isDevelopmentEnvironment
@@ -49,10 +55,69 @@ implicit class RegistryOps[T](r: Registry[T]) extends AnyRef:
 
 given Conversion[String, MutableText] = Text.literal
 
+@tailrec
+def finishOperation(p: OperationResult)(using env: CastingEnvironment): OperationResult =
+  p.getNewContinuation match
+    case c: SpellContinuation.Done => p
+    case c: SpellContinuation.NotDone =>
+      finishCast(c.getFrame.evaluate(c.getNext, env.getWorld, CastingVM(p.getNewImage, env)), p.getNewImage)
+
+inline def finishCast(p: CastResult, oldImage: CastingImage)(using env: CastingEnvironment): OperationResult =
+  finishOperation(OperationResult(p.getNewData??oldImage, p.getSideEffects, p.getContinuation, p.getSound))
+
+extension [T] (x: T | Null)
+  inline def ?[R](f: T => R): R | Null = x match
+    case null => null
+    case x: T => f(x)
+  inline def ??(y: T): T = x match
+    case null => y
+    case x: T => x
+
 extension (i: CastingImage)
   def withStack(m: Seq[Iota] => Seq[Iota]): CastingImage = i.copy(util.ArrayList(m(i.getStack.toSeq)), i.getParenCount, i.getParenthesized, i.getEscapeNext, i.getOpsConsumed, i.getUserData)
 extension (o: OperationResult)
   def withStack(m: Seq[Iota] => Seq[Iota]): OperationResult = o.copy(o.getNewImage.withStack(m), o.getSideEffects, o.getNewContinuation, o.getSound)
+
+extension (ctx: StringContext)
+  def ne(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.NORTH_EAST)
+  def e(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.EAST)
+  def se(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.SOUTH_EAST)
+  def nw(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.NORTH_WEST)
+  def w(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.WEST)
+  def sw(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.SOUTH_WEST)
+
+extension [T, R] (f: T => R) def ∘ [U](g: U => T) = (x: U) => f(g(x))
+def wrapReturn[T](body: (T => Nothing) => T): T = body(return _)
+def wrapThrow[T, E <: Throwable](body: (E => Nothing) => T): T = wrapReturn[Try[T]](r => Success(body(r∘Failure))).get
+
+def propagateMishaps[T](env: CastingEnvironment)(body: => T): T =
+  wrapThrow[T, Mishap]: doThrow =>
+    object key extends CastingEnvironmentComponent.Key[?]
+    env.addExtension:
+      new CastingEnvironmentComponent with CastingEnvironmentComponent.PostExecution:
+        override def getKey: CastingEnvironmentComponent.Key[?] = key
+
+        override def onPostExecution(result: CastResult): Unit =
+          result.getSideEffects.collectFirst:
+            case m: OperatorSideEffect.DoMishap =>
+              if isDev then println(s"Propagating mishap: $m")
+              doThrow(m.getMishap)
+    try body finally env.removeExtension(key)
+
+def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
+  assume(max > min)
+  if x < min then min
+  else if x > max then max
+  else x
+
+object isIota:
+  inline def unapply[T <: Iota : IotaType as ty : ClassTag, I <: Int & Singleton](iota: Iota): Some[T] =
+    iota match
+      case iota: T => Some(iota)
+      case _ => throw MishapInvalidIota(iota, compiletime.constValue[I], ty.typeName)
+
+given IotaType[PropertyIota] = PropertyIota.TYPE
+given IotaType[Vec3Iota] = Vec3Iota.TYPE
 
 object Patterns:
   def mkAction(body: (CastingEnvironment, ServerWorld) ?=> (CastingImage, SpellContinuation) => (OperationResult | CastResult | (CastingImage, SpellContinuation, EvalSound, Seq[OperatorSideEffect]))): Action =
@@ -97,3 +162,6 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
     `then`
   else
     `else`
+
+object Events:
+  val beforePatternExecute: Event[PartialFunction[(PatternIota, CastingVM, ServerWorld, SpellContinuation), CastResult]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, ary => (PartialFunction.empty /: ary) (_ orElse _))

@@ -19,6 +19,7 @@ dependencies {
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
+    modImplementation("miyucomics.hexcellular:hexcellular:1.1.0")
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
 }
 

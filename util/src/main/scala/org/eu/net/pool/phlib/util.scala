@@ -33,7 +33,6 @@ import scala.quoted.*
 import scala.util.chaining.given
 
 given [T]: Conversion[RegistryKey[Registry[T]], ? <: Registry[T]] = Registries.REGISTRIES.asInstanceOf[Registry[Registry[T]]].get(_)
-given Conversion[String, Identifier] = Identifier.of("hexic", _)
 
 trait Registrar[T](val id: Identifier):
   val key: RegistryKey[Registry[T]] = RegistryKey.ofRegistry[T](id)

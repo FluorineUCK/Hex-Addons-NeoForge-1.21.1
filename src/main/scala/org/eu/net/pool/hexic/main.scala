@@ -186,10 +186,10 @@ import net.minecraft.network.packet.s2c.play.PositionFlag
 import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 
 import scala.concurrent.duration.Duration
-
-import phlib.{_, given}
+import phlib.{Events as PhEvents, *, given}
 
 given Logger = LoggerFactory.getLogger("hexic")
+given Conversion[String, Identifier] = Identifier.of("hexic", _)
 
 extension (i: Iota)
   def asIotaType[T <: Iota: ClassTag](idx: Int, expected: => Text): T = i match
@@ -484,14 +484,6 @@ trait ServerAware[T <: IotaType[?]]:
 
 given [T <: java.lang.Enum[T]: ClassTag as ct] => FromString[T]:
   override def fromString(s: String): T = Enum.valueOf[T](ct.runtimeClass.asInstanceOf[Class[T]], s)
-
-extension [T] (x: T | Null)
-  inline def ?[R](f: T => R): R | Null = x match
-    case null => null
-    case x: T => f(x)
-  inline def ??(y: T): T = x match
-    case null => y
-    case x: T => x
 
 case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)):
   override def use(world: World, player: PlayerEntity, hand: Hand): TypedActionResult[ItemStack] =
@@ -830,6 +822,31 @@ def memo[T, R](f: T => R, limit: Option[Int] = Some(128)): T => R =
   x =>
     cache.synchronized:
       cache.computeIfAbsent(x, f(_))
+
+def iotaInt(iota: Iota, er: => Nothing): Int =
+  iota match
+    case d: DoubleIota =>
+      val n = d.getDouble
+      val i = n.toInt
+      if (i - n).abs > DoubleIota.TOLERANCE then
+        er
+      else
+        i
+    case _ => er
+@targetName("iotaInt max")
+def iotaInt(iota: Iota, max: Int, er: => Nothing): Int =
+  val x = iotaInt(iota, er)
+  if x > max then
+    er
+  else
+    x
+@targetName("iotaInt under")
+def iotaInt(iota: Iota, under: Int, er: => Nothing): Int =
+  val x = iotaInt(iota, er)
+  if x >= under then
+    er
+  else
+    x
 
 trait MutableFunction[T, R] extends (T => R):
   def update(key: T, value: R): Unit
@@ -1715,18 +1732,6 @@ def init(): Unit =
             null // kotlin bullshit
           ), cont, HexEvalSounds.HERMES, Seq())
         case _ => throw MishapBadCaster()
-  Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
-    Patterns.mkConstAction(4):
-      case Seq(userdata, display, isIota[Vec3Iota, 1](color), isIota[PropertyIota, 0](metatable)) =>
-        val r = clamp(color.getVec3.x)(0.0, 1.0).*(5).round.toInt
-        assume(0 until 6 contains r)
-        val g = clamp(color.getVec3.y)(0.0, 1.0).*(5).round.toInt
-        assume(0 until 6 contains g)
-        val b = clamp(color.getVec3.z)(0.0, 1.0).*(5).round.toInt
-        assume(0 until 6 contains b)
-        Seq:
-          val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
-          ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
   Patterns.register("get_other_caster", nw"ede"):
     Patterns.mkLiteral:
       val players: Set[LivingEntity] = summon[CastingEnvironment].getWorld.getPlayers.toSet
@@ -2067,60 +2072,6 @@ def init(): Unit =
   finally
     out.close()
 
-def iotaInt(iota: Iota, er: => Nothing): Int =
-  iota match
-    case d: DoubleIota =>
-      val n = d.getDouble
-      val i = n.toInt
-      if (i - n).abs > DoubleIota.TOLERANCE then
-        er
-      else
-        i
-    case _ => er
-@targetName("iotaInt max")
-def iotaInt(iota: Iota, max: Int, er: => Nothing): Int =
-  val x = iotaInt(iota, er)
-  if x > max then
-    er
-  else
-    x
-@targetName("iotaInt under")
-def iotaInt(iota: Iota, under: Int, er: => Nothing): Int =
-  val x = iotaInt(iota, er)
-  if x >= under then
-    er
-  else
-    x
-
-extension [T, R] (f: T => R) def ∘ [U](g: U => T) = (x: U) => f(g(x))
-def wrapReturn[T](body: (T => Nothing) => T): T = body(return _)
-def wrapThrow[T, E <: Throwable](body: (E => Nothing) => T): T = wrapReturn[Try[T]](r => Success(body(r∘Failure))).get
-
-def propagateMishaps[T](env: CastingEnvironment)(body: => T): T =
-  wrapThrow[T, Mishap]: doThrow =>
-    object key extends CastingEnvironmentComponent.Key[?]
-    env.addExtension:
-      new CastingEnvironmentComponent with CastingEnvironmentComponent.PostExecution:
-        override def getKey: CastingEnvironmentComponent.Key[?] = key
-        override def onPostExecution(result: CastResult): Unit =
-          result.getSideEffects.collectFirst:
-            case m: OperatorSideEffect.DoMishap =>
-              if isDev then println(s"Propagating mishap: $m")
-              doThrow(m.getMishap)
-    try body finally env.removeExtension(key)
-
-def clamp[@specialized T: Ordering](x: T)(min: T, max: T): T =
-  assume(max > min)
-  if x < min then min
-  else if x > max then max
-  else x
-
-object isIota:
-  def unapply[T <: Iota: IotaType as ty: ClassTag, I <: Int: Const as i](iota: Iota): Some[T] =
-    iota match
-      case iota: T => Some(iota)
-      case _ => throw MishapInvalidIota(iota, i, ty.typeName)
-
 given IotaType[PropertyIota] = PropertyIota.TYPE
 given IotaType[Vec3Iota] = Vec3Iota.TYPE
 
@@ -2137,16 +2088,6 @@ private[hexic] class ComponentInit extends EntityComponentInitializer, LevelComp
 opaque type Attrition = Unit
 object Attrition extends Registrar[Attrition]("attrition")
 
-@tailrec
-def finishOperation(p: OperationResult)(using env: CastingEnvironment): OperationResult =
-  p.getNewContinuation match
-    case c: SpellContinuation.Done => p
-    case c: SpellContinuation.NotDone =>
-      finishCast(c.getFrame.evaluate(c.getNext, env.getWorld, CastingVM(p.getNewImage, env)), p.getNewImage)
-
-inline def finishCast(p: CastResult, oldImage: CastingImage)(using env: CastingEnvironment): OperationResult =
-  finishOperation(OperationResult(p.getNewData??oldImage, p.getSideEffects, p.getContinuation, p.getSound))
-
 type subtypes[T, R <: T] = T
 //case class StaffcastFrame(owner: ServerPlayerEntity, oldImage: CastingImage) extends ContinuationFrame:
 //  override def getType: ContinuationFrame.Type[StaffcastFrame] = StaffcastFrame
@@ -2161,14 +2102,6 @@ type subtypes[T, R <: T] = T
 //  def deserializeFromNBT(data: NbtCompound, world: ServerWorld): StaffcastFrame = ???
 
 val fadedScrolls: TagKey[ActionRegistryEntry] = TagKey.of(HexRegistries.ACTION, "faded_scrolls")
-
-extension (ctx: StringContext)
-  def ne(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.NORTH_EAST)
-  def e(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.EAST)
-  def se(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.SOUTH_EAST)
-  def nw(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.NORTH_WEST)
-  def w(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.WEST)
-  def sw(args: String*): HexPattern = HexPattern.fromAngles(ctx.s(args*), HexDir.SOUTH_WEST)
 
 extension (text: Text)
   def +(other: Text): MutableText = Text.literal("").append(text).append(other)
@@ -2435,69 +2368,6 @@ def pocketName(using rand: Random) =
   def piece = s"${b.toUpperCase}$v$b" + Iterator.continually(v + b).takeWhile(_ => rand.nextInt(3) != 0).mkString("")
   (piece +: Iterator.continually(piece).takeWhile(_ => rand.nextInt(5) == 0).toSeq).mkString("-")
 val pocketNames = memo((id: UUID) => pocketName(using Random(id.getLeastSignificantBits)))
-
-abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleton, userdata: Iota, override val display: Text, metatable: String, readonlyMetatable: Boolean) extends Iota(iotaType, (userdata, display, metatable, readonlyMetatable)):
-  override def subIotas(): lang.Iterable[Iota] = util.List.of(userdata)
-  override def toleratesOther(that: Iota): Boolean = that match
-    case AbstractMetatableIota(_, u, _, m, _) => metatable == m && Iota.tolerates(userdata, u)
-    case _ => Iota.tolerates(userdata, that)
-  override def serialize(): NbtElement = NbtCompound().tap: c =>
-    c.put("userdata", IotaType.serialize(userdata))
-    c.put("display",  Text.Serializer.toJsonTree(display).convertDynamic)
-    c.put("metatable", metatable)
-    c.putBoolean("ro", readonlyMetatable)
-  def meta(using world: ServerWorld): MapIota =
-    StateStorage.Companion.getProperty(world, metatable) match
-      case m: MapIota => m
-      case i => throw MishapBadMetatable(metatable, i, readonlyMetatable)
-  def meta_=(using world: ServerWorld)(x: MapIota): Unit =
-    StateStorage.Companion.setProperty(world, metatable, x)
-  infix def mro(key: HexPattern)(using world: ServerWorld): Option[Iota] =
-    meta.get(PatternIota(key)).orElse:
-      userdata match
-        case m: AbstractMetatableIota => m mro key
-        case _ => None
-  override def isTruthy: Boolean = true
-  override def executable: Boolean = true
-  override def execute(using vm: CastingVM, world: ServerWorld, continuation: SpellContinuation): CastResult = callMetamethod(se"deaqq")(vm.getImage, continuation)
-  override def size = userdata.size + 1
-  def callMetamethod(using env: CastingEnvironment)(key: HexPattern)(image: CastingImage, continuation: SpellContinuation): CastResult =
-    val callee = mro(key).getOrElse(PatternIota(key))
-    val result = OpEval.INSTANCE.exec(env, image, continuation, image.getStack.init :+ userdata, callee)
-    CastResult(callee, result.getNewContinuation, result.getNewImage, result.getSideEffects, ResolvedPatternType.EVALUATED, result.getSound)
-  class MishapBadMetatable(name: String, value: Iota, readonly: Boolean) extends Mishap():
-    override def errorMessage(env: CastingEnvironment, ctx: Context): Text = Text.translatable("hexic.bad_metatable", name, value.display)
-    override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.GRAY)
-    override def execute(env: CastingEnvironment, ctx: Context, stack: ju.List[Iota]): Unit =
-      stack(stack.length - 1) = GarbageIota()
-      if !readonly then StateStorage.Companion.setProperty(env.getWorld, name, GarbageIota())
-
-private[hexic] object metatableHook:
-  extension (p: PatternIota) def executeHook(using Label[CastResult], ServerWorld)(using vm: CastingVM)(continuation: SpellContinuation): Unit =
-    vm.getStack.lastOption match
-      case Some(m: AbstractMetatableIota) =>
-        for x <- m mro p.getPattern do
-          // this is probably cursed
-          val result = m.callMetamethod(p.getPattern)(vm.getImage.withStack(_.init), continuation)
-          boundary.break(result)
-      case _ =>
-
-case class MetatableIotaType private[hexic](override val color: Int) extends IotaType[AbstractMetatableIota]:
-  class Instance(userdata: Iota, display: Text, metatable: String, readonlyMetatable: Boolean) extends AbstractMetatableIota(MetatableIotaType.this, userdata, display, metatable, readonlyMetatable)
-  override def deserialize(tag: NbtElement, world: ServerWorld): Instance =
-    val c = tag.downcast[NbtCompound]
-    Instance(
-      userdata = IotaType.deserialize(c.get("userdata").downcast[NbtCompound], world),
-      display = Text.Serializer.fromJson(c.get("display").convertDynamic: JsonElement),
-      metatable = c.get("metatable").downcast[NbtString].asString,
-      readonlyMetatable = c.getBoolean("ro"),
-    )
-  override def display(tag: NbtElement): Text = Text.Serializer.fromJson(tag.downcast[NbtCompound].get("display").convertDynamic: JsonElement)
-
-object MetatableIotaType:
-  val validValues = Seq(0x0, 0x3, 0x6, 0x9, 0xC, 0xF)
-  val colors: (Int, Int, Int) :> MetatableIotaType = (for r <- validValues; g <- validValues; b <- validValues yield (r, g, b) -> MetatableIotaType((r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b)).toMap
-  println(s"Metatables: $colors")
 
 object TripwireIota extends Iota(new IotaType[TripwireIota.type]:
   override def deserialize(tag: NbtElement, world: ServerWorld): TripwireIota.type = TripwireIota
