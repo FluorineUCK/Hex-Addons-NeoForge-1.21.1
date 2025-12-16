@@ -41,6 +41,7 @@ tasks.processResources {
             breaks("hexic", "<2.0.0")
 
             entrypoint("org.eu.net.pool.iotaworks.main\$package::init")
+            mixins("iotaworks.mixins.json")
         }
     }
 }
