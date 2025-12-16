@@ -19,6 +19,8 @@ public class PatternIotaMixin {
     private static Text wrappedDisplay(HexPattern pat, Operation<Text> original) {
         int level = ((HexPatternAccessor) (Object) pat).depth();
         StringBuilder buf = new StringBuilder();
+        boolean negative = level < 0;
+        if (negative) level *= -1;
         while (level > 0) {
             switch (level % 10) {
                 case 0: buf.addOne('⁰'); break;
@@ -34,7 +36,7 @@ public class PatternIotaMixin {
             }
             level /= 10;
         }
-        buf.reverse();
-        return ((MutableText) original.call(pat)).append(buf.toString());
+        if (negative) buf.addOne('⁻');
+        return ((MutableText) original.call(pat)).append(buf.reverse().toString());
     }
 }
