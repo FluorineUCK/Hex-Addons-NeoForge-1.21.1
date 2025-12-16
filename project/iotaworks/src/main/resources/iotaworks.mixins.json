@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "HexPatternMixin",
-    "HexPattern$CompanionMixin"
+    "HexPattern$CompanionMixin",
+    "PatternIotaMixin"
   ]
 }
