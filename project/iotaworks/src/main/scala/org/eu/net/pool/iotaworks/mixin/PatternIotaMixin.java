@@ -2,10 +2,15 @@ package org.eu.net.pool.iotaworks.mixin;
 
 import at.petrak.hexcasting.api.casting.iota.PatternIota;
 import at.petrak.hexcasting.api.casting.math.HexPattern;
+import at.petrak.hexcasting.api.casting.eval.CastResult;
+import at.petrak.hexcasting.api.casting.eval.vm.CastingVM;
+import at.petrak.hexcasting.api.casting.eval.vm.SpellContinuation;
 import com.llamalad7.mixinextras.injector.wrapmethod.WrapMethod;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import net.minecraft.text.Text;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.MutableText;
+import org.eu.net.pool.iotaworks.Extern;
 import scala.collection.mutable.StringBuilder;
 
 import org.eu.net.pool.iotaworks.HexPatternAccessor;
@@ -38,5 +43,10 @@ public class PatternIotaMixin {
         }
         if (negative) buf.addOne('⁻');
         return ((MutableText) original.call(pat)).append(buf.reverse().toString());
+    }
+
+    @WrapMethod(method = "execute")
+    CastResult wrappedExecute(CastingVM vm, ServerWorld world, SpellContinuation continuation, Operation<CastResult> original) {
+        return Extern.handleExecute((PatternIota) (Object) this, vm, world, continuation, original::call);
     }
 }
