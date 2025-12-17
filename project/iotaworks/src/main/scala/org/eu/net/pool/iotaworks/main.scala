@@ -3,7 +3,7 @@ package iotaworks
 
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, ResolvedPatternType}
-import at.petrak.hexcasting.api.casting.iota.{GarbageIota, Iota, IotaType, PatternIota, DoubleIota, Vec3Iota}
+import at.petrak.hexcasting.api.casting.iota.{GarbageIota, Iota, IotaType, PatternIota, DoubleIota, NullIota, Vec3Iota}
 import at.petrak.hexcasting.api.casting.math.HexPattern
 import at.petrak.hexcasting.api.casting.mishaps.Mishap
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
@@ -11,7 +11,7 @@ import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import com.google.gson.JsonElement
 import miyucomics.hexcellular.{PropertyIota, StateStorage}
-import net.minecraft.nbt.{NbtCompound, NbtElement, NbtString}
+import net.minecraft.nbt.{NbtCompound, NbtList, NbtElement, NbtString}
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.Text
 import net.minecraft.util.{DyeColor, Identifier}
@@ -19,6 +19,11 @@ import org.eu.net.pool.phlib.{Events as PhEvents, *, given}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.{lang, util, util as ju}
+import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame
+import kotlin.Pair
+import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
+import at.petrak.hexcasting.api.casting.eval.sideeffects.EvalSound
+import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 
 private[iotaworks] given Logger = LoggerFactory.getLogger("iotaworks")
 private[iotaworks] given Conversion[String, Identifier] = Identifier.of("iotaworks", _)
@@ -77,6 +82,46 @@ object MetatableIotaType:
   val validValues = Seq(0x0, 0x3, 0x6, 0x9, 0xC, 0xF)
   val colors: Map[(Int, Int, Int), MetatableIotaType] = (for r <- validValues; g <- validValues; b <- validValues yield (r, g, b) -> MetatableIotaType((r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b)).toMap
   println(s"Metatables: $colors")
+
+class DeltaFrame(delta: Int) extends ContinuationFrame:
+  def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(true, stack.toSeq)
+  def getType(): Type[DeltaFrame] = DeltaFrame
+  def serializeToNBT =
+    val c = NbtCompound()
+    c.putInt("d", delta)
+    c
+  def size = 0
+  def evaluate(cont: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
+    CastResult(GarbageIota(), cont, DeltaFrame.shift(vm.getImage, delta), Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.NOTHING)
+object DeltaFrame extends ContinuationFrame.Type[DeltaFrame]:
+  def deserializeFromNBT(data: NbtCompound, world: ServerWorld): DeltaFrame =
+    DeltaFrame(data.getInt("d"))
+  def shift(image: CastingImage, delta: Int): CastingImage =
+    val data = image.getUserData
+    val list: NbtList = data.getList("iotaworks:stack", NbtElement.COMPOUND_TYPE)
+    val newStack = if delta > 0 then
+      val (stack, held) = image.getStack.splitAt(image.getStack.size - delta)
+      for iota <- held do list.add(IotaType.serialize(iota))
+      data.put("iotaworks:stack", list)
+      stack.toSeq
+    else
+      val stolen = list.subList(0, (list.size + delta) max 0)
+      val neededNulls = Seq.fill(-delta - stolen.size)(NullIota())
+      val toAdd = stolen +: neededNulls
+      if isDev then println(s"stolen[${stolen.size}]=$stolen, neededNulls[${neededNulls.size}]=$neededNulls, total[${toAdd.length}]=${toAdd} delta=$delta, list.size=${list.size}")
+      assert(toAdd.size == -delta)
+      stolen.clear()
+      image.getStack :+ toAdd
+    CastingImage(newStack, image.getParenCount, image.getParenthesized, image.getEscapeNext, image.getOpsConsumed, data, null)
+
+private[iotaworks] object Extern:
+  def handleExecute(pattern: PatternIota, vm: CastingVM, world: ServerWorld, continuation: SpellContinuation, original: (CastingVM, ServerWorld, SpellContinuation) => CastResult): CastResult =
+    val delta = pattern.getPattern.asInstanceOf[HexPatternAccessor].depth
+    if delta != 0 then
+      vm.setImage(DeltaFrame.shift(vm.getImage, delta))
+      original(vm, world, continuation.pushFrame(DeltaFrame(-delta)))
+    else
+      original(vm, world, continuation)
 
 trait HexPatternAccessor:
   var depth: Int
