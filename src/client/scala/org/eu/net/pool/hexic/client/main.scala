@@ -1,4 +1,5 @@
-package org.eu.net.pool.hexic
+package org.eu.net.pool
+package hexic
 package client
 
 import at.petrak.hexcasting.api.item.PigmentItem
@@ -49,6 +50,8 @@ import scala.reflect.Selectable.reflectiveSelectable
 import scala.util.boundary
 import scala.util.boundary.Label
 import scala.util.chaining.scalaUtilChainingOps
+
+import phlib.{_, given}
 
 given client: MinecraftClient = MinecraftClient.getInstance
 
@@ -325,7 +328,6 @@ def datagen(gen: FabricDataGenerator): Unit =
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",
           "dye_offhand" -> "Apply Pigment",
-          "empty_map" -> "Vacant Reflection: Map",
           "erase" -> "Erase Block",
           "extract" -> "Excisor's Gambit",
           "fox" -> "Vulpine Gambit",
@@ -339,7 +341,6 @@ def datagen(gen: FabricDataGenerator): Unit =
           "make_cme" -> "Thoth's Pseudogambit",
           "makeworld" -> "Conjure Demiplane",
           "malloc" -> "Allocator's Purification",
-          "metatable" -> "Patchwork Exaltation",
           "modulo" -> "Modulus Distillation II",
           "murmur" -> "Murmur Reflection",
           "nbt/deserialize" -> "Importer's Purification",

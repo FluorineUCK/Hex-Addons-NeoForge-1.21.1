@@ -1,5 +1,6 @@
 //noinspection NotImplementedCode
-package org.eu.net.pool.hexic
+package org.eu.net.pool
+package phlib
 
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
@@ -13,7 +14,6 @@ import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.common.lib.HexItems
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
-import com.chocohead.mm.api.EnumAdder
 import com.mojang.serialization.{Codec, DynamicOps}
 import net.fabricmc.fabric.api.event.registry.FabricRegistryBuilder
 import net.minecraft.entity.LivingEntity
@@ -33,7 +33,6 @@ import scala.quoted.*
 import scala.util.chaining.given
 
 given [T]: Conversion[RegistryKey[Registry[T]], ? <: Registry[T]] = Registries.REGISTRIES.asInstanceOf[Registry[Registry[T]]].get(_)
-given Conversion[String, Identifier] = Identifier.of("hexic", _)
 
 trait Registrar[T](val id: Identifier):
   val key: RegistryKey[Registry[T]] = RegistryKey.ofRegistry[T](id)
@@ -50,10 +49,6 @@ def uninline(using q: Quotes)(t: q.reflect.Term): q.reflect.Term = t match
 
 def unless(cond: Boolean)(body: => Unit): Unit = if (!cond) body
 
-def generateAppropriateColors_impl(e: Expr[EnumAdder])(using q: Quotes): Expr[EnumAdder] =
-  // FIXME: this is wrong
-  DyeColor.values.foldLeft(e)((e, c) => '{ ${ e }.addEnum(${ Expr(s"HEXIC$$PEN_WITH_COLOR_${c.asString}") }, (${Expr(c.getMapColor.color)}: Int): Integer, (${Expr(c.getSignColor)}: Int): Integer, java.lang.Boolean.TRUE) })
-
 extension (n: Int)
   def times(b: => Unit) =
     for (i <- 1 to n) {
@@ -69,6 +64,7 @@ def eitherTypes(using q: Quotes)(t: q.reflect.TypeRepr): Seq[q.reflect.TypeRepr]
     case t => Seq(t)
 
 // My level of sanity is slightly lower than the Hex Caster's sanity.
+inline def arith(name: String, inline ops: (HexPattern, AnyRef)*) = ${ arithImpl('name, 'ops) }
 def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, AnyRef)]]): Expr[Arithmetic] =
   import q.reflect.*
   val Varargs(xs) = args: @unchecked
