@@ -90,7 +90,7 @@ allprojects {
             val langRoot = destinationDir.resolve("assets/$modid/lang")
 
             doLast {
-                for (lang in bookRoot.list()) {
+                bookRoot.list()?.forEach { lang ->
                     val langFile = langRoot.resolve("$lang.json")
                     if (langFile.exists()) {
                         val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
