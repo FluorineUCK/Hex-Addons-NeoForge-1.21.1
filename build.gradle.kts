@@ -6,6 +6,8 @@ import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import groovy.json.JsonOutput
+import `java.nio`.file.Files;
+import kotlin.io.path.deleteIfExists
 
 plugins {
     id("fabric-loom") version "1.13-SNAPSHOT"
@@ -83,6 +85,17 @@ allprojects {
             }
 
             mixin.useLegacyMixinAp = false
+        }
+
+        if (project != rootProject) {
+            tasks.named("runClient") {
+                doFirst {
+                    val rootOptions = rootProject.file("run/options.txt").toPath()
+                    val options = file("run/options.txt").toPath()
+                    options.deleteIfExists()
+                    Files.createSymbolicLink(options, rootOptions)
+                }
+            }
         }
 
         tasks.processResources {
