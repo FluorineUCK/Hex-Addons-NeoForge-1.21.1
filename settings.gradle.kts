@@ -21,3 +21,5 @@ pluginManagement {
 include("util")
 include("iotaworks")
 project(":iotaworks").projectDir = file("project/iotaworks")
+include("hexxytounge")
+project(":hexxytounge").projectDir = file("project/hexxytounge")
