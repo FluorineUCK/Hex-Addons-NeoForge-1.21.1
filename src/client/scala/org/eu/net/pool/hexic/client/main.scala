@@ -63,21 +63,6 @@ inline def foldLocalPlayer[R](default: => R)(ifPresent: ClientPlayerEntity => R)
 var lastMurmur: Option[String] = None
 
 object Hooks:
-  def clientTick(): Unit =
-    val currentMurmur = client.currentScreen match
-      case null => None
-      case c: ChatScreenAccess => Some(c.getChatField.getText)
-      case _ => None
-    if currentMurmur != lastMurmur then
-      if isDev then println(s"Sending murmur: ${currentMurmur}")
-      lastMurmur = currentMurmur
-      val buf = PacketByteBufs.create()
-      buf.writeBoolean(currentMurmur.isDefined)
-      currentMurmur.foreach(buf.writeString)
-      try
-        ClientPlayNetworking.send("murmur", buf)
-      catch
-        case _: IllegalStateException =>
   def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
     foldLocalPlayer(original): p =>
       val c = p.getComponent(PlayerInfoComponent.key)

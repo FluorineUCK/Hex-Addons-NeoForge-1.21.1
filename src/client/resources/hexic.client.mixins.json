@@ -8,8 +8,7 @@
     "ChatInputSuggestorMixin",
     "ChatScreenAccess",
     "ChatScreenMixin",
-    "InventoryScreenMixin",
-    "MinecraftClientMixin"
+    "InventoryScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1
