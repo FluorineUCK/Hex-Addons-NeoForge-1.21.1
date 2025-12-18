@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class MinecraftClientMixin {
     @Shadow @Nullable public Screen currentScreen;
 
-    @Inject(at = @At("HEAD"), method = "tick")
+    
     void tick(CallbackInfo ci) {
         Hooks$.MODULE$.clientTick();
     }
