@@ -23,7 +23,6 @@ def tick() =
     catch
       case _: IllegalStateException =>
 
-
 package mixin:
   import net.minecraft.client.MinecraftClient
   import net.minecraft.client.gui.screen.ChatScreen
@@ -34,7 +33,6 @@ package mixin:
   import org.spongepowered.asm.mixin.injection.{At, Inject}
   import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
 
-  import scala.reflect.ClassTag
   @Mixin(Array(classOf[MinecraftClient]))
   private[mixin] class MinecraftClientMixin:
     @Inject(at = Array(new At(value = "HEAD")), method = Array("tick"))

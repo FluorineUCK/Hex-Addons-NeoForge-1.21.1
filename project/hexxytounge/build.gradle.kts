@@ -15,6 +15,9 @@ dependencies {
     api("org.scala-lang:scala3-library_3:3.7.1")
     api("org.scala-lang:scala-library:2.13.6")
     api(project(":util", "namedElements"))
+    include(modImplementation("maven.modrinth:jsonpatcher:1.0.0-beta.4+mc.1.20.1")!!)
+    implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3") // trans maven.modrinth:jsonpatcher
+    modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0") // trans maven.modrinth:jsonpatcher
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
@@ -37,6 +40,7 @@ tasks.processResources {
             depends("phlib", "0.1.1")
             depends("hexcasting", ">=0.11.2")
             depends("moreiotas", ">=0.1.1")
+            depends("jsonpatcher", "^1.0.0-beta")
             recommends("hexpose", "*")
             breaks("hexic", "<2.0.0")
 
