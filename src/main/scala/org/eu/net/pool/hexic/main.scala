@@ -1903,18 +1903,6 @@ def init(): Unit =
         case Seq(i, _: ListIota, _*) => throw MishapInvalidIota.ofType(i, 0, "list")
         case Seq(_, i, _*) => throw MishapInvalidIota.ofType(i, 1, "list")
         case s => throw MishapNotEnoughArgs(2, s.size)
-  Patterns.register("reveal", ne"deqed"):
-    Patterns.mkConstAction(1, 0):
-      case Seq(iota: Iota) =>
-        locally(summon[CastingEnvironment]).getCastingEntity match
-          case null => throw MishapBadCaster()
-          case p: ServerPlayerEntity =>
-            p.getComponent(PlayerInfoComponent.key).chatLines = iota match
-              case s: ListIota => s.getList.map(_.display).toSeq
-              case _ => Seq(iota.display)
-            p.syncComponent(PlayerInfoComponent.key)
-            Seq()
-          case _ => throw MishapBadCaster()
   lazy val messageFrameType: ContinuationFrame.Type[MessageFrame] = (c: NbtCompound, world: ServerWorld) =>
     val id = Uuids.toUuid(c.getIntArray("id"))
     MessageFrame(id, Text.Serializer.fromJson(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, c.getCompound("t"))), world.getServer.getPlayerManager.getPlayer(id))

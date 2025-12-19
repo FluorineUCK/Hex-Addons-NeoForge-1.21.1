@@ -48,6 +48,7 @@ tasks.processResources {
             custom {
                 array("cardinal-components") {
                     put("hexxytounge:murmur")
+                    put("hexxytounge:reveal")
                 }
             }
         }
