@@ -87,6 +87,13 @@ allprojects {
             mixin.useLegacyMixinAp = false
         }
 
+        fabricApi {
+            configureTests {
+                modId = modid
+                eula = true
+            }
+        }
+
         if (project != rootProject) {
             tasks.named("runClient") {
                 doFirst {
