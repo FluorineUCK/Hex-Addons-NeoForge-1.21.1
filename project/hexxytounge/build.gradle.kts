@@ -21,6 +21,7 @@ dependencies {
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:5.2.3")
     modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") }
 }
 
@@ -40,12 +41,20 @@ tasks.processResources {
             depends("phlib", "0.1.1")
             depends("hexcasting", ">=0.11.2")
             depends("moreiotas", ">=0.1.1")
+            depends("cardinal-components-entity", "^5.2.3")
             depends("jsonpatcher", "^1.0.0-beta")
             recommends("hexpose", "*")
             breaks("hexic", "<2.0.0")
 
             entrypoint("org.eu.net.pool.hexxytounge.main\$package::init")
+            entrypoint("cardinal-components", "org.eu.net.pool.hexxytounge.Components")
             mixins("hexxytongge.mixins.json")
+            custom {
+                array("cardinal-components") {
+                    put("hexxytounge:murmur")
+                    put("hexxytounge:reveal")
+                }
+            }
         }
     }
 }
