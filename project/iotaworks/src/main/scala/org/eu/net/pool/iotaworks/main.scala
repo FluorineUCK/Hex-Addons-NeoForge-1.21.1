@@ -136,6 +136,13 @@ def init() =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
+  if isDev then Patterns.register("metatable_abridged", se"ded"):
+    Patterns.mkConstAction(3):
+      case Seq(iota, key, value) =>
+        val ty = MetatableIotaType.colors(0, 0, 0)
+        val pw = ty.Instance(iota, Text.literal("Test"), "iotaworks", false)
+        pw.meta = MapIota() + (key -> value)
+        Seq(pw)
   Patterns.register("set_subscript", w"eeedewa"):
     Patterns.mkConstAction(2):
       case Seq(isIota[PatternIota, 1](pat), isIota[DoubleIota, 0](num)) =>
