@@ -107,11 +107,11 @@ object DeltaFrame extends ContinuationFrame.Type[DeltaFrame]:
     else
       val stolen = list.subList(0, (list.size + delta) max 0)
       val neededNulls = Seq.fill(-delta - stolen.size)(NullIota())
-      val toAdd = stolen +: neededNulls
       if isDev then println(s"stolen[${stolen.size}]=$stolen, neededNulls[${neededNulls.size}]=$neededNulls, total[${toAdd.length}]=${toAdd} delta=$delta, list.size=${list.size}")
+      val toAdd = stolen ++ neededNulls
       assert(toAdd.size == -delta)
       stolen.clear()
-      image.getStack :+ toAdd
+      image.getStack ++ toAdd
     CastingImage(newStack, image.getParenCount, image.getParenthesized, image.getEscapeNext, image.getOpsConsumed, data, null)
 
 private[iotaworks] object Extern:
