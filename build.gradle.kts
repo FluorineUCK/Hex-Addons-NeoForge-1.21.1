@@ -75,7 +75,7 @@ allprojects {
     plugins.withId("fabric-loom") {
         loom {
             splitEnvironmentSourceSets()
-            runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
+            runs["client"].programArgs += listOf("--username", "Player", "--uuid", "9e1b34e3-8031-4623-8918-eb7914ab564b")
 
             mods {
                 register(modid) {
@@ -92,6 +92,10 @@ allprojects {
                 modId = modid
                 eula = true
             }
+        }
+
+        dependencies {
+            modLocalRuntime("maven.modrinth:ears:1.4.7+fabric-1.20")
         }
 
         if (project != rootProject) {
