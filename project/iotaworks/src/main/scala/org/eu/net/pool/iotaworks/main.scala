@@ -92,33 +92,29 @@ class DeltaFrame(delta: Int) extends ContinuationFrame:
     c
   def size = 0
   def evaluate(cont: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
-    CastResult(GarbageIota(), cont, DeltaFrame.shift(vm.getImage, delta), Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.NOTHING)
+    CastResult(GarbageIota(), cont, DeltaFrame.shift(vm.getImage, delta)(using world), Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.NOTHING)
 object DeltaFrame extends ContinuationFrame.Type[DeltaFrame]:
   def deserializeFromNBT(data: NbtCompound, world: ServerWorld): DeltaFrame =
     DeltaFrame(data.getInt("d"))
-  def shift(image: CastingImage, delta: Int): CastingImage =
+  def shift(image: CastingImage, delta: Int)(using ServerWorld): CastingImage =
     val data = image.getUserData
-    val list: NbtList = data.getList("iotaworks:stack", NbtElement.COMPOUND_TYPE)
-    val newStack = if delta > 0 then
-      val (stack, held) = image.getStack.splitAt(image.getStack.size - delta)
-      for iota <- held do list.add(IotaType.serialize(iota))
-      data.put("iotaworks:stack", list)
-      stack.toSeq
+    val list: NbtList = data.getList("iotaworks:stack", NbtElement.COMPOUND_TYPE) // stack[0] .. stack[n] | list[n] .. list[0]
+    // We can always optimize this later. Go with the dumb method for now.
+    val newStack = collection.mutable.Buffer.from(image.getStack)
+    if delta > 0 then
+      // move from end of stack to end of hold
+      delta times list.add(IotaType.serialize(if newStack.nonEmpty then newStack.remove(newStack.length - 1) else NullIota()))
     else
-      val stolen = list.subList(0, (list.size + delta) max 0)
-      val neededNulls = Seq.fill(-delta - stolen.size)(NullIota())
-      if isDev then println(s"stolen[${stolen.size}]=$stolen, neededNulls[${neededNulls.size}]=$neededNulls, total[${toAdd.length}]=${toAdd} delta=$delta, list.size=${list.size}")
-      val toAdd = stolen ++ neededNulls
-      assert(toAdd.size == -delta)
-      stolen.clear()
-      image.getStack ++ toAdd
+      // move from end of hold to end of stack
+      (-delta) times newStack.append(if list.nonEmpty then IotaType.deserialize(list.remove(list.length - 1).downcast, summon) else NullIota())
+    data.put("iotaworks:stack", list)
     CastingImage(newStack, image.getParenCount, image.getParenthesized, image.getEscapeNext, image.getOpsConsumed, data, null)
 
 private[iotaworks] object Extern:
   def handleExecute(pattern: PatternIota, vm: CastingVM, world: ServerWorld, continuation: SpellContinuation, original: (CastingVM, ServerWorld, SpellContinuation) => CastResult): CastResult =
     val delta = pattern.getPattern.asInstanceOf[HexPatternAccessor].depth
     if delta != 0 then
-      vm.setImage(DeltaFrame.shift(vm.getImage, delta))
+      vm.setImage(DeltaFrame.shift(vm.getImage, delta)(using world))
       original(vm, world, continuation.pushFrame(DeltaFrame(-delta)))
     else
       original(vm, world, continuation)
