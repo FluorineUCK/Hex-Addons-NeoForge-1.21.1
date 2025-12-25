@@ -21,12 +21,12 @@ dependencies {
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modApi("io.github.tropheusj:serialization-hooks:0.4.99999")
     val cardinal_version = "5.2.3"
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")
     modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
 }
 

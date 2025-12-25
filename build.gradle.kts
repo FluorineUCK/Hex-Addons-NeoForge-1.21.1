@@ -6,6 +6,8 @@ import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import groovy.json.JsonOutput
+import `java.nio`.file.Files;
+import kotlin.io.path.deleteIfExists
 
 plugins {
     id("fabric-loom") version "1.13-SNAPSHOT"
@@ -73,7 +75,7 @@ allprojects {
     plugins.withId("fabric-loom") {
         loom {
             splitEnvironmentSourceSets()
-            runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
+            runs["client"].programArgs += listOf("--username", "Player", "--uuid", "9e1b34e3-8031-4623-8918-eb7914ab564b")
 
             mods {
                 register(modid) {
@@ -85,12 +87,34 @@ allprojects {
             mixin.useLegacyMixinAp = false
         }
 
+        fabricApi {
+            configureTests {
+                modId = modid
+                eula = true
+            }
+        }
+
+        dependencies {
+            modLocalRuntime("maven.modrinth:ears:1.4.7+fabric-1.20")
+        }
+
+        if (project != rootProject) {
+            tasks.named("runClient") {
+                doFirst {
+                    val rootOptions = rootProject.file("run/options.txt").toPath()
+                    val options = file("run/options.txt").toPath()
+                    options.deleteIfExists()
+                    Files.createSymbolicLink(options, rootOptions)
+                }
+            }
+        }
+
         tasks.processResources {
             val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
             val langRoot = destinationDir.resolve("assets/$modid/lang")
 
             doLast {
-                for (lang in bookRoot.list()) {
+                bookRoot.list()?.forEach { lang ->
                     val langFile = langRoot.resolve("$lang.json")
                     if (langFile.exists()) {
                         val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>

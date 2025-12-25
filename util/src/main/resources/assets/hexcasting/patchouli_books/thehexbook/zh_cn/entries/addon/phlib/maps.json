@@ -7,8 +7,8 @@
     "映射是能存储 iota 对的高效结构。虽然这种功能只靠列表操作也能做到，但专门设计的映射 iota 用到了某种奥秘物件，称作“$(thing)哈希/$”。这种区别并不会减少访问映射所需$(o)运算符/$的数量，却能大幅降低自然的负载，大多数访问下接近于 O(1)。",
     {
       "type": "hexcasting:pattern",
-      "op_id": "hexic:empty_map",
-      "anchor": "hexic:empty_map",
+      "op_id": "phlib:empty_map",
+      "anchor": "phlib:empty_map",
       "input": "",
       "output": "map<⊥, ⊥>",
       "text": "创建一个空映射以供使用。"

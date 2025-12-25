@@ -1849,12 +1849,6 @@ def init(): Unit =
         Seq(ListIota(ls take n), ListIota(ls drop (n+1)), ls(n))
       case Seq(ary: ListIota, nr) => throw MishapInvalidIota.ofType(nr, 0, "int")
       case Seq(ary, _) => throw MishapInvalidIota.ofType(ary, 1, "list")
-  Patterns.register("murmur", e"wwaqwa"):
-    Patterns.mkLiteral:
-      locally(summon[CastingEnvironment]).getCastingEntity match
-        case null => throw MishapBadCaster()
-        case p: ServerPlayerEntity => p.getComponent(PlayerInfoComponent.key).murmur.fold(NullIota())(StringIota.make)
-        case _ => throw MishapBadCaster()
   Patterns.register("make_cme", ne"dqqd"):
     Patterns.mkAction: (img, cont) =>
       img.getStack.toSeq.reverse match
@@ -1909,22 +1903,6 @@ def init(): Unit =
         case Seq(i, _: ListIota, _*) => throw MishapInvalidIota.ofType(i, 0, "list")
         case Seq(_, i, _*) => throw MishapInvalidIota.ofType(i, 1, "list")
         case s => throw MishapNotEnoughArgs(2, s.size)
-  Patterns.register("reveal", ne"deqed"):
-    Patterns.mkConstAction(1, 0):
-      case Seq(iota: Iota) =>
-        locally(summon[CastingEnvironment]).getCastingEntity match
-          case null => throw MishapBadCaster()
-          case p: ServerPlayerEntity =>
-            p.getComponent(PlayerInfoComponent.key).chatLines = iota match
-              case s: ListIota => s.getList.map(_.display).toSeq
-              case _ => Seq(iota.display)
-            p.syncComponent(PlayerInfoComponent.key)
-            Seq()
-          case _ => throw MishapBadCaster()
-  ServerPlayNetworking.registerGlobalReceiver("murmur", (_, player, _, buf, _) =>
-    val in = Option.when(buf.readBoolean())(buf.readString())
-    if isDev then println(s"${player.getName.getString} murmurs: $in")
-    player.getComponent(PlayerInfoComponent.key).murmur = in)
   lazy val messageFrameType: ContinuationFrame.Type[MessageFrame] = (c: NbtCompound, world: ServerWorld) =>
     val id = Uuids.toUuid(c.getIntArray("id"))
     MessageFrame(id, Text.Serializer.fromJson(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, c.getCompound("t"))), world.getServer.getPlayerManager.getPlayer(id))

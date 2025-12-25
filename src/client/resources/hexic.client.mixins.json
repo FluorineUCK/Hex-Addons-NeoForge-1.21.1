@@ -4,12 +4,11 @@
   "package": "org.eu.net.pool.hexic.mixin.client",
   "compatibilityLevel": "JAVA_17",
   "client": [
-    "ChatHudMixin",
+    "org.eu.net.pool.hexxytounge.mixin.ChatHudMixin",
     "ChatInputSuggestorMixin",
     "ChatScreenAccess",
     "ChatScreenMixin",
-    "InventoryScreenMixin",
-    "MinecraftClientMixin"
+    "InventoryScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1
