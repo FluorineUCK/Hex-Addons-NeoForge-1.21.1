@@ -3,7 +3,7 @@ package iotaworks
 
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, ResolvedPatternType}
-import at.petrak.hexcasting.api.casting.iota.{GarbageIota, Iota, IotaType, PatternIota, Vec3Iota}
+import at.petrak.hexcasting.api.casting.iota.{GarbageIota, Iota, IotaType, PatternIota, DoubleIota, Vec3Iota}
 import at.petrak.hexcasting.api.casting.math.HexPattern
 import at.petrak.hexcasting.api.casting.mishaps.Mishap
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
@@ -23,6 +23,7 @@ import java.{lang, util, util as ju}
 private[iotaworks] given Logger = LoggerFactory.getLogger("iotaworks")
 private[iotaworks] given Conversion[String, Identifier] = Identifier.of("iotaworks", _)
 given IotaType[PropertyIota] = PropertyIota.TYPE
+given IotaType[PatternIota] = PatternIota.TYPE
 
 abstract case class AbstractMetatableIota(iotaType: MetatableIotaType & Singleton, userdata: Iota, override val display: Text, metatable: String, readonlyMetatable: Boolean) extends Iota(iotaType, (userdata, display, metatable, readonlyMetatable)):
   override def subIotas(): lang.Iterable[Iota] = util.List.of(userdata)
@@ -77,6 +78,9 @@ object MetatableIotaType:
   val colors: Map[(Int, Int, Int), MetatableIotaType] = (for r <- validValues; g <- validValues; b <- validValues yield (r, g, b) -> MetatableIotaType((r << 20) | (r << 16) | (g << 12) | (g << 8) | (b << 4) | b)).toMap
   println(s"Metatables: $colors")
 
+trait HexPatternAccessor:
+  var depth: Int
+
 def init() =
   for ((_, c), i) <- MetatableIotaType.colors.zipWithIndex do iotaTypeRegistry(s"meta/$i") = c
   Patterns.register("metatable", se"deaqqwqqqeaeqqqeadedaqaaee"):
@@ -91,6 +95,18 @@ def init() =
         Seq:
           val ty = MetatableIotaType.colors((r * 3, g * 3, b * 3))
           ty.Instance(userdata, display.display, metatable.getName, metatable.getReadonly)
+  Patterns.register("set_subscript", w"eeedewa"):
+    Patterns.mkConstAction(2):
+      case Seq(isIota[PatternIota, 1](pat), isIota[DoubleIota, 0](num)) =>
+        // TODO: this should use iotaInt
+        val realPat = pat.getPattern
+        val pat2 = HexPattern(realPat.getStartDir, realPat.getAngles)
+        pat2.asInstanceOf[HexPatternAccessor].depth = realPat.asInstanceOf[HexPatternAccessor].depth + num.getDouble.toInt
+        Seq(PatternIota(pat2))
+  Patterns.register("get_subscript", nw"dwqaqqq"):
+    Patterns.mkConstAction(1):
+      case Seq(isIota[PatternIota, 0](pat)) =>
+        Seq(DoubleIota(pat.getPattern.asInstanceOf[HexPatternAccessor].depth))
   PhEvents.registryLookup.register:
     case (r, i) if r == hexXplat.getIotaTypeRegistry && i.getNamespace == "hexic" && i.getPath.startsWith("meta/") => r(i.getPath)
   PhEvents.beforePatternExecute.register:

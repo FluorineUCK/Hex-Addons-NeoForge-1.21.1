@@ -63,21 +63,6 @@ inline def foldLocalPlayer[R](default: => R)(ifPresent: ClientPlayerEntity => R)
 var lastMurmur: Option[String] = None
 
 object Hooks:
-  def clientTick(): Unit =
-    val currentMurmur = client.currentScreen match
-      case null => None
-      case c: ChatScreenAccess => Some(c.getChatField.getText)
-      case _ => None
-    if currentMurmur != lastMurmur then
-      if isDev then println(s"Sending murmur: ${currentMurmur}")
-      lastMurmur = currentMurmur
-      val buf = PacketByteBufs.create()
-      buf.writeBoolean(currentMurmur.isDefined)
-      currentMurmur.foreach(buf.writeString)
-      try
-        ClientPlayNetworking.send("murmur", buf)
-      catch
-        case _: IllegalStateException =>
   def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
     foldLocalPlayer(original): p =>
       val c = p.getComponent(PlayerInfoComponent.key)
@@ -342,7 +327,6 @@ def datagen(gen: FabricDataGenerator): Unit =
           "makeworld" -> "Conjure Demiplane",
           "malloc" -> "Allocator's Purification",
           "modulo" -> "Modulus Distillation II",
-          "murmur" -> "Murmur Reflection",
           "nbt/deserialize" -> "Importer's Purification",
           "nbt/lift1" -> "Secretary's Purification: Byte",
           "nbt/lift2" -> "Secretary's Purification: Short",
@@ -404,7 +388,6 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("book.hexic.page.erase", "Erases the _Hex or iota contained within a dropped item or block. Costs one dust per item.")
         gen.add("book.hexic.page.get_other_caster", "Adds the closest sentient being, excluding me, to the stack.")
         gen.add("book.hexic.page.modulo", "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.")
-        gen.add("book.hexic.page.murmur", "Adds the phrase on the $(o)tip of my tongue/$ to the stack, regardless of whether I intend to say it.")
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
         gen.add("hexdoc.hexic.title", "Hexic")
         gen.add("hexic.media.external", "Media")
