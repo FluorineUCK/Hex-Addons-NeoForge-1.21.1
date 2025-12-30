@@ -1,3 +1,17 @@
+# underevaluate
+* hermes' gambling &lt;ne,qqqeeaqq&gt;
+* find other things
+# in general
+* make checklist of hexic features
+- [x] patchworks
+- [x] murmur
+- [x] greater reveal
+- [ ] mediaweave
+* find other neat things to do
+
+---
+old todo list:
+
 # before next release
 * `ktwznkmp` making Noetic Gateway always go to a demiplane's center
 * `ktwznkmp` special demiplane iota handling
