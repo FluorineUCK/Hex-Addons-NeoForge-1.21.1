@@ -1,8 +1,0 @@
-{
-  "parent": "minecraft:item/generated",
-  "textures": {
-    "layer0": "hexic:item/pen_back",
-    "layer1": "hexic:item/pen_cover",
-    "layer2": "hexic:item/pen_overlay"
-  }
-}

@@ -1,6 +1,0 @@
-[submodule "vendor/kubo"]
-	path = vendor/kubo
-	url = https://github.com/ipfs/kubo
-[submodule "vendor/hexcellular"]
-	path = vendor/hexcellular
-	url = https://github.com/miyucomics/hexcellular

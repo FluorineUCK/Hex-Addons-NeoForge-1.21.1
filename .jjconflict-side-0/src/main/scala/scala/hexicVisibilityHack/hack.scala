@@ -1,2 +1,0 @@
-package scala.hexicVisibilityHack
-export PartialFunction.unlifted
