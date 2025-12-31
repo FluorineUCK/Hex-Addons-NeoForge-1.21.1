@@ -7,6 +7,7 @@ import com.mojang.serialization.{Codec, DynamicOps, JsonOps}
 import net.minecraft.nbt.{NbtByte, NbtByteArray, NbtDouble, NbtEnd, NbtFloat, NbtInt, NbtIntArray, NbtList, NbtLong, NbtLongArray, NbtOps, NbtShort, NbtString, NbtType}
 import net.minecraft.util.dynamic.Codecs
 import at.petrak.hexcasting.api.addldata.ADMediaHolder
+import scala.collection.IterableOnceOps
 import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
@@ -204,6 +205,8 @@ object Patterns:
       OperationAction(pattern)
 
 val hexXplat: IXplatAbstractions = IXplatAbstractions.INSTANCE
+implicit class MathOps[T](i: IterableOnceOps[T, ?, ?]):
+  export i.{exists => ∃, forall => ∀}
 
 extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
   if isDev || fabric.isModLoaded(ctx.parts(0)) then
