@@ -17,3 +17,8 @@ pluginManagement {
         }
     }
 }
+
+include("util", "iotaworks", "hexxytounge", "hexxychests")
+project(":iotaworks").projectDir = file("project/iotaworks")
+project(":hexxytounge").projectDir = file("project/hexxytounge")
+project(":hexxychests").projectDir = file("project/hexxychests")

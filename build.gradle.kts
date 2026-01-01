@@ -6,6 +6,8 @@ import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import groovy.json.JsonOutput
+import `java.nio`.file.Files;
+import kotlin.io.path.deleteIfExists
 
 plugins {
     id("fabric-loom") version "1.13-SNAPSHOT"
@@ -16,68 +18,153 @@ plugins {
     id("org.eu.net.pool.mc-plugin") version "0.1.1"
 }
 
-try {
-    tasks.named("downloadRenderDoc") {
-        setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
-    }
+allprojects {
+    try {
+        tasks.named("downloadRenderDoc") {
+            setProperty("output", file("$buildDir/renderdoc_1.37.tar.gz"))
+        }
 
-    tasks.named("extractRenderDoc") {
-        enabled = false
-    }
+        tasks.named("extractRenderDoc") {
+            enabled = false
+        }
 
-    val erd by tasks.register<Sync>("myExtractRenderDoc") {
-        dependsOn("downloadRenderDoc")
-        from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
-        into("$buildDir/renderdoc")
-    }
+        val erd by tasks.register<Sync>("myExtractRenderDoc") {
+            dependsOn("downloadRenderDoc")
+            from(tarTree(resources.gzip("$buildDir/renderdoc_1.37.tar.gz")))
+            into("$buildDir/renderdoc")
+        }
 
-    tasks.named("runClientRenderDoc") {
-        dependsOn(erd)
-    }
-} catch (ignored: UnknownTaskException) {}
-
-loom.runs["client"].programArgs += listOf("--username", "Player", "--uuid", "bd346dd5-ac1c-427d-87e8-73bdd4bf3e13")
-
-//tasks.withType<RenderDocR>()
+        tasks.named("runClientRenderDoc") {
+            dependsOn(erd)
+        }
+    } catch (ignored: UnknownTaskException) {}
+}
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
-val p = P(project)
-project.ext.set("p", p)
-version = project.property("mod_version") as String
-val py_version: String by project.properties
-val wheelPath = file("dist/hexdoc_hexic-$version.$py_version-py3-none-any.whl")
-if (!release) version = "$version+${p.commit_id.take(7)}"
-group = project.property("maven_group") as String
+allprojects {
+    val p = P(project)
+    val modid: String by project.properties
+    ext.set("p", p)
+    version = project.property("mod_version") as String
+    if (!release) version = "${version}+${p.commit_id.take(7)}"
+    group = rootProject.property("maven_group") as String
+    println("configuring $modid ($project) v$version @ $group")
+    plugins.withId("java") {
+        base {
+            archivesName.set(modid)
+        }
+        java {
+            toolchain.languageVersion = JavaLanguageVersion.of(17)
+            withSourcesJar()
+        }
 
-base {
-    archivesName.set(project.property("archives_base_name") as String)
-}
-
-val targetJavaVersion = 17
-java {
-    toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
-    // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
-    // if it is present.
-    // If you remove this line, sources will not be generated.
-    withSourcesJar()
-}
-
-scala {
-    scalaVersion = "3.7.1"
-}
-
-loom {
-    splitEnvironmentSourceSets()
-
-    mods {
-        register("hexic") {
-            sourceSet("main")
-            sourceSet("client")
+        tasks.named<Jar>("jar").configure {
+            from("LICENSE") {
+                rename { "LICENSE_$modid" }
+            }
+            duplicatesStrategy = DuplicatesStrategy.WARN
         }
     }
 
-    mixin.useLegacyMixinAp = false
+    plugins.withId("scala") {
+        scala {
+            scalaVersion = "3.7.1"
+        }
+    }
+
+    plugins.withId("fabric-loom") {
+        loom {
+            splitEnvironmentSourceSets()
+            runs["client"].programArgs += listOf("--username", "Player", "--uuid", "9e1b34e3-8031-4623-8918-eb7914ab564b")
+
+            mods {
+                register(modid) {
+                    sourceSet("main")
+                    sourceSet("client")
+                }
+            }
+
+            mixin.useLegacyMixinAp = false
+        }
+
+        fabricApi {
+            configureTests {
+                modId = modid
+                eula = true
+            }
+        }
+
+        dependencies {
+            modLocalRuntime("maven.modrinth:ears:1.4.7+fabric-1.20")
+        }
+
+        if (project != rootProject) {
+            tasks.named("runClient") {
+                doFirst {
+                    val rootOptions = rootProject.file("run/options.txt").toPath()
+                    val options = file("run/options.txt").toPath()
+                    options.deleteIfExists()
+                    Files.createSymbolicLink(options, rootOptions)
+                }
+            }
+        }
+
+        tasks.processResources {
+            val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
+            val langRoot = destinationDir.resolve("assets/$modid/lang")
+
+            doLast {
+                bookRoot.list()?.forEach { lang ->
+                    val langFile = langRoot.resolve("$lang.json")
+                    if (langFile.exists()) {
+                        val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
+                        var n = 0
+                        for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
+                            if (bookFile.isFile) {
+                                val json = JsonSlurper().parseText(bookFile.readText())
+                                if (json !is Map<*, *>) continue
+                                json as MutableMap<Any, Any>
+                                val name = json["name"]
+                                if (name is String) {
+                                    entries["text.$modid.book.${n}"] = name
+                                    json["name"] = "text.$modid.book.${n}"
+                                    n++
+                                }
+                                val pages = json["pages"]
+                                if (pages !is MutableList<*>) continue
+                                pages as MutableList<Any>
+                                for (i in pages.indices) {
+                                    val page = pages[i]
+                                    if (page is String) {
+                                        entries["text.$modid.book.${n}"] = page
+                                        pages[i] = "text.$modid.book.${n}"
+                                        n++
+                                    } else if (page is MutableMap<*, *>) {
+                                        page as MutableMap<Any, Any>
+                                        for (key in listOf("text", "title", "header")) {
+                                            val text = page[key]
+                                            if (text != null && text is String) {
+                                                entries["text.$modid.book.${n}"] = text
+                                                page[key] = "text.$modid.book.${n}"
+                                                n++
+                                            }
+                                        }
+                                    }
+                                }
+                                bookFile.writeText(JsonOutput.toJson(json))
+                            }
+                        }
+                        langFile.writeText(JsonOutput.toJson(entries))
+                    }
+                }
+            }
+        }
+    }
+    println("configured $project: release=$release, configured version: $version ($group)")
 }
+val p: P by ext
+val py_version: String by project.properties
+val wheelPath = file("dist/hexdoc_hexic-$version.$py_version-py3-none-any.whl")
 
 fabricApi {
     configureDataGeneration {
@@ -97,70 +184,72 @@ fabricApi {
 //    into("$buildDir/hexxy4")
 //}
 
-repositories {
-    fun exactRepo(url: String, vararg groups: String, recursive: Boolean = true) {
-        exclusiveContent {
-            forRepository {
-                maven(url)
-            }
-            filter {
-                for (group in groups) {
-                    if (recursive) {
-                        includeGroupAndSubgroups(group)
-                    } else {
-                        includeGroup(group)
+allprojects {
+    repositories {
+        fun exactRepo(url: String, vararg groups: String, recursive: Boolean = true) {
+            exclusiveContent {
+                forRepository {
+                    maven(url)
+                }
+                filter {
+                    for (group in groups) {
+                        if (recursive) {
+                            includeGroupAndSubgroups(group)
+                        } else {
+                            includeGroup(group)
+                        }
                     }
                 }
             }
         }
-    }
 
-    mavenCentral()
-    exactRepo("https://api.modrinth.com/maven",
-        "maven.modrinth")
-    exactRepo("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/",
-        "com.eliotlash.mclib",
-        "software.bernie.geckolib")
-    exactRepo("https://jitpack.io/",
-        "com.github.Chocohead",
-        "com.github.LlamaLad7",
-        "com.github.Virtuoel",
-        "com.github.mattidragon")
-    exactRepo("https://maven.blamejared.com/",
-        "at.petra-k",
-        "com.samsthenerd.inline",
-        "gay.object",
-        "miyucomics.hexpose",
-        "net.darkhax.openloader",
-        "vazkii.patchouli")
-    exactRepo("https://maven.hexxy.media/",
-        "io.github.tropheusj",
-        "ram.talia")
-    exactRepo("https://maven.jamieswhiteshirt.com/libs-release/",
-        "com.jamieswhiteshirt")
-    exactRepo("https://maven.kosmx.dev/",
-        "dev.kosmx")
-    exactRepo("https://maven.ladysnake.org/releases/",
-        "dev.onyxstudios")
-    exactRepo("https://maven.pool.net.eu.org/",
-        "dev.kineticcat.hexportation",
-        "miyucomics.hexcellular",
-        "miyucomics.hexical",
-        "miyucomics.overevaluate",
-        "org.eu.net.pool",
-        "poollovernathan")
-    exactRepo("https://maven.shedaniel.me/",
-        "dev.architectury",
-        "me.shedaniel")
-    exactRepo("https://maven.terraformersmc.com/",
-        "com.terraformersmc",
-        "dev.emi")
-    exactRepo("https://repo.sleeping.town/",
-        "com.unascribed")
-    exactRepo("https://masa.dy.fi/maven/",
-        "carpet")
-    exactRepo("https://maven.nucleoid.xyz/",
-        "xyz.nucleoid")
+        mavenCentral()
+        exactRepo("https://api.modrinth.com/maven",
+            "maven.modrinth")
+        exactRepo("https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/",
+            "com.eliotlash.mclib",
+            "software.bernie.geckolib")
+        exactRepo("https://jitpack.io/",
+            "com.github.Chocohead",
+            "com.github.LlamaLad7",
+            "com.github.Virtuoel",
+            "com.github.mattidragon")
+        exactRepo("https://maven.blamejared.com/",
+            "at.petra-k",
+            "com.samsthenerd.inline",
+            "gay.object",
+            "miyucomics.hexpose",
+            "net.darkhax.openloader",
+            "vazkii.patchouli")
+        exactRepo("https://maven.hexxy.media/",
+            "io.github.tropheusj",
+            "ram.talia")
+        exactRepo("https://maven.jamieswhiteshirt.com/libs-release/",
+            "com.jamieswhiteshirt")
+        exactRepo("https://maven.kosmx.dev/",
+            "dev.kosmx")
+        exactRepo("https://maven.ladysnake.org/releases/",
+            "dev.onyxstudios")
+        exactRepo("https://pool.net.eu.org/",
+            "dev.kineticcat.hexportation",
+            "miyucomics.hexcellular",
+            "miyucomics.hexical",
+            "miyucomics.overevaluate",
+            "org.eu.net.pool",
+            "poollovernathan")
+        exactRepo("https://maven.shedaniel.me/",
+            "dev.architectury",
+            "me.shedaniel")
+        exactRepo("https://maven.terraformersmc.com/",
+            "com.terraformersmc",
+            "dev.emi")
+        exactRepo("https://repo.sleeping.town/",
+            "com.unascribed")
+        exactRepo("https://masa.dy.fi/maven/",
+            "carpet")
+        exactRepo("https://maven.nucleoid.xyz/",
+            "xyz.nucleoid")
+    }
 }
 
 fun download(url: String, name: String = file(url).name): Download {
@@ -260,19 +349,17 @@ dependencies {
 
     val minecraft_version = "1.20.1"
     modDepends(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
-    modDepends(modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")!!)
-    modDepends(include(modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")!!)!!)
-    include(api("org.scala-lang:scala3-library_3:3.7.1")!!)
-    include(api("org.scala-lang:scala-library:2.13.6")!!)
-    modDepends(modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.2-pre-751")!!)
-    modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
+    implementation(project(":util", "namedElements"))
+    modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
+    modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
+    modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modDepends(include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
     modCompileOnly("carpet:fabric-carpet:1.20-1.+")
+    modLocalRuntime("maven.modrinth:lithium:mc1.20.1-0.11.4-fabric")
 //    modRuntimeOnly("carpet:fabric-carpet:1.20-1.+")
     compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
-    modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
     compat("maven.modrinth:hexcassettes:1.1.4")
     modLocalRuntime("maven.modrinth:trinkets:3.7.2")
@@ -290,14 +377,6 @@ dependencies {
     include(modApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
-    val cardinal_version = "5.2.3"
-    modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-base:$cardinal_version")
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-block:$cardinal_version")!!)
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:$cardinal_version")!!)
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-item:$cardinal_version")!!)
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")!!)
-    modDepends(modApi("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")!!)
-    modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
     include(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
     include(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
 
@@ -356,10 +435,12 @@ tasks.processResources {
                 }
             }
 
-            entrypoint("org.eu.net.pool.hexic.Hexic\$package::init")
-            entrypoint("org.eu.net.pool.hexic.client.HexicClient\$package::init", Environment.Client)
-            entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client.HexicClient\$package::datagen")
-            entrypoint("mm:early_risers", "org.eu.net.pool.hexic.EarlyRiser\$package::warCrimes")
+            conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
+
+            entrypoint("org.eu.net.pool.hexic.main\$package::init")
+            entrypoint("org.eu.net.pool.hexic.client.main\$package::init", Environment.Client)
+            entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client.main\$package::datagen")
+            entrypoint("mm:early_risers", "org.eu.net.pool.hexic.early_riser\$package::warCrimes")
             entrypoint("cardinal-components", "org.eu.net.pool.hexic.ComponentInit")
             mixins("hexic.mixins.json")
             mixins("hexic.client.mixins.json", Environment.Client)
@@ -375,8 +456,6 @@ tasks.processResources {
     dependsOn(cloth)
     dependsOn(*downloadedBags.values.toTypedArray())
     val itemsRoot = destinationDir.resolve("assets/hexic/textures/item")
-    val langRoot = destinationDir.resolve("assets/hexic/lang")
-    val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
     doLast {
         for ((name, color) in colors) {
             exec {
@@ -441,52 +520,6 @@ tasks.processResources {
         }
     }
 
-    doLast {
-        for (lang in bookRoot.list()) {
-            val langFile = langRoot.resolve("$lang.json")
-            if (langFile.exists()) {
-                val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
-                var n = 0
-                for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
-                    if (bookFile.isFile) {
-                        val json = JsonSlurper().parseText(bookFile.readText())
-                        if (json !is Map<*, *>) continue
-                        json as MutableMap<Any, Any>
-                        val name = json["name"]
-                        if (name is String) {
-                            entries["text.hexic.book.${n}"] = name
-                            json["name"] = "text.hexic.book.${n}"
-                            n++
-                        }
-                        val pages = json["pages"]
-                        if (pages !is MutableList<*>) continue
-                        pages as MutableList<Any>
-                        for (i in pages.indices) {
-                            val page = pages[i]
-                            if (page is String) {
-                                entries["text.hexic.book.${n}"] = page
-                                pages[i] = "text.hexic.book.${n}"
-                                n++
-                            } else if (page is MutableMap<*, *>) {
-                                page as MutableMap<Any, Any>
-                                for (key in listOf("text", "title", "header")) {
-                                    val text = page[key]
-                                    if (text != null && text is String) {
-                                        entries["text.hexic.book.${n}"] = text
-                                        page[key] = "text.hexic.book.${n}"
-                                        n++
-                                    }
-                                }
-                            }
-                        }
-                        bookFile.writeText(JsonOutput.toJson(json))
-                    }
-                }
-                langFile.writeText(JsonOutput.toJson(entries))
-            }
-        }
-    }
-
     eachFile {
         if (name.endsWith(".ase")) {
             exec {
@@ -502,29 +535,24 @@ tasks.processResources {
     }
 }
 
-tasks.withType<AbstractArchiveTask> {
-    isPreserveFileTimestamps = false
-    isReproducibleFileOrder = true
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    // ensure that the encoding is set to UTF-8, no matter what the system default is
-    // this fixes some edge cases with special characters not displaying correctly
-    // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
-    // If Javadoc is generated, this must be specified in that task too.
-    options.encoding = "UTF-8"
-    options.release.set(targetJavaVersion)
-}
-
-tasks.withType<ScalaCompile>().configureEach {
-    scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature", "-Ycc-debug"))
-}
-
-tasks.jar {
-    from("LICENSE") {
-        rename { "${it}_${project.base.archivesName}" }
+allprojects {
+    tasks.withType<AbstractArchiveTask> {
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
     }
-    duplicatesStrategy = DuplicatesStrategy.WARN
+
+    tasks.withType<JavaCompile>().configureEach {
+        // ensure that the encoding is set to UTF-8, no matter what the system default is
+        // this fixes some edge cases with special characters not displaying correctly
+        // see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
+        // If Javadoc is generated, this must be specified in that task too.
+        options.encoding = "UTF-8"
+        options.release.set(17)
+    }
+
+    tasks.withType<ScalaCompile>().configureEach {
+        scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature", "-Ycc-debug"))
+    }
 }
 
 val wheelFiles by lazy {
@@ -705,19 +733,23 @@ tasks.register("docs") {
 }
 
 // configure the maven publication
-publishing {
-    publications {
-        create<MavenPublication>("mavenJava") {
-            artifactId = project.property("archives_base_name") as String
-            from(components["java"])
-        }
-    }
+allprojects {
+    afterEvaluate {
+        publishing {
+            publications {
+                create<MavenPublication>("mavenJava") {
+                    artifactId = project.property("modid") as String
+                    from(components["java"])
+                }
+            }
 
-    // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
-    repositories {
-        // Add repositories to publish to here.
-        // Notice: This block does NOT have the same function as the block in the top level.
-        // The repositories here will be used for publishing your artifact, not for
-        // retrieving dependencies.
+            // See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+            repositories {
+                maven("https://pool.net.eu.org/") {
+                    name = "poolMaven"
+                    credentials(PasswordCredentials::class.java)
+                }
+            }
+        }
     }
 }
