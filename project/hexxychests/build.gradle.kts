@@ -35,7 +35,7 @@ tasks.processResources {
             }
 
             depends("mod-tools", "^1.1.5+1.20.1")
-            depends("phlib", "0.1.1")
+            depends("phlib", ">=0.2.0")
             depends("hexcasting", ">=0.11.2")
 
             entrypoint("org.eu.net.pool.hexxychests.main\$package::init")
