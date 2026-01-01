@@ -7,6 +7,7 @@ import com.mojang.serialization.{Codec, DynamicOps, JsonOps}
 import net.minecraft.nbt.{NbtByte, NbtByteArray, NbtDouble, NbtEnd, NbtFloat, NbtInt, NbtIntArray, NbtList, NbtLong, NbtLongArray, NbtOps, NbtShort, NbtString, NbtType}
 import net.minecraft.util.dynamic.Codecs
 import at.petrak.hexcasting.api.addldata.ADMediaHolder
+
 import scala.collection.IterableOnceOps
 import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
@@ -20,8 +21,17 @@ import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, Ca
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
+import at.petrak.hexcasting.common.lib.HexRegistries
+import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
+import com.mojang.brigadier.builder.{LiteralArgumentBuilder, RequiredArgumentBuilder}
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
+import net.minecraft.command.{CommandException, EntitySelector}
+import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType, RegistryEntryArgumentType}
 import net.minecraft.nbt.{NbtCompound, NbtElement}
+import net.minecraft.server.command.ServerCommandSource
+import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
+import net.minecraft.util.Hand
 
 import scala.annotation.tailrec
 import scala.math.Ordered.orderingToOrdered
@@ -214,6 +224,10 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
   else
     `else`
 
+extension (p: ServerPlayerEntity) def gimmeIota(iota: Iota): Unit =
+  val m = p.getComponent(HexCardinalComponents.STAFFCAST_IMAGE)
+  m.setImage(m.getVM(Hand.MAIN_HAND).getImage.withStack(_ ++ Vector(iota)))
+
 // this is out-of-scope for phlib but I have no idea where else to put it
 def init() =
   hexXplat.getIotaTypeRegistry("map") = MapIota
@@ -222,6 +236,41 @@ def init() =
     case (r, i) if r == hexXplat.getIotaTypeRegistry && i == Identifier.of("hexic", "map") => MapIota
   Patterns.register("empty_map", e"dqdwdqd"):
     Patterns.mkLiteral(MapIota())
+  CommandRegistrationCallback.EVENT.register: (d, r, e) =>
+    d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
+      .requires(c => c.hasPermissionLevel(2) || (c.getPlayer != null && c.getPlayer.isCreative))
+      .`then`(RequiredArgumentBuilder.argument("type", RegistryEntryArgumentType.registryEntry(r, HexRegistries.IOTA_TYPE))
+        .`then`(RequiredArgumentBuilder.argument[ServerCommandSource, NbtElement]("data", NbtElementArgumentType.nbtElement())
+          .executes(c =>
+            val t = RegistryEntryArgumentType.getRegistryEntry(c, "type", HexRegistries.IOTA_TYPE)
+            val d = NbtElementArgumentType.getNbtElement(c, "data")
+            val p = c.getSource.getPlayer
+            if p == null then
+              throw CommandException("Command must be run by a player")
+            try
+              t.value.deserialize(d, c.getSource.getWorld) match
+                case null => throw CommandException("Iota did not accept the given data")
+                case r: Iota =>
+                  p.gimmeIota(r)
+                  c.getSource.sendFeedback(() => Text.translatable("Pushed %s to stack", try r.display catch case x: (Exception | Error) => x.getMessage), true)
+                  1
+                case x => throw CommandException(s"${x} is not an iota")
+            catch
+              case x: IllegalArgumentException => throw CommandException(x.getMessage)
+          ).build()
+        ).build()
+      ).`then`(
+        RequiredArgumentBuilder.argument[ServerCommandSource, EntitySelector]("entity", EntityArgumentType.entity())
+          .executes(c =>
+            val p = c.getSource.getPlayer
+            if p == null then
+              throw CommandException("Command must be run by a player")
+            val r = EntityIota(EntityArgumentType getEntity(c, "entity")) tap p.gimmeIota
+            c.getSource.sendFeedback(() => Text.translatable("Pushed %s to stack", r.display), true)
+            1
+          ).build()
+      ).build()
+    )
 
 object Events:
   def partialEvent[T, R]: Event[PartialFunction[T, R]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, ary => (PartialFunction.empty /: ary) (_ orElse _))

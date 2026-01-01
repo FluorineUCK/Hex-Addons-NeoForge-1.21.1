@@ -1340,39 +1340,6 @@ def init(): Unit =
       case _ => null
   ): SpecialHandler.Factory[? <: SpecialHandler]
   CommandRegistrationCallback.EVENT.register: (d, r, e) =>
-    d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("gimmeiota")
-      .requires(c => c.hasPermissionLevel(2) || (c.getPlayer != null && c.getPlayer.isCreative))
-      .`then`(RequiredArgumentBuilder.argument("type", Interop.reat(r, HexRegistries.IOTA_TYPE))
-        .`then`(RequiredArgumentBuilder.argument[ServerCommandSource, NbtElement]("data", NbtElementArgumentType.nbtElement())
-          .executes(c =>
-            val t = Interop.gre[IotaType[?]](c, "type", HexRegistries.IOTA_TYPE)
-            val d = NbtElementArgumentType getNbtElement(c, "data")
-            val p = c.getSource.getPlayer
-            if p == null then
-              throw CommandException("Command must be run by a player")
-            try
-              t.value deserialize(d, c.getSource.getWorld) match
-                case null => throw CommandException("Iota did not accept the given data")
-                case r: Iota =>
-                  p gimmeIota r
-                  c.getSource sendFeedback(() => Text.translatable("Pushed %s to stack", try r.display catch case x: (Exception | Error) => x.getMessage), true)
-                  1
-                case x => throw CommandException(s"${x} is not an iota")
-            catch
-              case x: IllegalArgumentException => throw CommandException(x.getMessage)
-          ).build()
-        ).build()
-      ).`then`(
-        RequiredArgumentBuilder.argument[ServerCommandSource, EntitySelector]("entity", EntityArgumentType.entity())
-          .executes(c =>
-            val p = c.getSource.getPlayer
-            if p == null then
-              throw CommandException("Command must be run by a player")
-            val r = EntityIota(EntityArgumentType getEntity(c, "entity")) tap p.gimmeIota
-            c.getSource.sendFeedback(() => Text.translatable("Pushed %s to stack", r.display), true)
-            1
-          ).build()
-      ).build())
     def planeAction(name: String)(body: MinecraftServer ?=> UUID => Int): Unit =
       d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource](name).pipe: c =>
         c.requires(_.hasPermissionLevel(2))
@@ -2083,10 +2050,6 @@ case class Nonce(id: UUID):
 object Nonce:
   given Codec[Nonce] = Uuids.CODEC.xmap(Nonce(_), _.id)
   given Conversion[Nonce, Text] = _.id.toString.takeRight(6).pipe(Text.literal).styled(_.withFont(Identifier("minecraft:illageralt")))
-
-extension (p: ServerPlayerEntity) def gimmeIota(iota: Iota): Unit =
-  val m = p.getComponent(HexCardinalComponents.STAFFCAST_IMAGE)
-  m.setImage(m.getVM(Hand.MAIN_HAND).getImage.withStack(_ ++ Vector(iota)))
 
 object elementTag:
   def apply[T <: NbtElement](l: AbstractNbtList[T]): ClassTag[T] =
