@@ -22,3 +22,4 @@ include("util", "iotaworks", "hexxytounge", "hexxychests")
 project(":iotaworks").projectDir = file("project/iotaworks")
 project(":hexxytounge").projectDir = file("project/hexxytounge")
 project(":hexxychests").projectDir = file("project/hexxychests")
+project(":").projectDir = file("config") // 2026-01-02 pool: do not ever do this
