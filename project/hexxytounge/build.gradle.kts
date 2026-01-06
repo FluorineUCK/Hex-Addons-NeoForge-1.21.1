@@ -57,4 +57,8 @@ tasks.processResources {
             }
         }
     }
+
+    from("icon.png") {
+        rename { "hexxytounge.icon.png" }
+    }
 }
