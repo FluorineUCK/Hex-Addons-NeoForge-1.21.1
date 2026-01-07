@@ -110,7 +110,7 @@ $RECYCLE.BIN/
 build/
 build*/
 !buildSrc/
-/src/main/generated
+**/src/main/generated
 
 # Ignore Gradle GUI config
 gradle-app.setting
