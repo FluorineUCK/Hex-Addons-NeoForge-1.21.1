@@ -11,7 +11,7 @@ class FabricMod(val id: String, val version: String): Consumer<JsonDsl.Object> {
     var name = id
     var description = ""
     var license = "GPL-3.0"
-    var icon = "assets.mica/icon.png"
+    var icon: String? = null
     var environment: Environment? = null
     @PublishedApi internal val authors = JsonDsl.Array()
     @PublishedApi internal val contributors = JsonDsl.Array()
@@ -88,6 +88,7 @@ class FabricMod(val id: String, val version: String): Consumer<JsonDsl.Object> {
         put("version", version)
         put("name", name)
         put("description", description)
+        if (icon != null) put("icon", icon!!)
         environment?.let { put("environment", it.id) }
         put("authors", authors)
         put("contributors", contributors)
