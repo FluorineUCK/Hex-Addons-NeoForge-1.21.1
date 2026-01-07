@@ -43,6 +43,13 @@ class FabricMod(val id: String, val version: String): Consumer<JsonDsl.Object> {
     inline fun contact(action: JsonDsl.Object.() -> Unit) = contact.run(action)
     inline fun contact(name: String, url: String) = contact { put(name, url) }
     inline fun custom(action: JsonDsl.Object.() -> Unit) = custom.run(action)
+    fun cardinalComponents(vararg ids: String) = custom {
+        array("cardinal-components") {
+            ids.forEach {
+                put(if (it.contains(':')) id else "$id:$it")
+            }
+        }
+    }
     fun author(name: String) {
         authors.put(name)
     }

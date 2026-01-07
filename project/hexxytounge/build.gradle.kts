@@ -49,12 +49,7 @@ tasks.processResources {
             entrypoint("org.eu.net.pool.hexxytounge.main\$package::init")
             entrypoint("cardinal-components", "org.eu.net.pool.hexxytounge.Components")
             mixins("hexxytongge.mixins.json")
-            custom {
-                array("cardinal-components") {
-                    put("hexxytounge:murmur")
-                    put("hexxytounge:reveal")
-                }
-            }
+            cardinalComponents("murmur", "reveal")
         }
     }
 
