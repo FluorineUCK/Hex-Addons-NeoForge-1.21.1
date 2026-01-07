@@ -16,7 +16,7 @@ plugins {
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
     id("de.undercouch.download") version "5.6.0"
-    id("org.eu.net.pool.mc-plugin") version "0.1.1"
+    id("org.eu.net.pool.mc-plugin")
 }
 
 val p: P by ext
