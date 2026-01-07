@@ -1,0 +1,46 @@
+* Projects
+** Hexic
+pile of old ideas, deprecated and ripe for theft
+*** TODO finish enumerating features
+- [X] patchworks
+- [X] murmur refl
+- [X] greater reveal
+- [ ] mediaweave
+*** TODO give chisels a texture
+*** TODO special demiplane NG handling
+when entering, always enter at the center
+when exiting, exit where you last entered from
+or get sent to the ~deep noo~
+*** TODO give tables a model in-inventory
+*** TODO crafted amethyst
+created by a table; worth a shard
+need to implement texture generation
+can be charmed; breaks if discharmed
+*** TODO document undocumented patterns
+- [X] demiplane patterns
+- [ ] conjure snow
+- [ ] pseudothoth
+** Underevaluate
+*** TODO create project
+it needs a real name
+*** TODO Hermes' Gambling
+*** TODO find other scrapped ideas
+executes given iota with a 25% chance, <ne,qqqeeaqq>
+** Iotaworks
+*** TODO finish implementing subscripts
+*** TODO implement patchwork subscripts
+** HexxyChests
+*** TODO make sure everything works
+*** TODO make todo list
+** HexxyTongue
+*** TODO port mediaweaves
+*** TODO channeled reveal
+maybe revealing a map merges it with an internal 'channel' map?
+** IoticIotas
+*** TODO revisit
+does this still exist? is it still worth it?
+
+* Ideas
+** TODO Spellminds
+** TODO Liquidification greatspell
+[[.project.org.assets/liquidify-spell.png]]
