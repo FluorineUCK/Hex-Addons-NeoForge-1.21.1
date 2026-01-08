@@ -169,6 +169,10 @@ dependencies {
 //    modImplementation(files("hexical-2.0.0.jar"))
     include(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
     include(implementation("net.bytebuddy:byte-buddy-agent:1.17.7")!!)
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-item:5.2.3")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:5.2.3")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-level:5.2.3")
+    modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:5.2.3")
 
     modRuntimeOnly("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
 }

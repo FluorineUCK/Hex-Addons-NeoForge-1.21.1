@@ -23,7 +23,6 @@
     "OpEdifySaplingMixin$Spell",
     "OpObservePropertyMixin",
     "OpSetPropertyMixin",
-    "OpSplatMixin",
     "OpTickMixin",
     "OpTickMixin$SpellMixin",
     "PacketByteBufMixin",

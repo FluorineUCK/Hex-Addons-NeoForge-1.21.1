@@ -20,6 +20,8 @@ can be charmed; breaks if discharmed
 - [X] demiplane patterns
 - [ ] conjure snow
 - [ ] pseudothoth
+** PHLib
+*** TODO reimplement Flock Decomp on maps
 ** Underevaluate
 *** TODO create project
 it needs a real name
