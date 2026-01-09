@@ -1,9 +1,13 @@
 #+TITLE: Hex Addon Planning
 #+AUTHOR: poolcritter
+#+CATEGORY: hex-addons
 #+OPTIONS: \n:t
 
 * Projects
 ** [[https://modrinth.com/mod/hexic][Hexic]]
+:PROPERTIES:
+:CATEGORY: hexic
+:END:
 pile of old ideas, deprecated and ripe for theft
 *** TODO finish enumerating features
 :LOGBOOK:
@@ -28,8 +32,8 @@ if any of y'all people want to steal this, ping me so I can remove it from the l
 - [ ] tripwire iotas (unimplemented)
 - [ ] media chiseling
 - [ ] (+hexical) hopper into/out of conduits
-- [ ] (+hexical) Apply Pigment pattern
-  - [ ] works on trinkets
+- [X] (+hexical) Apply Pigment pattern
+  - [X] works on trinkets
 - [ ] list manipulation patterns (where, take, rotate, drop, grep, extract)
 - [ ] modulo 2
 - [ ] vulpine gambit
@@ -65,8 +69,8 @@ probably my player head holding a quenched amethyst
 *** TODO create project
 it needs a real name
 *** TODO Hermes' Gambling
-*** TODO find other scrapped ideas
 executes given iota with a 25% chance, <ne,qqqeeaqq>
+*** TODO find other scrapped ideas
 ** [[https://modrinth.com/mod/iotaworks][Iotaworks]]
 *** TODO finish implementing subscripts
 *** TODO implement patchwork subscripts
@@ -80,7 +84,7 @@ maybe revealing a map merges it with an internal 'channel' map?
 ** IoticIotas
 *** TODO revisit
 does this still exist? is it still worth it?
-** [[https://modrinth.com/mod/ducky-periphs][Ducky Peripherals]]
+** [[https://modrinth.com/mod/ducky-periphs][Ducky Peripherals]] (external)
 *** TODO iota type support
 - [ ] maps
 - [ ] hexthings maps
@@ -90,6 +94,15 @@ does this still exist? is it still worth it?
 ** [[https://modrinth.com/mod/hexweb][HexWeb]] (external)
 *** TODO get Gradle dependency working
 techtastic mentioned 'weird scala stuff' which might be my fault it's probably my fault it's always my fault anyways it needs to be fixed
+** [[https://modrinth.com/mod/hexical][Hexical]] (external)
+:PROPERTIES:
+:CATEGORY: hexical
+:END:
+*** TODO wait for reply wrt Apply Pigment
+**** TODO ping Miyu about [[https://discord.com/channels/936370934292549712/1011455473528098857/1459290686841946153][message]]
+     SCHEDULED: <2026-01-10 12:00:00>
+*** TODO PR Apply Pigment
+make sure it works on trinkets
 * Ideas
 ** TODO Spellminds
 effectively cross-server cross-instance iota transfer bound permanenently to one specific player
