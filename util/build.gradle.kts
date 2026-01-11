@@ -16,7 +16,6 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
     api("org.scala-lang:scala3-library_3:3.7.1")
     api("org.scala-lang:scala-library:2.13.6")
-    modApi("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
     modApi("vazkii.patchouli:Patchouli:$minecraft_version-84-FABRIC")
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("at.petra-k.paucal:paucal-fabric-$minecraft_version:0.6.0-pre-118")
@@ -44,7 +43,6 @@ tasks.processResources {
                 put("discord", "https://discord.com/users/758407438251720795")
             }
 
-            depends("mod-tools", "^1.1.5+1.20.1")
             depends("hexcasting", ">=0.11.2")
             breaks("hexic", "<2.0.0")
 

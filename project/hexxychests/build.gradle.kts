@@ -34,7 +34,6 @@ tasks.processResources {
                 put("discord", "https://discord.com/users/758407438251720795")
             }
 
-            depends("mod-tools", "^1.1.5+1.20.1")
             depends("phlib", ">=0.2.0")
             depends("hexcasting", ">=0.11.2")
 

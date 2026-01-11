@@ -141,7 +141,6 @@ dependencies {
     modDepends(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
     implementation(project(":util", "namedElements"))
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
-    modImplementation("poollovernathan.fabric:mod-tools:1.1.5+1.20.1")
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modDepends(include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)!!)
