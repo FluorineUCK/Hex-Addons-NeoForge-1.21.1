@@ -1,3 +1,5 @@
+import org.gradle.jvm.component.internal.DefaultJvmSoftwareComponent
+
 plugins {
     id("fabric-loom")
     id("scala")
@@ -36,7 +38,7 @@ tasks.processResources {
             name = "PoolHexLib"
             description = "Internal library for my Hex Casting addons."
             license = "LGPL-3.0"
-            icon = "assets/phlib/icon.png"
+            icon = "phlib.icon.png"
 
             author("pool") {
                 put("discord", "https://discord.com/users/758407438251720795")
@@ -48,6 +50,15 @@ tasks.processResources {
 
             entrypoint("org.eu.net.pool.phlib.main\$package::init")
             mixins("phlib.mixins.json")
+        }
+    }
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("mavenJava") {
+            from(components["java"])
+            artifactId = "phlib"
         }
     }
 }

@@ -64,12 +64,16 @@ allprojects {
     println("configuring $modid ($project) v$version @ $group")
     plugins.withId("java") {
         base {
-            archivesName.set(modid)
+            archivesBaseName = modid
         }
         java {
             toolchain.languageVersion = JavaLanguageVersion.of(17)
             withSourcesJar()
         }
+        // be extra sure
+        version = project.property("mod_version") as String
+        if (!release) version = "${version}+${p.commit_id.take(7)}"
+        group = rootProject.property("maven_group") as String
 
         tasks.named<Jar>("jar").configure {
             from("LICENSE") {
