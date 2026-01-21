@@ -36,10 +36,9 @@ import net.minecraft.recipe.book.RecipeCategory
 import net.minecraft.registry.{MutableRegistry, Registries, RegistryKeys, RegistryWrapper}
 import net.minecraft.screen.slot.Slot
 import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
-import net.minecraft.util.DyeColor
+import net.minecraft.util.{DyeColor, Identifier}
 import net.minecraft.util.collection.DefaultedList
 import net.minecraft.util.math.{Direction, MathHelper, Vec3d}
-import org.eu.net.pool.hexic.mixin.client.ChatScreenAccess
 
 import java.io.{InputStreamReader, Reader}
 import java.util.function.Consumer
@@ -50,8 +49,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 import scala.util.boundary
 import scala.util.boundary.Label
 import scala.util.chaining.scalaUtilChainingOps
-
-import phlib.{_, given}
+import phlib.{*, given}
 
 given client: MinecraftClient = MinecraftClient.getInstance
 
@@ -59,8 +57,6 @@ inline def foldLocalPlayer[R](default: => R)(ifPresent: ClientPlayerEntity => R)
   client.player match
     case null => default
     case player => ifPresent(player)
-
-var lastMurmur: Option[String] = None
 
 object Hooks:
   def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
@@ -136,6 +132,19 @@ def init(): Unit =
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
       json.ItemModelGenerator.LAYERS.add(k)
+  phlib.Events.registryLookup.register:
+    val preferredColor = DyeColor.values()(client.getSession.getUuidOrNull.getLeastSignificantBits.abs.%(16).toInt)
+    val preferredStringworm = stringworms(Stringworm.flavors(client.getSession.getUuidOrNull.getLeastSignificantBits.abs.%(48).*(7).%(4).toInt))
+    val preferredMediaweave = Mediaweave.colors(preferredColor)
+    val preferredPen = Pen(preferredColor)
+    val preferredPouch = memo(MediaBundle(preferredColor, _))
+    {
+      case (Registries.ITEM, id) if id == ("preferred_mediaweave": Identifier) => preferredMediaweave
+      case (Registries.ITEM, id) if id == ("small_preferred_bundle": Identifier) => preferredPouch(6)
+      case (Registries.ITEM, id) if id == ("large_preferred_bundle": Identifier) => preferredPouch(12)
+      case (Registries.ITEM, id) if id == ("preferred_stringworm": Identifier) => preferredStringworm
+      case (Registries.ITEM, id) if id == ("preferred_pen": Identifier) => preferredPen
+    }
   ClientPlayNetworking.registerGlobalReceiver("msg", (_, handler, buf, _) =>
     val s = buf.readString
     if s.startsWith("/") then

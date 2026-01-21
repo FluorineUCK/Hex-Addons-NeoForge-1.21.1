@@ -4,7 +4,7 @@
   "package": "org.eu.net.pool.hexic.mixin.client",
   "compatibilityLevel": "JAVA_17",
   "client": [
-    "org.eu.net.pool.hexxytounge.mixin.ChatHudMixin",
+    "ChatHudMixin",
     "ChatInputSuggestorMixin",
     "ChatScreenAccess",
     "ChatScreenMixin",
@@ -15,8 +15,5 @@
   },
   "overwrites": {
     "requireAnnotations": true
-  },
-  "mixins": [
-    "SimpleDefaultedRegistryMixin"
-  ]
+  }
 }
