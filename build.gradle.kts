@@ -228,6 +228,7 @@ allprojects {
             "miyucomics.hexcellular",
             "miyucomics.hexical",
             "miyucomics.overevaluate",
+            "net.beholderface.oneironaut",
             "org.eu.net.pool",
             "poollovernathan")
         exactRepo("https://maven.shedaniel.me/",

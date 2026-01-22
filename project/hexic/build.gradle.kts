@@ -149,7 +149,7 @@ dependencies {
     modLocalRuntime("maven.modrinth:lithium:mc1.20.1-0.11.4-fabric")
 //    modRuntimeOnly("carpet:fabric-carpet:1.20-1.+")
     compat("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
-    modImplementation(files("./libs/oneironaut-fabric-1.20.1-0.5.0-476cee2.jar"))
+    modImplementation("net.beholderface.oneironaut:oneironaut-fabric-1.20.1-fabric-fabric:1.20.1-SNAPSHOT")
     compat("maven.modrinth:hexcassettes:1.1.4")
     modLocalRuntime("maven.modrinth:trinkets:3.7.2")
     modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
