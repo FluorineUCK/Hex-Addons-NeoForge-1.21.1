@@ -2,6 +2,7 @@ package org.eu.net.pool.iotaworks.mixin;
 
 import org.eu.net.pool.iotaworks.HexPatternAccessor;
 
+import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
@@ -25,7 +26,7 @@ public class HexPatternMixin implements HexPatternAccessor {
     public int depth() { return depth; }
     public void depth_$eq(int depth) { this.depth = depth; }
 
-    @Shadow @Mutable public static Codec CODEC = null; // we don't actually use this field, but we need to @Mutable it so the wrapop can use it
+    @Shadow @Final @Mutable public static Codec CODEC; // we don't actually use this field, but we need to @Mutable it so the wrapop can use it
 
     @WrapOperation(method = "<clinit>", at = @At(value = "FIELD", opcode = 179, ordinal = 1))
     private static void wrapCodec(Codec<HexPattern> codec, Operation<Void> original) {
@@ -37,12 +38,7 @@ public class HexPatternMixin implements HexPatternAccessor {
                 ((HexPatternMixin) (Object) p).depth = l;
                 return p;
             })
-        ), codec).xmap(e -> {
-            HexPattern value[] = new HexPattern[1];
-            e.ifLeft(v -> { value[0] = v; });
-            e.ifRight(v -> { value[0] = v; });
-            return value[0];
-        }, Either::left));
+        ), codec).xmap(e -> e.left().or(e::right).get(), Either::left));
     }
 
     @WrapMethod(method = "serializeToNBT")
