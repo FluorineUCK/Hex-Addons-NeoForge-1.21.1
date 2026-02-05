@@ -53,6 +53,7 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map(), trusted: Boolean 
       Seq()
     else
       toList
+  def asJavaMap: java.util.Map[Iota, Iota] = map.map(e => (IotaType.deserialize(e._1, summon), IotaType.deserialize(e._2, summon))).toMap
 object MapIota extends IotaType[MapIota]:
   def color: Int = 0xb0641c
   def deserialize(using data: NbtElement, world: ServerWorld): MapIota =
@@ -81,6 +82,7 @@ object MapIota extends IotaType[MapIota]:
       output.append("→")
     output.append("]")
     output
+  def fromJavaMap(map: java.util.Map[Iota, Iota])(using ServerWorld) = MapIota((map: collection.Map[Iota, Iota]).map(e => IotaType.serialize(e._1) -> IotaType.serialize(e._2)).toMap)
 val mapArithmetic = 
     import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic.*
     arith("map",
