@@ -18,6 +18,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import at.petrak.hexcasting.api.casting.math.HexPattern;
 import net.minecraft.nbt.NbtCompound;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 @Mixin(HexPattern.Companion.class)
 class HexPattern$CompanionMixin {
@@ -31,5 +32,10 @@ class HexPattern$CompanionMixin {
         } else {
             return original.call(c);
         }
+    }
+    
+    @ModifyVariable(method = "isPattern", at = @At("HEAD"), argsOnly = true)
+    private NbtCompound extractPatternParent(NbtCompound c) {
+        return c.get("parent") instanceof NbtCompound p ? p : c; 
     }
 }

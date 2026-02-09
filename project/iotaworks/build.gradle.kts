@@ -20,6 +20,8 @@ dependencies {
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
     modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-block:5.2.3")
     modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-item:5.2.3")
+    modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:5.2.3")
+    modLocalRuntime("gay.object.ioticblocks:ioticblocks-fabric:1.0.2+1.20.1")
     modApi("miyucomics.hexcellular:hexcellular:1.1.0")
 }
 
