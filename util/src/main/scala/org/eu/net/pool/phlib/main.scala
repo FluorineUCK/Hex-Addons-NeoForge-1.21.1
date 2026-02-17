@@ -155,7 +155,6 @@ def propagateMishaps[T](env: CastingEnvironment)(body: => T): T =
     env.addExtension:
       new CastingEnvironmentComponent with CastingEnvironmentComponent.PostExecution:
         override def getKey: CastingEnvironmentComponent.Key[?] = key
-
         override def onPostExecution(result: CastResult): Unit =
           result.getSideEffects.collectFirst:
             case m: OperatorSideEffect.DoMishap =>
@@ -244,6 +243,18 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
 extension (p: ServerPlayerEntity) def gimmeIota(iota: Iota): Unit =
   val m = p.getComponent(HexCardinalComponents.STAFFCAST_IMAGE)
   m.setImage(m.getVM(Hand.MAIN_HAND).getImage.withStack(_ ++ Vector(iota)))
+
+private[phlib] trait AllocationTracked:
+  private[phlib] val phlib$createdAt: Exception
+
+package mixin:
+  import net.minecraft.block.Block
+  import net.minecraft.item.Item
+  import org.spongepowered.asm.mixin.injection.{At, Inject}
+  import org.spongepowered.asm.mixin.Mixin
+  @Mixin(value = Array(classOf[Item], classOf[Block]))
+  private[phlib] class AllocationTrackerMixin() extends AnyRef with AllocationTracked:
+    private[phlib] val phlib$createdAt: Exception = new RuntimeException(s"unregistered $this ($getClass) created")
 
 // this is out-of-scope for phlib but I have no idea where else to put it
 def init() =
