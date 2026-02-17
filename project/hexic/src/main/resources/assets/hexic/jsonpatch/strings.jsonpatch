@@ -3,9 +3,9 @@
 
 $pages = arrays.insert($pages, 11, {
   type: "hexcasting:pattern",
-  op_id: "hexxytounge:murmur",
-  anchor: "hexxytounge:murmur",
+  op_id: "hexic:murmur",
+  anchor: "hexic:murmur",
   input: "",
   output: "str",
-  text: "book.hexxytounge.page.murmur"
+  text: "book.hexic.page.murmur"
 });

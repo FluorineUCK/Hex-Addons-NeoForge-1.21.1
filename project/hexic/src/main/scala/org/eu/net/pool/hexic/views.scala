@@ -1,8 +1,9 @@
-package org.eu.net.pool.hexxychests
+package org.eu.net.pool.hexic
+
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.circles.BlockEntityAbstractImpetus
 import at.petrak.hexcasting.api.casting.eval.CastingEnvironment
-import at.petrak.hexcasting.api.casting.iota.{DoubleIota, Iota, IotaType, NullIota, Vec3Iota}
+import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota}
 import com.mojang.serialization.Codec
 import com.samsthenerd.inline.api.data.ItemInlineData
@@ -30,12 +31,10 @@ import org.eu.net.pool.phlib.{*, given}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.util.UUID
+import scala.collection.immutable.ArraySeq.unsafeWrapArray
 import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Using}
-
-private[hexxychests] given Conversion[String, Identifier] = Identifier.of("hexxychests", _)
-private[hexxychests] given Logger = LoggerFactory.getLogger("hexxychests")
 
 trait InventoryView(val viewType: InventoryView.Type[?]) extends InventoryView.Handler:
   def isTruthy = true
@@ -60,15 +59,15 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
     @throws[Mishap]
     def teleportEntity(ent: Entity)(using TransactionContext, CastingEnvironment): Boolean = false
   object Events:
-    val forEntity: Event[Entity => ServerWorld ?=> Seq[Handler]] = EventFactory.createArrayBacked(classOf, _ => Seq(), fns => e => fns.flatMap(_(e)))
-    val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[Handler]] = EventFactory.createArrayBacked(classOf, (_, _) => Seq(), fns => (pos, state) => fns.flatMap(_(pos, state)))
+    val forEntity: Event[Entity => ServerWorld ?=> Seq[Handler]] = EventFactory.createArrayBacked(classOf, _ => Seq(), fns => e => unsafeWrapArray(fns).flatMap(_(e)))
+    val forBlock: Event[(BlockPos, BlockState) => ServerWorld ?=> Seq[Handler]] = EventFactory.createArrayBacked(classOf, (_, _) => Seq(), fns => (pos, state) => unsafeWrapArray(fns).flatMap(_(pos, state)))
     // 'implementation restriction' my ass
     val forIota: Event[CastingEnvironment ?=> PartialFunction[Iota, InventoryView]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, new java.util.function.Function[Array[CastingEnvironment ?=> PartialFunction[Iota, InventoryView]], CastingEnvironment ?=> PartialFunction[Iota, InventoryView]]:
       def apply(fns: Array[CastingEnvironment ?=> PartialFunction[Iota, InventoryView]]): CastingEnvironment ?=> PartialFunction[Iota, InventoryView] = (((_: CastingEnvironment) ?=> PartialFunction.empty[Iota, InventoryView]) /: fns) { _ orElse _ }
     )
   abstract class OfMerged(viewType: InventoryView.Type[?], views: => Seq[Handler]) extends InventoryView(viewType):
     def getViews = views
-    override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(hexicVisibilityHack.unlifted(_(idx)))
+    override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(Function.unlift(_(idx)))
     override def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryExtract(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
     override def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryInsert(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
     override def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment) = views.map(_.capacity(variant)).sum
@@ -88,7 +87,7 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
         case v: OfSum => v.views
         case v => Iterable(v)
     )
-  class OfEntity(id: UUID)(using server: MinecraftServer) extends OfMerged(typeOfEntity, server.getWorlds.collectFirst(hexicVisibilityHack.unlifted(w => Option(w.getEntity(id)).map(Events.forEntity.invoker()(_)(using w)))).getOrElse(Seq())):
+  class OfEntity(id: UUID)(using server: MinecraftServer) extends OfMerged(typeOfEntity, server.getWorlds.collectFirst(Function.unlift(w => Option(w.getEntity(id)).map(Events.forEntity.invoker()(_)(using w)))).getOrElse(Seq())):
     override def serialize =
       val c = super.serialize
       c.putLong("m", id.getMostSignificantBits)
@@ -210,7 +209,7 @@ trait AbstractFurnaceBlockEntityAccess:
   def fuelTime: Int
   def fuelTime_=(fuelTime: Int): Unit
 
-private [hexxychests] val conceptScale = mutable.Map[ClassTag[? <: TransferVariant[?]], Double]().withDefaultValue(1.0)
+private [hexic] val conceptScale = mutable.Map[ClassTag[? <: TransferVariant[?]], Double]().withDefaultValue(1.0)
 def setConceptScale[T <: TransferVariant[?]: ClassTag as ct](scale: Int) =
   if conceptScale.isDefinedAt(ct) && conceptScale(ct) != scale then
     throw IllegalStateException(s"Conflicting scales ${conceptScale(ct)} and $scale defined for class $ct")
@@ -253,9 +252,15 @@ trait SlotReference:
 object SlotReference extends Registrar[SlotReference.Type[?]]("slot"):
   class Type[T <: SlotReference: Codec]
 
-def init() =
-  hexXplat.getIotaTypeRegistry("variant") = VariantIota
-  hexXplat.getIotaTypeRegistry("reference") = BoxedView
+object id:
+  def unapply(x: Identifier) = (x.getNamespace, x.getPath)
+
+def initViews() =
+  hexXplat.getIotaTypeRegistry("transfer_type") = VariantIota
+  hexXplat.getIotaTypeRegistry("inventory_view") = BoxedView
+  Events.registryLookup.register:
+    case (r, id("hexic" | "hexxychests", "variant")) => VariantIota
+    case (r, id("hexic" | "hexxychests", "reference")) => BoxedView
   Patterns.register("findview", e"addaadewewedaaddqwawqddaadewewedaaddqwawdeeweee"):
     // 2026-01-01 pool: nathan, we call this 'jank'. why would you do this?
     inline def lookup = InventoryView.Events.forIota.invoker()(using compiletime.summonInline)
@@ -291,7 +296,7 @@ def init() =
               ??? // TODO: mishap
             tx.commit()
             Seq(DoubleIota(insert / scale))
-  Patterns.register("moveentity", e"edeeewawdweaaddaqwqwqaddaaewdwawewdqd"):
+  Patterns.register("moveentity", se"edeeewawdweaaddaqwqwqaddaaewdwawewdqd"):
     Patterns.mkConstAction(3):
       case Seq(isIota[BoxedView.Instance, 2](from), isIota[BoxedView.Instance, 1](into), isIota[DoubleIota, 0](count)) =>
         Using.resource(Transaction.openOuter()):
@@ -318,7 +323,7 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
     def variant: TransferVariant[T]
     def display: Text
   def color: Int = 0x720a0a
-  private[hexxychests] def parseVariant(c: NbtCompound): Option[(TaggedVariant, RegistryKey[Reader])] =
+  private[hexic] def parseVariant(c: NbtCompound): Option[(TaggedVariant, RegistryKey[Reader])] =
     for
       i <- Option(Identifier.tryParse(c.getString("type")))
       entry <- Option.fromNullable(registry.get(i))

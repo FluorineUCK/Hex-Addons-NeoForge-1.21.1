@@ -1,4 +1,5 @@
-package org.eu.net.pool.hexxytounge
+package org.eu.net.pool
+package hexic
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
@@ -10,7 +11,7 @@ import scala.annotation.experimental
 given Conversion[ChatScreen, mixin.ChatScreenAccess] = _.asInstanceOf
 
 var lastMurmur = None: Option[String]
-def tick() =
+def tickChat() =
   val currentMurmur = MinecraftClient.getInstance.currentScreen match
     case null => None
     case c: ChatScreen => Some(c.chatField.getText)
@@ -32,18 +33,17 @@ package mixin:
   import net.minecraft.client.gui.hud.{ChatHud, ChatHudLine, MessageIndicator}
   import net.minecraft.client.gui.screen.ChatScreen
   import net.minecraft.client.gui.widget.TextFieldWidget
-  import org.eu.net.pool.hexxytounge
   import org.eu.net.pool.phlib.given
-  import org.spongepowered.asm.mixin.{Mixin, Unique}
   import org.spongepowered.asm.mixin.gen.Accessor
-  import org.spongepowered.asm.mixin.injection.{At, Inject}
   import org.spongepowered.asm.mixin.injection.callback.CallbackInfo
+  import org.spongepowered.asm.mixin.injection.{At, Inject}
+  import org.spongepowered.asm.mixin.{Mixin, Unique}
 
   @Mixin(Array(classOf[MinecraftClient]))
   private[mixin] class MinecraftClientMixin:
     @Inject(at = Array(new At(value = "HEAD")), method = Array("tick"))
     def tick(using CallbackInfo) =
-      hexxytounge.tick()
+      tickChat()
   @Mixin(Array(classOf[ChatScreen]))
   trait ChatScreenAccess:
     @Accessor("chatField") val chatField: TextFieldWidget
@@ -54,7 +54,6 @@ package mixin:
       val p = MinecraftClient.getInstance.player
       if p != null then
         val lines = p.component[RevealComponent].lines.map(line => new ChatHudLine.Visible(currentTick, line.asOrderedText, MessageIndicator.system, true))
-        println(lines)
         if lines.nonEmpty then
           lines.reverse ++ original
         else

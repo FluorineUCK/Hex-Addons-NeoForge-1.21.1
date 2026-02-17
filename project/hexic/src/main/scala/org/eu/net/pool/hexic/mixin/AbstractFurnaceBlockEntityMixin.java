@@ -1,7 +1,7 @@
-package org.eu.net.pool.hexxychests.mixin;
+package org.eu.net.pool.hexic.mixin;
 
 import net.minecraft.block.entity.AbstractFurnaceBlockEntity;
-import org.eu.net.pool.hexxychests.AbstractFurnaceBlockEntityAccess;
+import org.eu.net.pool.hexic.AbstractFurnaceBlockEntityAccess;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 

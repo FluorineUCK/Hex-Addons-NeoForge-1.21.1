@@ -24,7 +24,7 @@ plugins {
 
 include("util")
 includeBuild("plugin")
-for (mod in listOf("hexic", "iotaworks", "hexxytounge", "hexxychests")) {
+for (mod in listOf("hexic", "iotaworks", "hexxytounge")) {
     include(mod)
     project(":$mod").projectDir = file("project/$mod")
 }

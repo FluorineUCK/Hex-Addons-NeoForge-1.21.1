@@ -1,10 +1,10 @@
-package org.eu.net.pool.hexic.mixin.client;
+package org.eu.net.pool.hexic.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
-import org.eu.net.pool.hexic.client.Hooks;
+import org.eu.net.pool.hexic.ClientHooks;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -12,6 +12,6 @@ import org.spongepowered.asm.mixin.injection.At;
 public class ChatScreenMixin {
     @WrapOperation(method = "sendMessage", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/network/ClientPlayNetworkHandler;sendChatMessage(Ljava/lang/String;)V"))
     void sendChatMessage(ClientPlayNetworkHandler instance, String content, Operation<Void> original) {
-        if (!Hooks.interceptSendMessage(instance, content)) original.call(instance, content);
+        if (!ClientHooks.interceptSendMessage(instance, content)) original.call(instance, content);
     }
 }

@@ -95,7 +95,7 @@ import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{elidable, experimental, showAsInfix, tailrec, targetName, unused}
 import scala.ref.WeakReference
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, NotGiven, Random, Success, Try, TupledFunction, Using, boundary}
 import scala.collection.mutable
 import scala.compiletime.summonFrom
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
@@ -103,7 +103,6 @@ import scala.jdk.CollectionConverters.*
 import scala.language.experimental.{macros, saferExceptions}
 import scala.language.{dynamics, existentials, implicitConversions, postfixOps, reflectiveCalls}
 import scala.reflect.{ClassTag, classTag}
-import scala.util.{NotGiven, Random, TupledFunction, boundary}
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.PlayChannelHandler
 import net.fabricmc.fabric.api.networking.v1.{FabricPacket, PacketByteBufs, PacketSender, PacketType, ServerPlayNetworking}
@@ -366,7 +365,6 @@ private[hexic] object PatternRemapper:
 
 class PlayerInfoComponent(
   val player: PlayerEntity,
-  var murmur: Option[String] = None,
   var leftWeave: ItemStack = ItemStack.EMPTY,
   var rightWeave: ItemStack = ItemStack.EMPTY,
   var chatLines: Seq[Text] = Seq(),
@@ -476,7 +474,8 @@ trait ServerAware[T <: IotaType[?]]:
 given [T <: java.lang.Enum[T]: ClassTag as ct] => FromString[T]:
   override def fromString(s: String): T = Enum.valueOf[T](ct.runtimeClass.asInstanceOf[Class[T]], s)
 
-case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)):
+case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)) with Registered(Registries.ITEM, s"pen/$color"):
+  override def toString = s"$getClass(color=$color)${super[Item].toString}"
   override def use(world: World, player: PlayerEntity, hand: Hand): TypedActionResult[ItemStack] =
     // if player.getAttributeValue(HexAttributes.FEEBLE_MIND) > 0.0 then
     //   TypedActionResult.fail(player.getStackInHand(hand))
@@ -853,15 +852,8 @@ def init(): Unit =
     )
     possible(Random.nextInt(possible.size))
   Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
-  try System.getProperties.load(Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8))
-  catch
-    case _: FileNotFoundException =>
-    case i: IOException => summon[Logger].warn("Failed to read properties", i)
-  iotaTypeRegistry("location") = LocationIota
   iotaTypeRegistry("nbt") = NbtIota
-  iotaTypeRegistry("tripwire") = TripwireIota.getType
   iotaTypeRegistry("access") = PropertyAccessIota.Type
-  hexXplat.getContinuationTypeRegistry("tripwire") = TripwireIota.Frame
   for (color, item) <- Mediaweave.colors do
     Registries.ITEM(s"${color.asString}_mediaweave") = item
   for item <- MediaBundle.items do
@@ -870,6 +862,7 @@ def init(): Unit =
       case 12 => s"large_${item.color.asString}_bundle") = item
   for (flavor, item) <- stringworms do
     Registries.ITEM(s"stringworm_$flavor") = item
+  Pen.instances
   Registries.ITEM("stringworm_pigmented") = dyedStringworm
   Registries.ITEM("wizard") = wizard
   val cutItem = new Item(Item.Settings().maxCount(16)) with MediaHolderItem:
@@ -968,9 +961,10 @@ def init(): Unit =
           case _ => ActionResult.PASS
     Registries.BLOCK("chisel_table") = table
     Registries.ITEM("chisel_table") = BlockItem(table, Item.Settings())
-  for (color, item) <- Pen.instances do Registries.ITEM(s"pen/${color.asString}") = item
   Registries.ITEM_GROUP("group") = itemGroup
   //Registries.ITEM("echo") = EchoItem
+  initChat()
+  initViews()
   if fabric.isModLoaded("hexical") then
     for
       HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
@@ -1065,8 +1059,6 @@ def init(): Unit =
               case _ => mishap
           ))
         case _ => mishap
-  Patterns.register("tripwire", w"edewqwaqede"):
-    Patterns.mkLiteral(TripwireIota)
   Patterns.arithmetic("modulo", goodModulo)
   Registry.register(hexXplat.getArithmeticRegistry, "goodModulo": Identifier, arith("goodModulo",
     goodModulo -> ((x: DoubleIota, y: DoubleIota) => Seq(DoubleIota((x.getDouble % y.getDouble + y.getDouble) % y.getDouble))),
@@ -1982,8 +1974,10 @@ inline given [T <: Singleton] => Const[T] = Const[T](compiletime.constValue[T])
 given [T] => Conversion[Const[T], T] = _.value
 
 private[hexic] class ComponentInit extends EntityComponentInitializer, LevelComponentInitializer:
-  override def registerEntityComponentFactories(using EntityComponentFactoryRegistry): Unit =
+  override def registerEntityComponentFactories(using r: EntityComponentFactoryRegistry): Unit =
     PlayerInfoComponent.register
+    r.registerForPlayers(summon[ComponentKey[MurmurCache]], _ => MurmurCache(None), RespawnCopyStrategy.ALWAYS_COPY)
+    r.registerForPlayers(summon[ComponentKey[RevealComponent]], _ => RevealComponent(Seq.empty), RespawnCopyStrategy.LOSSLESS_ONLY)
   override def registerLevelComponentFactories(using LevelComponentFactoryRegistry): Unit =
     ServerInfoComponent.register
 
@@ -2051,6 +2045,14 @@ object elementTag:
   def unapply[T <: NbtElement](l: AbstractNbtList[T]): Some[ClassTag[T]] = Some(elementTag(l))
 
 private[hexic] object cfg:
+  locally:
+    Using.resource(Files.list(Path.of("config/"))): dir =>
+      dir.forEach: file =>
+        if file.toString.endsWith(".properties") then
+          try
+            System.getProperties.load(Files.newBufferedReader(file, Charsets.UTF_8))
+          catch
+            case i: IOException => summon[Logger].warn(s"Failed to read properties from $file", i)
   def apply[T: FromString as t](key: String): Option[T] =
     sys.props.get(key).map(t.fromString)
   def flag(key: String): Boolean = cfg[Boolean](s"hexic.$key").contains(true)
@@ -2145,15 +2147,6 @@ given Conversion[NbtByteArray, Array[Byte]] = _.getByteArray
 given Conversion[NbtIntArray, Array[Int]] = _.getIntArray
 given Conversion[NbtLongArray, Array[Long]] = _.getLongArray
 
-case class MishapWrongDimensionKiddo(val dim1: RegistryKey[World], val dim2: RegistryKey[World]) extends Mishap:
-  override def accentColor(using CastingEnvironment, Mishap.Context): FrozenPigment = dyeColor(DyeColor.MAGENTA)
-  override def errorMessage(using CastingEnvironment, Mishap.Context): Text =
-    val env = summon[CastingEnvironment]
-    val color = env.getPigment.getColorProvider.getColor(0, Vec3d.ZERO)
-    val mind = t"Mind".styled(_ `withColor` color)
-    t"My ${mind} cannot think in ${dim1.getValue `toTranslationKey` "dimension"} and ${dim2.getValue `toTranslationKey` "dimension"} at once"
-  override def execute(using CastingEnvironment, Mishap.Context, util.List[Iota]): Unit = ???
-
 trait Tagged[+F[_ <: U @uncheckedVariance], +U]:
   type T <: U: ClassTag
   val value: F[T]
@@ -2243,42 +2236,6 @@ def pocketName(using rand: Random) =
   def piece = s"${b.toUpperCase}$v$b" + Iterator.continually(v + b).takeWhile(_ => rand.nextInt(3) != 0).mkString("")
   (piece +: Iterator.continually(piece).takeWhile(_ => rand.nextInt(5) == 0).toSeq).mkString("-")
 val pocketNames = memo((id: UUID) => pocketName(using Random(id.getLeastSignificantBits)))
-
-object TripwireIota extends Iota(new IotaType[TripwireIota.type]:
-  override def deserialize(tag: NbtElement, world: ServerWorld): TripwireIota.type = TripwireIota
-  override def color: Int = 0xba4216
-  override def display(tag: NbtElement): Text = typeName
-, Object()):
-  override def isTruthy: Boolean = true
-  override def toleratesOther(that: Iota): Boolean = eq(that)
-  override def serialize(): NbtElement = NbtCompound()
-  class Frame(mishap: Mishap) extends ContinuationFrame:
-    override def breakDownwards(x: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = ???
-    override def evaluate(cont: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult = throw mishap
-    override def getType: Type[?] = Frame
-    override def serializeToNBT(): NbtCompound =
-      val c = NbtCompound()
-      val codec = mishap.getCodec
-      c.putString("Class", mishap.getClass.getName)
-      c.put("Data", codec.encodeStart(NbtOps.INSTANCE, mishap.asInstanceOf).getOrThrow(false, _ => {}))
-      c
-    override def size: Int = 1
-  object Frame extends ContinuationFrame.Type[Frame]:
-    override def deserializeFromNBT(c: NbtCompound, world: ServerWorld): Frame =
-      val klass = classNamed(c.getString("Class"))
-      val codec = klass.get.runtimeClass.getMethod("getCodec").invoke(null).asInstanceOf[Codec[? <: Mishap]]
-      Frame(codec.decode(NbtOps.INSTANCE, c.get("Data")).getOrThrow(false, _ => {}).getFirst)
-
-case class LocationIota(vec: Vec3d, dim: Option[RegistryKey[World]]) extends Vec3Iota(vec), IotaTypeHint:
-  override def serialize: NbtElement = NbtCompound().tap(_.put("vec", super.serialize())).tap(n => dim.map(v => n.putString("dim", v.getValue.toString)))
-  override def hexic$iotaType(): IotaType[?] = LocationIota
-
-object LocationIota extends IotaType[LocationIota]:
-  override def color: Int = Vec3Iota.TYPE.color()
-  override def deserialize(using NbtElement, ServerWorld): LocationIota = ???
-  override def display(d: NbtElement): Text = d match
-    case d: NbtCompound => Vec3Iota.TYPE.display(d.get("vec"))
-    case _ => null
 
 inline def repeat[T](inline value: T, inline cond: T => Boolean)(inline body: T => T): T =
   var current = value

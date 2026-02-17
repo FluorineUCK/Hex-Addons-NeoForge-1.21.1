@@ -1,6 +1,5 @@
 package org.eu.net.pool
 package hexic
-package client
 
 import at.petrak.hexcasting.api.item.PigmentItem
 import at.petrak.hexcasting.api.mod.HexTags
@@ -22,12 +21,12 @@ import net.minecraft.client.color.item.ItemColorProvider
 import net.minecraft.client.gui.screen.ChatScreen
 import net.minecraft.client.gui.widget.TextFieldWidget
 import net.minecraft.client.network.{ClientPlayNetworkHandler, ClientPlayerEntity}
-import net.minecraft.client.render.{BufferBuilder, RenderLayer, RenderLayers, VertexConsumer, VertexConsumerProvider, VertexFormat}
 import net.minecraft.client.render.block.entity.{BlockEntityRenderer, BlockEntityRendererFactories}
 import net.minecraft.client.render.model.json
+import net.minecraft.client.render.*
 import net.minecraft.client.texture.Sprite
 import net.minecraft.client.util.math.MatrixStack
-import net.minecraft.data.client.{BlockStateModelGenerator, ItemModelGenerator, ModelIds, Models, TextureKey, TextureMap}
+import net.minecraft.data.client.*
 import net.minecraft.data.server.recipe.{RecipeJsonProvider, ShapedRecipeJsonBuilder}
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.inventory.Inventory
@@ -36,9 +35,9 @@ import net.minecraft.recipe.book.RecipeCategory
 import net.minecraft.registry.{MutableRegistry, Registries, RegistryKeys, RegistryWrapper}
 import net.minecraft.screen.slot.Slot
 import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
-import net.minecraft.util.{DyeColor, Identifier}
 import net.minecraft.util.collection.DefaultedList
 import net.minecraft.util.math.{Direction, MathHelper, Vec3d}
+import net.minecraft.util.{DyeColor, Identifier}
 
 import java.io.{InputStreamReader, Reader}
 import java.util.function.Consumer
@@ -49,7 +48,8 @@ import scala.reflect.Selectable.reflectiveSelectable
 import scala.util.boundary
 import scala.util.boundary.Label
 import scala.util.chaining.scalaUtilChainingOps
-import phlib.{*, given}
+
+import phlib.{_, given}
 
 given client: MinecraftClient = MinecraftClient.getInstance
 
@@ -58,7 +58,7 @@ inline def foldLocalPlayer[R](default: => R)(ifPresent: ClientPlayerEntity => R)
     case null => default
     case player => ifPresent(player)
 
-object Hooks:
+object ClientHooks:
   def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
     foldLocalPlayer(original): p =>
       val c = p.getComponent(PlayerInfoComponent.key)
@@ -136,7 +136,7 @@ def init(): Unit =
     val preferredColor = DyeColor.values()(client.getSession.getUuidOrNull.getLeastSignificantBits.abs.%(16).toInt)
     val preferredStringworm = stringworms(Stringworm.flavors(client.getSession.getUuidOrNull.getLeastSignificantBits.abs.%(48).*(7).%(4).toInt))
     val preferredMediaweave = Mediaweave.colors(preferredColor)
-    val preferredPen = Pen(preferredColor)
+    val preferredPen = Pen.instances(preferredColor)
     val preferredPouch = memo(MediaBundle(preferredColor, _))
     {
       case (Registries.ITEM, id) if id == ("preferred_mediaweave": Identifier) => preferredMediaweave
@@ -318,12 +318,13 @@ def datagen(gen: FabricDataGenerator): Unit =
   pack.addProvider:
     new FabricLanguageProvider(_):
       override def generateTranslations(gen: FabricLanguageProvider.TranslationBuilder): Unit =
-        for (action, name) <- Vector(
+        for action -> name <- Vector(
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",
           "dye_offhand" -> "Apply Pigment",
           "erase" -> "Erase Block",
           "extract" -> "Excisor's Gambit",
+          "findview" -> "Reflection Purification",
           "fox" -> "Vulpine Gambit",
           "free" -> "Deallocator's Gambit",
           "get_other_caster" -> "Dual's Reflection",
@@ -336,6 +337,9 @@ def datagen(gen: FabricDataGenerator): Unit =
           "makeworld" -> "Conjure Demiplane",
           "malloc" -> "Allocator's Purification",
           "modulo" -> "Modulus Distillation II",
+          "moveconcept" -> "Transfer Substance",
+          "moveentity" -> "Transfer Creature",
+          "murmur" -> "Murmur Reflection",
           "nbt/deserialize" -> "Importer's Purification",
           "nbt/lift1" -> "Secretary's Purification: Byte",
           "nbt/lift2" -> "Secretary's Purification: Short",
@@ -355,20 +359,18 @@ def datagen(gen: FabricDataGenerator): Unit =
           "staffcast_factory" -> "Lani's Greater Gambit",
           "staffcast_factory/lazy" -> "Lani's Lesser Gambit",
           "take" -> "Retention Distillation",
-          "tripwire" -> "Tripwire Reflection",
           "unfox" -> "Vulpine Expulsion",
           "whatthefuck" -> "Suffering",
           "where" -> "Deductive Purification",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         gen.add("hexcasting.special.hexic:tuple", "Coupler's Gambit")
         gen.add("hexcasting.special.hexic:tuple.n", "Coupler's Gambit %s")
-        for (klass, name) <- Vector(
+        for klass ->name<- Vector(
           "erase" -> "an item entity or vector",
           "int_or_list" -> "§aint§r or §5[§aint§5]§r",
         ) do gen.add(s"hexcasting.mishap.invalid_value.class.hexic:$klass", name)
-        for (ty, name) <- Vector(
+        for ty ->name<- Vector(
           "nbt" -> "Tag",
-          "tripwire" -> "Tripwire",
           "variant" -> "Concept",
         ) do gen.add(s"hexcasting.iota.hexic:$ty", name)
         gen.add("hexcasting.mishap.bad_block.hexic:erase", "a block holding a casting item or acting as an iota holder")
@@ -393,10 +395,13 @@ def datagen(gen: FabricDataGenerator): Unit =
         Registries.ITEM.forEach:
           case p: PigmentItem => gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
           case e => println(e)
-        gen.add("book.hexic.page.dye_offhand", "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.")
-        gen.add("book.hexic.page.erase", "Erases the _Hex or iota contained within a dropped item or block. Costs one dust per item.")
-        gen.add("book.hexic.page.get_other_caster", "Adds the closest sentient being, excluding me, to the stack.")
-        gen.add("book.hexic.page.modulo", "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.")
+        for page -> text <- Vector(
+          "dye_offhand" -> "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.",
+          "erase" -> "Erases the _Hex or iota contained within a dropped item or block. Costs one dust per item.",
+          "get_other_caster" -> "Adds the closest sentient being, excluding me, to the stack.",
+          "modulo" -> "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.",
+          "murmur" -> "Finds the region of my mind known as the 'chat box' and adds its contents to the stack. If it cannot be found, adds Null instead.",
+        ) do gen.add(s"book.hexic.page.$page", text)
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
         gen.add("hexdoc.hexic.title", "Hexic")
         gen.add("hexic.media.external", "Media")

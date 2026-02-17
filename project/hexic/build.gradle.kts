@@ -114,6 +114,13 @@ sourceSets {
     }
 }
 
+loom.runs {
+    register("mixinDebugClient") {
+        inherit(loom.runs["client"])
+        vmArgs("-Dmixin.debug.export=true", "-Dmixin.debug.export.decompile=true")
+    }
+}
+
 val modDepends: Configuration by configurations.creating {
     isTransitive = false
     isCanBeResolved = true
@@ -225,13 +232,13 @@ tasks.processResources {
             conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
 
             entrypoint("org.eu.net.pool.hexic.main\$package::init")
-            entrypoint("org.eu.net.pool.hexic.client.main\$package::init", Environment.Client)
-            entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client.main\$package::datagen")
+            entrypoint("org.eu.net.pool.hexic.client\$package::init", Environment.Client)
+            entrypoint("fabric-datagen", "org.eu.net.pool.hexic.client\$package::datagen")
             entrypoint("mm:early_risers", "org.eu.net.pool.hexic.early_riser\$package::warCrimes")
             entrypoint("cardinal-components", "org.eu.net.pool.hexic.ComponentInit")
             mixins("hexic.mixins.json")
             mixins("hexic.client.mixins.json", Environment.Client)
-            cardinalComponents("player_wisp", "server_info")
+            cardinalComponents("player_wisp", "server_info", "murmur", "reveal")
         }
     }
 

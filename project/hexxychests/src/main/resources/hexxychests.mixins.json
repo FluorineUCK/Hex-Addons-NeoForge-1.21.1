@@ -1,7 +1,0 @@
-{
-  "package": "org.eu.net.pool.hexxychests.mixin",
-  "parent": "phlib.mixins.json",
-  "mixins": [
-    "AbstractFurnaceBlockEntityMixin"
-  ]
-}

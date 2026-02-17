@@ -240,6 +240,10 @@ extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit 
   else
     `else`
 
+trait Registered[T](registry: Registry[T], id: Identifier):
+  this: T =>
+  registry(id) = this
+
 extension (p: ServerPlayerEntity) def gimmeIota(iota: Iota): Unit =
   val m = p.getComponent(HexCardinalComponents.STAFFCAST_IMAGE)
   m.setImage(m.getVM(Hand.MAIN_HAND).getImage.withStack(_ ++ Vector(iota)))

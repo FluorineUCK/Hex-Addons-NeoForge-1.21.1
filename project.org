@@ -1,3 +1,4 @@
+# -*- mode: org; mode: visual-line -*-
 #+TITLE: Hex Addon Planning
 #+AUTHOR: poolcritter
 #+CATEGORY: hex-addons
@@ -8,49 +9,43 @@
 :PROPERTIES:
 :CATEGORY: hexic
 :END:
-pile of old ideas, deprecated and ripe for theft
-*** TODO finish enumerating features
-:LOGBOOK:
-CLOCK: [2026-01-08 Thu 13:25]--[2026-01-08 Thu 13:26] =>  0:01
-CLOCK: [2026-01-08 Thu 13:03]--[2026-01-08 Thu 13:19] =>  0:16
-:END:
-if any of y'all people want to steal this, ping me so I can remove it from the list
-
-- [X] [[./project/iotaworks/][patchworks]]
-- [X] [[./project/hexxytounge][murmur refl]]
-- [X] [[./project/hexxytounge/][greater reveal]]
-- [ ] mediaweave
-  - [ ] wool edification
-  - [ ] messaging frames (for mediaweave)
-- [ ] stringworms
-  - [ ] shimmering stringworms
-- [ ] stream iotas
-- [ ] pattern remapping (modpacks)
-- [ ] pens
-- [ ] media pouches
-- [ ] NBT iotas
-- [ ] tripwire iotas (unimplemented)
-- [ ] media chiseling
-- [ ] (+hexical) hopper into/out of conduits
-- [X] (+hexical) Apply Pigment pattern
-  - [X] works on trinkets
-- [ ] list manipulation patterns (where, take, rotate, drop, grep, extract)
-- [ ] modulo 2
-- [ ] vulpine gambit
-- [ ] tupling exaltations
-- [ ] snow pattern
-- [ ] lani gambits
-- [ ] dual's reflection
-- [X] [[https://github.com/object-Object/IoticBlocks][erase block/entity]]
-- [ ] pseudothoth
-- [ ] echo shard casting
-- [ ] item overstacking
+the misc stuff addon for doing misc addon things
+** Chiseled amethyst
 *** TODO give chisels a texture
-*** TODO special demiplane NG handling
-when entering, always enter at the center
-when exiting, exit where you last entered from
-or get sent to the deep noo
 *** TODO give tables a model in-inventory
+*** TODO tripwires
+deleted code:
+#+BEGIN_SRC scala
+hexXplat.getContinuationTypeRegistry("tripwire") = TripwireIota.Frame
+Patterns.register("tripwire", w"edewqwaqede"):
+  Patterns.mkLiteral(TripwireIota)
+#+END_SRC
+#+BEGIN_SRC scala
+object TripwireIota extends Iota(new IotaType[TripwireIota.type]:
+  override def deserialize(tag: NbtElement, world: ServerWorld): TripwireIota.type = TripwireIota
+  override def color: Int = 0xba4216
+  override def display(tag: NbtElement): Text = typeName
+, Object()):
+  override def isTruthy: Boolean = true
+  override def toleratesOther(that: Iota): Boolean = eq(that)
+  override def serialize(): NbtElement = NbtCompound()
+  class Frame(mishap: Mishap) extends ContinuationFrame:
+    override def breakDownwards(x: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = ???
+    override def evaluate(cont: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult = throw mishap
+    override def getType: Type[?] = Frame
+    override def serializeToNBT(): NbtCompound =
+      val c = NbtCompound()
+      val codec = mishap.getCodec
+      c.putString("Class", mishap.getClass.getName)
+      c.put("Data", codec.encodeStart(NbtOps.INSTANCE, mishap.asInstanceOf).getOrThrow(false, _ => {}))
+      c
+    override def size: Int = 1
+  object Frame extends ContinuationFrame.Type[Frame]:
+    override def deserializeFromNBT(c: NbtCompound, world: ServerWorld): Frame =
+      val klass = classNamed(c.getString("Class"))
+      val codec = klass.get.runtimeClass.getMethod("getCodec").invoke(null).asInstanceOf[Codec[? <: Mishap]]
+      Frame(codec.decode(NbtOps.INSTANCE, c.get("Data")).getOrThrow(false, _ => {}).getFirst)
+#+END_SRC
 *** TODO crafted amethyst
 created by a table; worth a shard
 need to implement texture generation
@@ -59,28 +54,22 @@ can be charmed; breaks if discharmed
 - [X] demiplane patterns
 - [ ] conjure snow
 - [ ] pseudothoth
+** Demiplanes
+*** TODO special demiplane NG handling
+when entering, always enter at the center
+when exiting, exit where you last entered from
+or get sent to the deep noo
 ** [[https://modrinth.com/mod/phlib][PHLib]]
 *** TODO [#A] make a mod icon
 probably my player head holding a quenched amethyst
 *** TODO reimplement Flock Decomp on maps
 *** TODO phlib ↔ [[https://modrinth.com/mod/hexthings][hexthings]] map conversion
 *** TODO dialect conversion in general, actually
-** Underevaluate
-*** TODO create project
-it needs a real name
-*** TODO Hermes' Gambling
-executes given iota with a 25% chance, <ne,qqqeeaqq>
-*** TODO find other scrapped ideas
 ** [[https://modrinth.com/mod/iotaworks][Iotaworks]]
 *** TODO finish implementing subscripts
 *** TODO implement patchwork subscripts
-** HexxyChests
-*** TODO make sure everything works
-*** TODO make todo list
-** HexxyTongue
-*** TODO port mediaweaves
-*** TODO channeled reveal
-maybe revealing a map merges it with an internal 'channel' map?
+*** TODO steal labels and annotations from hex\mu
+probably blocked on [[IoticIotas]]
 ** IoticIotas
 *** TODO revisit
 does this still exist? is it still worth it?
@@ -101,8 +90,6 @@ techtastic mentioned 'weird scala stuff' which might be my fault it's probably m
 *** TODO wait for reply wrt Apply Pigment
 **** TODO ping Miyu about [[https://discord.com/channels/936370934292549712/1011455473528098857/1459290686841946153][message]]
      SCHEDULED: <2026-01-10 12:00:00>
-*** TODO PR Apply Pigment
-make sure it works on trinkets
 * Ideas
 ** TODO Spellminds
 effectively cross-server cross-instance iota transfer bound permanenently to one specific player
@@ -110,3 +97,6 @@ might have special behavior for some iota types; other types of iotas are either
 we need iota fmapping though
 ** TODO Liquidification greatspell
 [[./.project.org.assets/liquidify-spell.png]]
+* Bugs
+** TODO see if latest VS2 is still incompatible
+** TODO fix Windows compatibility with Bind Demiplane

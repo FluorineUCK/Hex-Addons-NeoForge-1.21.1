@@ -1,4 +1,5 @@
-package org.eu.net.pool.hexxytounge
+package org.eu.net.pool
+package hexic
 
 import at.petrak.hexcasting.api.casting.eval.CastingEnvironment
 import at.petrak.hexcasting.api.casting.iota.{Iota, IotaType, ListIota, NullIota}
@@ -20,10 +21,7 @@ import ram.talia.moreiotas.api.casting.iota.StringIota
 import scala.collection.immutable.*
 import scala.language.implicitConversions
 
-private[hexxytounge] given Logger = LoggerFactory.getLogger("hexxytounge")
-private[hexxytounge] given Conversion[String, Identifier] = Identifier.of("hexxytounge", _)
-
-private[hexxytounge] case class MurmurCache(var value: Option[String]) extends Component:
+private[hexic] case class MurmurCache(var value: Option[String]) extends Component:
   override def readFromNbt(tag: NbtCompound): Unit =
     if tag.getBoolean("active") then
       value = Some(tag.getString("value"))
@@ -34,22 +32,17 @@ private[hexxytounge] case class MurmurCache(var value: Option[String]) extends C
     for value <- value do
       tag.putBoolean("active", true)
       tag.putString("value", value)
-private[hexxytounge] object MurmurCache:
+private[hexic] object MurmurCache:
   given ComponentKey[MurmurCache] = ComponentRegistry.getOrCreate("murmur", classOf[MurmurCache])
 
-private[hexxytounge] case class RevealComponent(var lines: Seq[Text]) extends AutoSyncedComponent:
+private[hexic] case class RevealComponent(var lines: Seq[Text]) extends AutoSyncedComponent:
   override def readFromNbt(tag: NbtCompound): Unit =
     lines = for n <- 0 until tag.getInt("lineCount") yield Text.Serializer.fromJson(tag(s"line$n")) // nbt is json apparently?
   override def writeToNbt(tag: NbtCompound): Unit =
     tag.putInt("lineCount", lines.size)
     for (line, n) <- lines.zipWithIndex do tag(s"line$n") = Text.Serializer.toJsonTree(line)
-private[hexxytounge] object RevealComponent:
+private[hexic] object RevealComponent:
   given ComponentKey[RevealComponent] = ComponentRegistry.getOrCreate("reveal", classOf[RevealComponent])
-
-class Components extends EntityComponentInitializer:
-  override def registerEntityComponentFactories(registry: EntityComponentFactoryRegistry): Unit =
-    registry.registerForPlayers(summon[ComponentKey[MurmurCache]], _ => MurmurCache(None), RespawnCopyStrategy.ALWAYS_COPY)
-    registry.registerForPlayers(summon[ComponentKey[RevealComponent]], _ => RevealComponent(Seq.empty), RespawnCopyStrategy.LOSSLESS_ONLY)
 
 def keyOf[C <: Component: ComponentKey as key] = key
 
@@ -64,7 +57,7 @@ object hasComponent:
     catch case _: NoSuchElementException =>
       None
 
-def init() =
+def initChat() =
   Patterns.register("reveal", ne"deqed" ):
     Patterns.mkConstAction(1, 0):
       case Seq(iota: Iota) =>
