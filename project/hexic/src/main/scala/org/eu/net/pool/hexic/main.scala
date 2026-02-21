@@ -3,7 +3,7 @@ package org.eu.net.pool
 package hexic
 
 import at.petrak.hexcasting.api.addldata.ADMediaHolder
-import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
+import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, OperatorUtils, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler, SpellAction}
@@ -705,40 +705,43 @@ private [hexic] object Extern:
     val p = iota match
       case p: PatternIota => p.getPattern
       case _ => boundary.break(None)
-    val measure = p.anglesSignature match
-      case introPattern (measure) => measure
-      case _ => boundary.break(None)
-    val size = measure.length + 1
-    def mishap(m: Mishap) =
-      val safeVM = CastingVM(vm.getImage, vm.getEnv)
-      OperatorSideEffect.DoMishap(m, Mishap.Context(p, Text.translatable("hexcasting.action.hexic:parenthesize"))).performEffect(safeVM)
-      boundary.break(Some(safeVM.getImage, ResolvedPatternType.ERRORED))
-    val img = vm.getImage
-    val parens = img.getParenCount
-    if parens == size then
-      img.getStack.toSeq match
-        case Seq() => mishap(MishapNotEnoughArgs(1, 0))
-        case tail :+ head => Some((
-          CastingImage(
-            stack = tail,
-            parenCount = parens,
-            parenthesized = img.getParenthesized :+ ParenthesizedIota(head, false),
-            escapeNext = false, 
-            opsConsumed = img.getOpsConsumed,
-            userData = img.getUserData,
-            null
-          ),
-          ResolvedPatternType.EVALUATED
-        ))
-    else if parens > size then
-      None // leave unescaped, so a nested hex can introject
-    else
-      mishap(new Mishap:
-        override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.ORANGE)
-        override def errorMessage(env: CastingEnvironment, ctx: Context): Text = ???
-        override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
-          stack.add(PatternIota(p))
-      )
+    p.anglesSignature match
+      case introPattern (measure) =>
+        val size = measure.length + 1
+        def mishap(m: Mishap) =
+          val safeVM = CastingVM(vm.getImage, vm.getEnv)
+          OperatorSideEffect.DoMishap(m, Mishap.Context(p, Text.translatable("hexcasting.action.hexic:parenthesize"))).performEffect(safeVM)
+          boundary.break(Some(safeVM.getImage, ResolvedPatternType.ERRORED))
+        val img = vm.getImage
+        val parens = img.getParenCount
+        if parens == size then
+          img.getStack.toSeq match
+            case Seq() => mishap(MishapNotEnoughArgs(1, 0))
+            case tail :+ head => Some((
+              CastingImage(
+                stack = tail,
+                parenCount = parens,
+                parenthesized = img.getParenthesized :+ ParenthesizedIota(head, false),
+                escapeNext = false,
+                opsConsumed = img.getOpsConsumed,
+                userData = img.getUserData,
+                null
+              ),
+              ResolvedPatternType.EVALUATED
+            ))
+        else if parens > size then
+          None // leave unescaped, so a nested hex can introject
+        else
+          mishap(new Mishap:
+            override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.ORANGE)
+            override def errorMessage(env: CastingEnvironment, ctx: Context): Text = ???
+            override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
+              stack.add(PatternIota(p))
+          )
+      case "eadedae" =>
+        val img = vm.getImage
+        Some(CastingImage(img.getStack:+ListIota(img.getParenthesized.map(_.getIota)):+DoubleIota(img.getParenCount), 0, Seq(), false, img.getOpsConsumed, img.getUserData, null), ResolvedPatternType.EVALUATED)
+      case _ => None
   private [hexic] def getPocketName(pocket: String) = Text.of(pocketNames(getPocketID(Identifier.tryParse(pocket)).get))
 
 val _ =
@@ -1584,6 +1587,15 @@ def init(): Unit =
             override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
         , true, true)
       ))
+  Patterns.register("omni_open", w"qdaqadq"):
+    Patterns.mkAction: (img, cont) =>
+      (img.getStack.toSeq: Seq[Iota]) match
+        case stack:+allegedCount =>
+          val count = OperatorUtils.getPositiveInt(Seq(allegedCount), 0, 1)
+          (new CastingImage(stack, count, Seq(), false, img.getOpsConsumed, img.getUserData, null), cont, HexEvalSounds.NORMAL_EXECUTE, Seq())
+  Patterns.register("omni_close", e"eadedae"):
+    Patterns.mkConstAction(0):
+      case Seq() => Seq(ListIota(Seq()), DoubleIota(0))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match

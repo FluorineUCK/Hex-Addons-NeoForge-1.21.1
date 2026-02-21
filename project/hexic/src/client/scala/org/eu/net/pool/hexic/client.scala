@@ -353,6 +353,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           "nbt/literal/collection" -> "Secretary's Reflection: Collection",
           "nbt/literal/list" -> "Secretary's Reflection: Vacant List",
           "nbt/serialize" -> "Exporter's Purification",
+          "omni_close" -> "Cessation",
+          "omni_open" -> "Resumption",
           "reveal" -> "Greater Reveal",
           "rotate" -> "Ferris Distillation",
           "snow" -> "Summon Snow",
