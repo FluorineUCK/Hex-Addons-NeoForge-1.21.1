@@ -138,12 +138,12 @@ dependencies {
     }
 
     val minecraft_version = "1.20.1"
-    modDepends(implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)!!)
+    implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)
     implementation(project(":util", "namedElements"))
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
     modImplementation("com.samsthenerd.inline:inline-fabric:$minecraft_version-1.0.1")
-    modDepends(include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)!!)
+    include(implementation("com.github.Chocohead:Fabric-ASM:v2.3")!!)
     modCompileOnly("dev.kineticcat.hexportation:hexportation-fabric-1.20.1-fabric-fabric:0.0.3")
     modCompileOnly("carpet:fabric-carpet:1.20-1.+")
     modLocalRuntime("maven.modrinth:lithium:mc1.20.1-0.11.4-fabric")
@@ -152,17 +152,17 @@ dependencies {
     modImplementation("net.beholderface.oneironaut:oneironaut-fabric-1.20.1-fabric-fabric:1.20.1-SNAPSHOT")
     compat("maven.modrinth:hexcassettes:1.1.4")
     modLocalRuntime("maven.modrinth:trinkets:3.7.2")
-    modDepends(modImplementation("maven.modrinth:spasm:0.2.2")!!)
+    modImplementation("maven.modrinth:spasm:0.2.2")
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
     compat("miyucomics.hexical:hexical:2.0.0+a3c47ad9")
     compat("miyucomics.overevaluate:overevaluate:main-SNAPSHOT")
-    modDepends(modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") })
-    modDepends(modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0") { exclude(module = "serialization-hooks") })
-    modDepends(modImplementation("miyucomics.hexcellular:hexcellular:1.1.0")!!)
-    modDepends(modImplementation("maven.modrinth:jsonpatcher:1.0.0-beta.4+mc.1.20.1")!!)
+    modImplementation("ram.talia.moreiotas:moreiotas-fabric-$minecraft_version:0.1.1") { exclude(module = "serialization-hooks") }
+    modImplementation("ram.talia.hexal:hexal-fabric-1.20.1:0.3.0") { exclude(module = "serialization-hooks") }
+    modImplementation("miyucomics.hexcellular:hexcellular:1.1.0")
+    modImplementation("maven.modrinth:jsonpatcher:1.0.0-beta.4+mc.1.20.1")
     implementation("com.github.mattidragon:JsonPatcherLang:v1.0.0-beta.3") // trans maven.modrinth:jsonpatcher
     modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0") // trans maven.modrinth:jsonpatcher
-    modDepends(modImplementation("miyucomics.hexpose:hexpose:1.0.0")!!)
+    modImplementation("miyucomics.hexpose:hexpose:1.0.0")
     include(modApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")!!)
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
@@ -214,20 +214,14 @@ tasks.processResources {
                 put("discord", "https://discord.com/users/402104961812660226")
             }
 
-            for (p in modDepends.resolve()) {
-                val root =
-                    if (p.isDirectory) p.toPath()
-                    else if (p.name.endsWith(".jar")) `java.nio.file`.FileSystems.newFileSystem(p.toPath()).rootDirectories.single()
-                    else continue
-                val fmj = root.resolve("fabric.mod.json")
-                if (fmj.exists()) {
-                    val json = JsonSlurper().parse(fmj) as Map<String, Any>
-                    depends(json["id"].toString(), ">=${json["version"]}")
-                } else {
-                    println("Attempt to add dependency '$p' to modDepends, which is not a Fabric mod.")
-                }
-            }
-
+            depends("mixinextras", "*")
+            depends("mm", "^2.3")
+            depends("spasm", ">=0.2.2")
+            depends("moreiotas", ">=0.1.1")
+            depends("hexal", ">=0.3.0")
+            depends("hexcellular", "^1.1.0")
+            depends("jsonpatcher", "^1.0.0-beta.4+mc.1.20.1")
+            depends("hexpose", "^1.0.0")
             conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
 
             entrypoint("org.eu.net.pool.hexic.main\$package::init")
