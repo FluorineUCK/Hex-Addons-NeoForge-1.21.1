@@ -242,7 +242,7 @@ allprojects {
         exactRepo("https://maven.shedaniel.me/",
             "dev.architectury",
             "me.shedaniel")
-        exactRepo("https://maven.terraformersmc.com/",
+        exactRepo("https://maven.terraformersmc.com/releases",
             "com.terraformersmc",
             "dev.emi")
         exactRepo("https://repo.sleeping.town/",
