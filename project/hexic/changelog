@@ -1,5 +1,8 @@
 2.0.0 engulfed hexxychests
 2.0.0 load config from config/*.properties instead of config/jvm.properties
+2.0.0 mediaweave now applies to all chat messages
+2.0.0 !mediaweave now uses trinket slots
 2.0.0 murmur and reveal now use separate components
+2.0.0 !only one mediaweave can be equipped at a time
 2.0.0 !removed tripwires
 2.0.0 textures now use JPEG XL
