@@ -852,7 +852,6 @@ def init(): Unit =
     )
     possible(Random.nextInt(possible.size))
   Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
-  iotaTypeRegistry("nbt") = NbtIota
   iotaTypeRegistry("access") = PropertyAccessIota.Type
   for (color, item) <- Mediaweave.colors do
     Registries.ITEM(s"${color.asString}_mediaweave") = item
@@ -991,37 +990,6 @@ def init(): Unit =
                 , true, true
               ))
           case i => throw MishapInvalidIota.ofType(i, 0, "pigment")
-  def mkNbtLiftAction[T: FromIota](lift: T => NbtElement, expected: Identifier) =
-    Patterns.mkConstAction(1):
-      case Seq(iotaLike[T](x)) => Seq(NbtIota(lift(x)))
-      case Seq(x) => throw MishapInvalidIota.of(x, 0, expected.toString)
-  def mkNbtLiftArrayAction[T: FromIota](lift: T => NbtElement, liftArray: Array[T] => NbtElement, expected: Identifier)(using FromIota[Array[T]]) =
-    Patterns.mkConstAction(1):
-      case Seq(iotaLike[T](x)) => Seq(NbtIota(lift(x)))
-      case Seq(iotaLike[Array[T]](x)) => Seq(NbtIota(liftArray(x)))
-      case Seq(x) => throw MishapInvalidIota.of(x, 0, expected.toString)
-  Patterns.register("nbt/lift1", (HexDir.NORTH_WEST, "edwaqw")):
-    mkNbtLiftArrayAction[Byte](NbtByte.of, (b => NbtByteArray(b)): Array[Byte] => NbtElement, "byte")
-  Patterns.register("nbt/lift2", (HexDir.NORTH_WEST, "edwaqww")):
-    mkNbtLiftAction[Short](NbtShort.of, "short")
-  Patterns.register("nbt/lift4", (HexDir.NORTH_WEST, "edwaqwww")):
-    mkNbtLiftArrayAction[Int](NbtInt.of, (b: Array[Int]) => NbtIntArray(b), "int")
-  Patterns.register("nbt/lift8", (HexDir.NORTH_WEST, "edwaqwwww")):
-    mkNbtLiftArrayAction[Long](NbtLong.of, (b: Array[Long]) => NbtLongArray(b), "long")
-  Patterns.register("nbt/liftf", (HexDir.NORTH_WEST, "edwaqwaa")):
-    mkNbtLiftAction[Float](NbtFloat.of, "float")
-  Patterns.register("nbt/liftd", (HexDir.NORTH_WEST, "edwaqwaawaa")):
-    mkNbtLiftAction[Double](NbtDouble.of, "double")
-  Patterns.register("nbt/literal/collection", (HexDir.EAST, "qqddqdewqaeaaee")):
-    Patterns.mkLiteral(NbtIota(NbtCompound()))
-  Patterns.register("nbt/literal/list", (HexDir.EAST, "eedwaqq")):
-    Patterns.mkLiteral(NbtIota(NbtList()))
-  Patterns.register("nbt/literal/array1", (HexDir.EAST, "eedwaqqe")):
-    Patterns.mkLiteral(NbtIota(NbtByteArray(Array[Byte]())))
-  Patterns.register("nbt/literal/array2", (HexDir.EAST, "eedwaqqew")):
-    Patterns.mkLiteral(NbtIota(NbtIntArray(Array[Int]())))
-  Patterns.register("nbt/literal/array4", (HexDir.EAST, "eedwaqqewww")):
-    Patterns.mkLiteral(NbtIota(NbtLongArray(Array[Long]())))
   Patterns.register("prop_fi", sw"aawqe"):
     Patterns.mkConstAction(1):
       case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Writer(x.getName, "head"))
@@ -1038,9 +1006,6 @@ def init(): Unit =
     Patterns.mkConstAction(1):
       case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Stream(x.getName, "tail"))
       case Seq(x) => throw MishapInvalidIota(x, 0, "property")
-  Patterns.register("nbt/serialize", nw"edwaq"):
-    Patterns.mkConstAction(1):
-      case Seq(x: Iota) => Seq(IotaType.serialize(x))
   Patterns.register("where", nw"qaeaqwdd"):
     Patterns.mkConstAction(1): i =>
       val Seq(x) = i
@@ -1072,174 +1037,6 @@ def init(): Unit =
       ???
   Patterns.register("whatthefuck", ne"daadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadadda"):
     Patterns.mkLiteral(PatternIota(e"wedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqeedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqeedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqqedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqqedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqeedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqqedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqe"))
-  Patterns.register("nbt/deserialize", (HexDir.NORTH_WEST, "edwaqa")):
-    Patterns.mkConstAction(1):
-      case Seq(data: NbtIota) =>
-        val env = summon[CastingEnvironment]
-        given ServerWorld = env.getWorld
-        val iota = data.data.asInstanceOf[NbtCompound].iota
-        iota match
-          case p: EntityIota => p.getEntity match
-            case t: PlayerEntity if t != env.getCastingEntity =>
-              throw MishapOthersName(t)
-            case _ =>
-          case _ =>
-        Seq(iota)
-      case Seq(x) =>
-        throw MishapInvalidIota(x, 0, Text.literal("an ").append(Text.literal("NBT compound").styled(_.withColor(NbtIota.color))))
-  Registry.register(hexXplat.getArithmeticRegistry, "nbt": Identifier, {
-    import Arithmetic.*
-    given Conversion[NbtIota, NbtElement] = _.data
-    given Conversion[NbtElement, NbtIota] = NbtIota(_)
-    arith("nbt",
-      ADD -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: NbtDouble, iotaLike[Double](b)) => NbtDouble.of(a.doubleValue + b)
-            case (a: NbtFloat, iotaLike[Float](b)) => NbtFloat.of(a.floatValue + b)
-            case (a: NbtLong, iotaLike[Long](b)) => NbtLong.of(a.longValue + b)
-            case (a: NbtInt, iotaLike[Int](b)) => NbtInt.of(a.intValue + b)
-            case (a: NbtShort, iotaLike[Short](b)) => NbtShort.of((a.shortValue + b).toShort)
-            case (a: NbtByte, iotaLike[Byte](b)) => NbtByte.of((a.byteValue + b).toByte)
-            case (a: NbtByteArray, iotaLike[Seq[Byte]](b)) => NbtByteArray(a.getByteArray ++ b)
-            case (a: NbtIntArray, iotaLike[Seq[Int]](b)) => NbtIntArray(a.getIntArray ++ b)
-            case (a: NbtLongArray, iotaLike[Seq[Long]](b)) => NbtLongArray(a.getLongArray ++ b)
-            case (a: NbtList, iotaLike[Seq[NbtElement]](b)) => NbtList().tap: l =>
-              l.addAll(a)
-              l.addAll(b)
-            case (a: NbtCompound, iotaLike[NbtCompound](b)) => NbtCompound().tap: c =>
-              c.copyFrom(a)
-              c.copyFrom(b)
-      ),
-      SUB -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: NbtDouble, iotaLike[Double](b)) => NbtDouble.of(a.doubleValue - b)
-            case (a: NbtFloat, iotaLike[Float](b)) => NbtFloat.of(a.floatValue - b)
-            case (a: NbtLong, iotaLike[Long](b)) => NbtLong.of(a.longValue - b)
-            case (a: NbtInt, iotaLike[Int](b)) => NbtInt.of(a.intValue - b)
-            case (a: NbtShort, iotaLike[Short](b)) => NbtShort.of((a.shortValue - b).toShort)
-            case (a: NbtByte, iotaLike[Byte](b)) => NbtByte.of((a.byteValue - b).toByte)
-      ),
-      MUL -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: NbtDouble, iotaLike[Double](b)) => NbtDouble.of(a.doubleValue * b)
-            case (a: NbtFloat, iotaLike[Float](b)) => NbtFloat.of(a.floatValue * b)
-            case (a: NbtLong, iotaLike[Long](b)) => NbtLong.of(a.longValue * b)
-            case (a: NbtInt, iotaLike[Int](b)) => NbtInt.of(a.intValue * b)
-            case (a: NbtShort, iotaLike[Short](b)) => NbtShort.of((a.shortValue * b).toShort)
-            case (a: NbtByte, iotaLike[Byte](b)) => NbtByte.of((a.byteValue * b).toByte)
-      ),
-      DIV -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: NbtDouble, iotaLike[Double](b)) => NbtDouble.of(a.doubleValue / b)
-            case (a: NbtFloat, iotaLike[Float](b)) => NbtFloat.of(a.floatValue / b)
-            case (a: NbtLong, iotaLike[Long](b)) => NbtLong.of(a.longValue / b)
-            case (a: NbtInt, iotaLike[Int](b)) => NbtInt.of(a.intValue / b)
-            case (a: NbtShort, iotaLike[Short](b)) => NbtShort.of((a.shortValue / b).toShort)
-            case (a: NbtByte, iotaLike[Byte](b)) => NbtByte.of((a.byteValue / b).toByte)
-      ),
-      INDEX -> ((a: NbtIota, b: DoubleIota | StringIota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: AbstractNbtList[? <: NbtElement], b: DoubleIota) => a.get(b.asIntOrThrow(0))
-            case (a: NbtCompound, iotaLike[String](b)) => a.get(b)
-      ),
-      SLICE -> ((a: NbtIota, f: DoubleIota | StringIota, t: DoubleIota) =>
-        Seq[NbtIota]:
-          (a.data, f, t) match
-            case (a: NbtByteArray, b: DoubleIota, c: DoubleIota) => (a: Array[Byte]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtByteArray
-            case (a: NbtIntArray, b: DoubleIota, c: DoubleIota) => (a: Array[Int]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtIntArray
-            case (a: NbtLongArray, b: DoubleIota, c: DoubleIota) => (a: Array[Long]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtLongArray
-            case (a: NbtList, b: DoubleIota, c: DoubleIota) =>
-              val l = NbtList()
-              a.slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2).foreach(l.add)
-              l
-            case (a: NbtCompound, b: StringIota, c: StringIota) =>
-              NbtCompound().tap: r =>
-                a.getKeys.collect:
-                  case k if k <= b.getString && k > c.getString => r(k) = a(k)
-        ),
-      INDEX_OF -> ((a: NbtIota, b: NbtIota) =>
-        Seq[NbtIota]:
-          (a.data, b.data) match
-            case (a: AbstractNbtList[? <: NbtElement], b: NbtElement) => NbtInt.of(a.indexOf(b))
-            case (a: NbtCompound, b: NbtElement) =>
-              val list = NbtList()
-              a.getKeys.foreach: k =>
-                if a.get(k) == b then
-                  list.add(NbtString.of(k))
-              NbtIota(list)
-      ),
-      APPEND -> ((a: NbtIota, b: NbtIota) =>
-        Seq[NbtIota]:
-          (a.data, b.data) match
-            case (a: AbstractNbtList[t], b) if b.isInstanceOf[t] =>
-              a.copy().tap:
-                case c: AbstractNbtList[t] =>
-                  c.add(b.asInstanceOf[t])
-      ),
-      UNAPPEND -> ((a: NbtIota) =>
-        a.data match
-          case a: AbstractNbtList[?] =>
-            val s = a.asScala
-            Seq[NbtIota](NbtList().tap(_.addAll(s.init)), s.last)
-          case c: NbtCompound =>
-            val k = c.getKeys.asScala.toBuffer
-            Seq[NbtIota](
-              NbtCompound().tap: d =>
-                k.init.foreach: k =>
-                  d(k) = c(k),
-              NbtString.of(k.last),
-              c(k.last),
-            )
-      ),
-      CONS -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (nbtList(Tagged(a: AbstractNbtList[t], given _)), b) =>
-              b match
-                case iotaLike[t](b) => a.copy.asInstanceOf[AbstractNbtList[t]].tap(_.add(0, b))
-        ),
-      UNCONS -> ((a: NbtIota) =>
-        a.data match
-          case a: AbstractNbtList[?] =>
-            val s = a.asScala
-            Seq[NbtIota](NbtList().tap(_.addAll(s.tail)), s.head)
-          case c: NbtCompound =>
-            val k = c.getKeys.asScala.toBuffer
-            Seq[NbtIota](
-              NbtCompound().tap: d =>
-                k.tail.foreach: k =>
-                  d(k) = c(k),
-              NbtString.of(k.head),
-              c(k.head),
-            )
-        ),
-      REMOVE -> ((a: NbtIota, key: Iota) =>
-        a match
-          case nbtList(Tagged(l: AbstractNbtList[t], given _)) =>
-            key match
-              case iotaLike[Int](i) =>
-                val c: l.type = l.copy.asInstanceOf
-                c.remove(i)
-                Seq(NbtIota(c))
-              case _ => throw MishapInvalidIota.of(key, 0, "int")
-        ),
-      REPLACE -> ((t: NbtIota, k: Iota, v: NbtIota) =>
-        Seq:
-          NbtIota:
-            t.data.copy.tap:
-              case c: NbtCompound =>
-                c(k.asValue[String](1, StringIota.TYPE.typeName)) = v.data
-              case l: AbstractNbtList[t] =>
-                given ClassTag[t] = elementTag(l)
-                l(k.asValue[Int](1, Text.translatable("hexcasting.iota.int"))) = ???
-        ),
-    )
-  })
   def fox(tr: PlayerEntity ?=> PartialFunction[Option[FoxEntity.Type], Option[FoxEntity.Type]]): Action =
     Patterns.mkAction: (img, cont) =>
       img.getStack.lastOption match
@@ -2093,10 +1890,8 @@ object FromIota:
 given FromIota[Iota] = Some(_)
 given FromIota[String] = FromIota.lift:
   case s: StringIota => s.getString
-  case NbtIota(s: NbtString) => s.asString
 given FromIota[Boolean] = FromIota.lift:
   case b: BooleanIota => b.getBool
-  case NbtIota(n: AbstractNbtNumber) => n.longValue != 0
 given [T: ClassTag](using elems: FromIota[T]): FromIota[Seq[T]] = FromIota.liftFlat:
   case l: ListIota =>
     boundary:
@@ -2105,31 +1900,18 @@ given [T: ClassTag](using elems: FromIota[T]): FromIota[Seq[T]] = FromIota.liftF
         case Some(p) => b.add(p)
         case None => boundary.break(None)
       Some(b.toSeq)
-given arrayByteFromIota: FromIota[Array[Byte]] = FromIota.lift:
-  case NbtIota(t: NbtByteArray) => t.getByteArray
-given arrayIntFromIota: FromIota[Array[Int]] = FromIota.lift:
-  case NbtIota(t: NbtIntArray) => t.getIntArray
-given arrayLongFromIota: FromIota[Array[Long]] = FromIota.lift:
-  case NbtIota(t: NbtLongArray) => t.getLongArray
-given [T <: NbtElement: ClassTag]: FromIota[T] = FromIota.lift:
-  case NbtIota(data: T) => data
 given FromIota[Double] = FromIota.lift:
   case d: DoubleIota => d.getDouble
 given FromIota[Float] = FromIota.lift:
   case d: DoubleIota if (d.getDouble.round.toFloat - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round.toFloat
-  case NbtIota(n: NbtFloat) => n.floatValue
 given FromIota[Byte] = FromIota.lift:
   case d: DoubleIota if d.getDouble < Byte.MaxValue && d.getDouble > Byte.MinValue && (d.getDouble.round.toByte - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round.toByte
-  case NbtIota(n: AbstractNbtNumber) => n.byteValue
 given FromIota[Short] = FromIota.lift:
   case d: DoubleIota if d.getDouble < Short.MaxValue && d.getDouble > Short.MinValue && (d.getDouble.round.toShort - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round.toShort
-  case NbtIota(n: AbstractNbtNumber) => n.shortValue
 given FromIota[Int] = FromIota.lift:
   case d: DoubleIota if d.getDouble < Int.MaxValue && d.getDouble > Int.MinValue && (d.getDouble.round.toInt - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round.toInt
-  case NbtIota(n: AbstractNbtNumber) => n.intValue
 given FromIota[Long] = FromIota.lift:
   case d: DoubleIota if d.getDouble < Long.MaxValue && d.getDouble > Long.MinValue && (d.getDouble.round - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round
-  case NbtIota(n: AbstractNbtNumber) => n.longValue
 
 object nbtList:
   def unapply(l: NbtElement): Option[Tagged[AbstractNbtList, NbtElement]] =
@@ -2267,18 +2049,6 @@ trait MediaContainerProvider:
   @targetName("hexic$MediaContainerProvider$getMediaContainer")
   def getMediaContainer(c: Context): Option[MediaContainer]
 
-case class NbtIota(data: NbtElement) extends Iota(NbtIota, data):
-  override def isTruthy: Boolean = data match
-    case d: AbstractNbtNumber => d.numberValue != 0
-    case a: AbstractNbtList[?] => a.size != 0
-    case s: NbtString => s.asString != ""
-    case c: NbtCompound => c.getSize != 0
-    case _ => true
-  override def toleratesOther(that: Iota): Boolean = that match
-    case that: NbtIota => this.data == that.data
-    case _ => this.data == that
-  override def serialize: NbtElement = data
-
 object registerHopperEndpoint extends (() => Unit):
   def apply(): Unit =
     HopperEndpointRegistry.INSTANCE.register: (iota: Iota, env: CastingEnvironment, slot: Integer) =>
@@ -2313,8 +2083,3 @@ trait IotaCoercion[T]:
 def downcast[R: ClassTag](t: Any): Option[R] = t match
   case r: R => Some(r)
   case _ => None
-object NbtIota extends IotaType[NbtIota]:
-  def name: Text = ("NBT": MutableText).styled(_.withColor(color))
-  def color: Int = Formatting.DARK_AQUA.getColorValue
-  def deserialize(using NbtElement, ServerWorld): NbtIota = NbtIota(summon)
-  def display(e: NbtElement): Text = Text.literal(StringNbtWriter()(e)).styled(_.withColor(color))
