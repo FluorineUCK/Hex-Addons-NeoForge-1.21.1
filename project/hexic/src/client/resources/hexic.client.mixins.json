@@ -6,7 +6,9 @@
   "client": [
     "ChatHudMixin",
     "ChatScreenAccess",
-    "ChatScreenMixin"
+    "ChatScreenMixin",
+    "EntityRendererDispatcher",
+    "PlayerEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

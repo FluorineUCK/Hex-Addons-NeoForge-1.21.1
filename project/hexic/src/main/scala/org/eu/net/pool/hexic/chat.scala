@@ -19,6 +19,8 @@ import dev.onyxstudios.cca.api.v3.component.sync.AutoSyncedComponent
 import dev.onyxstudios.cca.api.v3.component.{Component, ComponentAccess, ComponentKey, ComponentRegistry}
 import dev.onyxstudios.cca.api.v3.entity.{EntityComponentFactoryRegistry, EntityComponentInitializer, RespawnCopyStrategy}
 import net.fabricmc.fabric.api.networking.v1.{PacketByteBufs, ServerPlayNetworking}
+import net.minecraft.entity.{Entity, EntityPose, EntityType, LimbAnimator}
+import net.minecraft.entity.passive.CatEntity
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.item.ItemStack
 import net.minecraft.nbt.{NbtCompound, NbtElement, NbtOps}
@@ -31,6 +33,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import ram.talia.moreiotas.api.casting.iota.StringIota
 
 import java.util.UUID
+import scala.annotation.{meta, static, targetName}
 import scala.collection.immutable.*
 import scala.jdk.CollectionConverters.*
 import scala.language.implicitConversions
@@ -65,6 +68,74 @@ extension (c: ComponentAccess)
   def component[C <: Component: ComponentKey as key]: C = c.getComponent(key)
   def syncComponent[C <: Component: ComponentKey as key](): Unit = c.syncComponent(key)
 
+// rephrased from trickster
+class CatHolder private[hexic] (p: PlayerEntity) extends Component:
+  lazy private val realCat =
+    val cat = CatEntity(EntityType.CAT, p.getWorld)
+    cat.setAiDisabled(true)
+    cat.setInvulnerable(true)
+    cat.setTamed(true)
+    cat
+  def syncCat(collarColor: DyeColor) =
+    val cat = this.realCat
+    cat.setYaw(p.getYaw)
+    cat.prevYaw = p.prevYaw
+    cat.setPitch(p.getPitch)
+    cat.prevPitch = p.prevPitch
+    cat.setPos(p.getX, p.getY, p.getZ)
+    cat.prevX = p.prevX
+    cat.prevY = p.prevY
+    cat.prevZ = p.prevZ
+    cat.setBodyYaw(p.bodyYaw)
+    cat.prevBodyYaw = p.prevBodyYaw
+    cat.setHeadYaw(p.headYaw)
+    cat.prevHeadYaw = p.prevHeadYaw
+    cat.hurtTime = p.hurtTime
+    cat.handSwinging = p.handSwinging
+    cat.handSwingTicks = p.handSwingTicks
+    cat.handSwingProgress = p.handSwingProgress
+    cat.lastHandSwingProgress = p.lastHandSwingProgress
+    cat.limbAnimator.prevSpeed = p.limbAnimator.prevSpeed
+    cat.limbAnimator.speed = p.limbAnimator.speed
+    cat.limbAnimator.pos = p.limbAnimator.pos
+    cat.setCollarColor(collarColor)
+    if p.getPose == EntityPose.CROUCHING then
+      cat.setInSittingPose(true)
+      cat.setPose(EntityPose.STANDING)
+    else
+      cat.setInSittingPose(false)
+      cat.setPose(p.getPose)
+
+  def cat = p.catCollarColor.map(_ => realCat)
+  def syncAndGetCat() = p.catCollarColor.map { c => syncCat(c); realCat }
+  def catOrNull: CatEntity | Null = cat.orNull
+
+  override def readFromNbt(nbtCompound: NbtCompound): Unit = ()
+  override def writeToNbt(nbtCompound: NbtCompound): Unit = ()
+object CatHolder:
+  given key: ComponentKey[CatHolder] = ComponentRegistry.getOrCreate("cat", classOf[CatHolder])
+  def apply(p: PlayerEntity) = p.getComponent(key)
+  @static def getCat(e: Entity): CatEntity | Null = e match
+    case p: PlayerEntity => CatHolder(p).cat.orNull
+    case _ => null
+  @static def getSyncedCat(e: Entity): CatEntity | Null = e match
+    case p: PlayerEntity => CatHolder(p).syncAndGetCat().orNull
+    case _ => null
+
+given Conversion[LimbAnimator, hexic.mixin.LimbAnimatorAccess] = _.asInstanceOf
+package mixin:
+  import org.spongepowered.asm.mixin.Mixin
+  import org.spongepowered.asm.mixin.gen.Accessor
+  @Mixin(value = Array(classOf[LimbAnimator]))
+  private[hexic] trait LimbAnimatorAccess:
+    this: LimbAnimator =>
+    @targetName("hexic$getPrevSpeed") @Accessor("prevSpeed") private[hexic] def prevSpeed: Float
+    @targetName("hexic$getSpeed") @Accessor("speed") private[hexic] def speed: Float
+    @targetName("hexic$getPos") @Accessor("pos") private[hexic] def pos: Float
+    @targetName("hexic$setPrevSpeed") @Accessor("prevSpeed") private[hexic] def prevSpeed_=(prevSpeed: Float): Unit
+    @targetName("hexic$setSpeed") @Accessor("speed") private[hexic] def speed_=(speed: Float): Unit
+    @targetName("hexic$setPos") @Accessor("pos") private[hexic] def pos_=(pos: Float): Unit
+
 extension (p: PlayerEntity)
   def validMediaweave: Option[(NbtCompound, DyeColor, ItemStack)] =
     TrinketsApi.getTrinketComponent(p)
@@ -74,6 +145,15 @@ extension (p: PlayerEntity)
           Function.unlift: p =>
             p.getRight.getItem match
               case m@Mediaweave(color) => Option(m.readIotaTag(p.getRight)).map((_, color, p.getRight))
+              case _ => None
+  def catCollarColor: Option[DyeColor] =
+    TrinketsApi.getTrinketComponent(p)
+      .pipe(o => Option.when[TrinketComponent](o.isPresent)(o.get()))
+      .flatMap: (c: TrinketComponent) =>
+        c.getEquipped(_.getItem.isInstanceOf[Mediaweave]).asScala.collectFirst:
+          Function.unlift: p =>
+            p.getRight.getItem match
+              case m@Mediaweave(color) if p.getRight.hasCustomName && p.getRight.getName.getString.toLowerCase == "instant cat" => Some(m.color)
               case _ => None
 extension (p: ServerPlayerEntity)
   def executeMediaweave(text: String, ctx: Seq[Iota]): Boolean =

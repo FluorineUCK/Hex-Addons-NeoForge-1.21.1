@@ -1887,6 +1887,7 @@ private[hexic] class ComponentInit extends EntityComponentInitializer, LevelComp
     PlayerInfoComponent.register
     r.registerForPlayers(summon[ComponentKey[MurmurCache]], _ => MurmurCache(None), RespawnCopyStrategy.ALWAYS_COPY)
     r.registerForPlayers(summon[ComponentKey[RevealComponent]], _ => RevealComponent(Seq.empty), RespawnCopyStrategy.LOSSLESS_ONLY)
+    r.registerForPlayers(CatHolder.key, new CatHolder(_), RespawnCopyStrategy.NEVER_COPY)
   override def registerLevelComponentFactories(using LevelComponentFactoryRegistry): Unit =
     ServerInfoComponent.register
 
