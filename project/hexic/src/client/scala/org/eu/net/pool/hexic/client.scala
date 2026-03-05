@@ -387,8 +387,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           gen.add(item, s"Stringworm")
         for item <- MediaBundle.items do
           gen.add(item, item.size match
-            case 6 => s"${item.color.humanName} Media Pouch"
-            case 12 => s"Large ${item.color.humanName} Media Pouch"
+            case 6 => s"${item.color.humanName} Casting Pouch"
+            case 12 => s"Large ${item.color.humanName} Casting Pouch"
             case s => throw IllegalStateException(s"Unhandled bundle size $s"))
         gen.add(wizard, "Wizard")
         val hexLang = Seq("hexcasting", "oneironaut").flatMap(mod => Gson().fromJson(InputStreamReader(getClass.getResourceAsStream(s"/assets/$mod/lang/en_us.json")), new TypeToken[java.util.Map[String, String]]() {}).asScala).toMap
