@@ -395,13 +395,9 @@ object PlayerInfoComponent:
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
     fac.registerForPlayers(key, PlayerInfoComponent(_), RespawnCopyStrategy.LOSSLESS_ONLY)
 
-class ServerInfoComponent(
-  var endSnowTick: Long = 0
-) extends Component, AutoSyncedComponent:
-  override def readFromNbt(tag: NbtCompound): Unit =
-    endSnowTick = tag.getLong("snow")
-  override def writeToNbt(tag: NbtCompound): Unit =
-    tag.putLong("snow", endSnowTick)
+class ServerInfoComponent() extends Component, AutoSyncedComponent:
+  override def readFromNbt(tag: NbtCompound): Unit = ()
+  override def writeToNbt(tag: NbtCompound): Unit = ()
 object ServerInfoComponent:
   given key: ComponentKey[ServerInfoComponent] = ComponentRegistry.getOrCreate("server_info", classOf[ServerInfoComponent])
   given get: (server: MinecraftServer) => ServerInfoComponent = server.getOverworld.getLevelProperties.getComponent(key)
@@ -1569,21 +1565,6 @@ def init(): Unit =
       override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
       override def hasCastingSound(env: CastingEnvironment): Boolean = true
       override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
-  Patterns.register("snow", nw"eewwweewdadadaddwwwaqwwq"):
-    Patterns.mkAction: (img, cont) =>
-      (img, cont, HexEvalSounds.SPELL, Seq(
-        OperatorSideEffect.ConsumeMedia(12 * MediaConstants.DUST_UNIT),
-        OperatorSideEffect.AttemptSpell(
-          new RenderedSpell:
-            override def cast(env: CastingEnvironment): Unit =
-              given MinecraftServer = env.getWorld.getServer
-              val duration = env.getWorld.random.nextBetween(15, 30) * 20 * 60
-              env.getWorld.setWeather(0, duration, true, false)
-              ServerInfoComponent.get.endSnowTick = env.getWorld.getTime + duration
-              ServerInfoComponent.sync()
-            override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
-        , true, true)
-      ))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match

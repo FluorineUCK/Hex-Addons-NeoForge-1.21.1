@@ -6,7 +6,6 @@
   "mixins": [
     "AbstractFurnaceBlockEntityMixin",
     "ActionRegistryEntryMixin",
-    "BiomeMixin",
     "CastingEnvironmentMixin",
     "CastingVMMixin",
     "DimIotaMixin",

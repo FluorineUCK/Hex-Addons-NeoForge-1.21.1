@@ -52,7 +52,6 @@ need to implement texture generation
 can be charmed; breaks if discharmed
 *** TODO document undocumented patterns
 - [X] demiplane patterns
-- [ ] conjure snow
 - [ ] pseudothoth
 ** Demiplanes
 *** TODO special demiplane NG handling

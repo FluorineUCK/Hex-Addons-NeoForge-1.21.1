@@ -355,7 +355,6 @@ def datagen(gen: FabricDataGenerator): Unit =
           "nbt/serialize" -> "Exporter's Purification",
           "reveal" -> "Greater Reveal",
           "rotate" -> "Ferris Distillation",
-          "snow" -> "Summon Snow",
           "staffcast_factory" -> "Lani's Greater Gambit",
           "staffcast_factory/lazy" -> "Lani's Lesser Gambit",
           "take" -> "Retention Distillation",
