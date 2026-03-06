@@ -60,7 +60,7 @@ allprojects {
     }
     val modid: String by project.properties
     ext["release"] = release
-    val isProject = project.projectDir.path.contains("/project/")
+    val isProject = project.projectDir.path.contains("/project/") || project == project(":util")
 
     plugins.withId("java") {
         java {

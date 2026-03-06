@@ -1,4 +1,5 @@
 2.0.0 engulfed hexxychests
 2.0.0 load config from config/*.properties instead of config/jvm.properties
 2.0.0 murmur and reveal now use separate components
+2.0.0 !removed NBT iotas
 2.0.0 !removed tripwires
