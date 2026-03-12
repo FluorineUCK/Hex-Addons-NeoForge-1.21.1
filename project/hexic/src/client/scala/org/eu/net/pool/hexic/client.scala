@@ -7,6 +7,7 @@ import at.petrak.hexcasting.api.pigment.FrozenPigment
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonArray, JsonObject}
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
+import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
 import kotlin.jvm.JvmField
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry
@@ -48,8 +49,7 @@ import scala.reflect.Selectable.reflectiveSelectable
 import scala.util.boundary
 import scala.util.boundary.Label
 import scala.util.chaining.scalaUtilChainingOps
-
-import phlib.{_, given}
+import phlib.{*, given}
 
 given client: MinecraftClient = MinecraftClient.getInstance
 
@@ -59,42 +59,15 @@ inline def foldLocalPlayer[R](default: => R)(ifPresent: ClientPlayerEntity => R)
     case player => ifPresent(player)
 
 object ClientHooks:
-  def provideRenderText(string: String, firstCharacterIndex: Int, field: TextFieldWidget, original: OrderedText): OrderedText =
-    foldLocalPlayer(original): p =>
-      val c = p.getComponent(PlayerInfoComponent.key)
-      boundary[OrderedText]:
-        if c.rightWeave.hasCustomName && c.rightWeave.getItem.isInstanceOf[Mediaweave] then
-          val wake = c.rightWeave.getName.getString.toLowerCase
-          if field.getText.toLowerCase.startsWith(s"$wake:") then
-            boundary.break[OrderedText]: v =>
-              original.accept: (idx, style, p) =>
-                v.accept(idx, if idx + firstCharacterIndex <= wake.length then style.withColor(c.rightWeave.getItem.asInstanceOf[Mediaweave].color.getSignColor) else style, p)
-        if c.leftWeave.hasCustomName && c.leftWeave.getItem.isInstanceOf[Mediaweave] then
-          val wake = c.leftWeave.getName.getString.toLowerCase
-          if field.getText.toLowerCase.startsWith(s"$wake:") then
-            boundary.break[OrderedText]: v =>
-              original.accept: (idx, style, p) =>
-                v.accept(idx, if idx + firstCharacterIndex <= wake.length then style.withColor(c.leftWeave.getItem.asInstanceOf[Mediaweave].color.getSignColor) else style, p)
-        original
   def interceptSendMessage(handler: ClientPlayNetworkHandler, msg: String): Boolean =
     foldLocalPlayer(false): p =>
-      boundary[Boolean]:
-        val c = p.getComponent(PlayerInfoComponent.key)
-        val (left, text) = boundary[(Boolean, String)]:
-          if c.rightWeave.hasCustomName && c.rightWeave.getItem.isInstanceOf[Mediaweave] then
-            val wake = c.rightWeave.getName.getString.toLowerCase
-            if msg.toLowerCase.startsWith(s"$wake:") then
-              boundary.break((false, msg.substring(wake.length + 1)))
-          if c.leftWeave.hasCustomName && c.leftWeave.getItem.isInstanceOf[Mediaweave] then
-            val wake = c.leftWeave.getName.getString.toLowerCase
-            if msg.toLowerCase.startsWith(s"$wake:") then
-              boundary.break((true, msg.substring(wake.length + 1)))
-          boundary.break(false)
+      if p.validMediaweave.isDefined then
         val buf = PacketByteBufs.create()
-        buf.writeByte(if left then 12 else 8)
-        buf.writeString(text.trim)
-        ClientPlayNetworking.send("sync_mediaweave", buf)
+        buf.writeByte(0)
+        buf.writeString(msg)
+        ClientPlayNetworking.send("message", buf)
         true
+      else false
 
 def init(): Unit =
   BlockEntityRendererFactories.register(
@@ -336,6 +309,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           "moveconcept" -> "Transfer Substance",
           "moveentity" -> "Transfer Creature",
           "murmur" -> "Murmur Reflection",
+          "omni_close" -> "Cessation",
+          "omni_open" -> "Resumption",
           "reveal" -> "Greater Reveal",
           "rotate" -> "Ferris Distillation",
           "staffcast_factory" -> "Lani's Greater Gambit",
@@ -394,6 +369,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexic.spell_memory", "Hex memorized")
         gen.add("tag.item.hexic.mediaweaves", "Mediaweave")
         gen.add("text.hexic.pigment_holder_item", "an item storing a pigment")
+        gen.add("trinkets.slot.chest.hexic_mediaweave", "Mediaweave")
   pack.addProvider:
     new FabricRecipeProvider(_):
       override def generate(consumer: Consumer[RecipeJsonProvider]): Unit =
