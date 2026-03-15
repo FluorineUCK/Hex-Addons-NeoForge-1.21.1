@@ -317,7 +317,6 @@ def datagen(gen: FabricDataGenerator): Unit =
           "staffcast_factory/lazy" -> "Lani's Lesser Gambit",
           "take" -> "Retention Distillation",
           "unfox" -> "Vulpine Expulsion",
-          "whatthefuck" -> "Suffering",
           "where" -> "Deductive Purification",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         gen.add("hexcasting.special.hexic:tuple", "Coupler's Gambit")
