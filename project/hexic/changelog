@@ -10,6 +10,7 @@
 1.4.7-pre.2 remove internal error with out-of-bounds excisor's gambit
 2.0.0 add Cessation and Resumption
 2.0.0 add docs for plane-related patterns
+2.0.0 add Hidden Sun's Nadir (blindness)
 2.0.0 add view iotas (experimental!)
 2.0.0 load config from config/*.properties instead of config/jvm.properties
 2.0.0 mediaweave now applies to all chat messages
