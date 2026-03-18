@@ -159,7 +159,6 @@ dependencies {
     modImplementation("net.beholderface.oneironaut:oneironaut-fabric-1.20.1-fabric-fabric:1.20.1-SNAPSHOT")
     compat("maven.modrinth:hexcassettes:1.1.4")
     modLocalRuntime("maven.modrinth:trinkets:3.7.2")
-    modImplementation("maven.modrinth:spasm:0.2.2")
 //    modImplementation("maven.modrinth:slate-works:1.0.5")
     compat("miyucomics.hexical:hexical:2.0.0+a3c47ad9")
     compat("miyucomics.overevaluate:overevaluate:main-SNAPSHOT")
@@ -171,6 +170,7 @@ dependencies {
     modImplementation("com.github.mattidragon:ConfigToolkit:v1.0.0") // trans maven.modrinth:jsonpatcher
     modImplementation("miyucomics.hexpose:hexpose:1.0.0")
     include(modApi("xyz.nucleoid:fantasy:0.4.11+1.20-rc1")!!)
+    modImplementation("dev.emi:trinkets:3.7.2")
 //    modImplementation("miyucomics:hexpose:1.0.0")
 //    modImplementation(files("hexical-2.0.0.jar"))
     include(implementation("net.bytebuddy:byte-buddy:1.17.7")!!)
@@ -179,8 +179,12 @@ dependencies {
     modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-entity:5.2.3")
     modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-level:5.2.3")
     modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:5.2.3")
-
-    modRuntimeOnly("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
+    modRuntimeOnly("com.unascribed:lib39-core:[2.0.0,)!!2.0.27+1.20.1")
+    modRuntimeOnly("com.unascribed:lib39-avant:[2.0.0,)!!2.0.27+1.20.1")
+    modRuntimeOnly("com.unascribed:lib39-phantom:[2.0.0,)!!2.0.27+1.20.1")
+    modLocalRuntime("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
+    modLocalRuntime("maven.modrinth:hexcessible:0.2.0")
+    modLocalRuntime("maven.modrinth:complex-hex:0.1.3-beta")
 }
 
 val colors = mapOf(
@@ -223,12 +227,12 @@ tasks.processResources {
 
             depends("mixinextras", "*")
             depends("mm", "^2.3")
-            depends("spasm", ">=0.2.2")
             depends("moreiotas", ">=0.1.1")
             depends("hexal", ">=0.3.0")
             depends("hexcellular", "^1.1.0")
             depends("jsonpatcher", "^1.0.0-beta.4+mc.1.20.1")
             depends("hexpose", "^1.0.0")
+            depends("trinkets", "^3.7.2")
             conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
 
             entrypoint("org.eu.net.pool.hexic.main\$package::init")
@@ -245,21 +249,22 @@ tasks.processResources {
     dependsOn(cloth)
     dependsOn(*downloadedBags.values.toTypedArray())
     val itemsRoot = destinationDir.resolve("assets/hexic/textures/item")
+    val jxlOpts = arrayOf("-quality", "100", "-define", "jxl:effort=11", "-define", "jxl:lossless=true", "-define", "jxl:modular=true")
     doLast {
         for ((name, color) in colors) {
             exec {
-                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", itemsRoot.resolve("${name}_mediaweave.png"))
+                commandLine("env", "magick", cloth.dest, "-channel", "red,green,blue", "-fx", "u*#${color.toString(16)}", *jxlOpts, "jxl:${itemsRoot.resolve("${name}_mediaweave.png")}")
             }
             val bag = downloadedBags[name]!!.dest
             exec {
-                commandLine("env", "magick", bag, "-write", itemsRoot.resolve("large_${name}_bundle.png"), "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", itemsRoot.resolve("small_${name}_bundle.png"))
+                commandLine("env", "magick", bag, *jxlOpts, "-write", "jxl:${itemsRoot.resolve("large_${name}_bundle.png")}", "-sample", "14x14", "-background", "transparent", "-extent", "16x16-1-2", "jxl:${itemsRoot.resolve("small_${name}_bundle.png")}")
             }
         }
         exec {
-            commandLine("env", "magick", "wizard:", itemsRoot.resolve("wizard.png"))
+            commandLine("env", "magick", "wizard:", *jxlOpts, "jxl:${itemsRoot.resolve("wizard.png")}")
         }
         exec {
-            commandLine("env", "magick", "null:", itemsRoot.resolve("no.png"))
+            commandLine("env", "magick", "null:", *jxlOpts, "jxl:${itemsRoot.resolve("no.jxl")}")
         }
         exec {
             commandLine("env", "magick",
@@ -287,25 +292,22 @@ tasks.processResources {
             "pure" to "u",
         )) {
             exec {
-                commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-channel", "rgb", "-fx", expr, "$itemsRoot/stringworm_$name.png")
+                commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-channel", "rgb", "-fx", expr, *jxlOpts, "jxl:$itemsRoot/stringworm_$name.png")
             }
         }
         // people will hate this
         for (i in 0..31) {
-            itemsRoot.resolve("stringworm_tinted_$i.png").outputStream().use {
-                exec {
-                    commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-fx", "i+j == $i ? u : Transparent", "png:-")
-                    standardOutput = it
-                }
+            exec {
+                commandLine("env", "magick", itemsRoot.resolve("stringworm.miff"), "-fx", "i+j == $i ? u : Transparent", *jxlOpts, "jxl:${itemsRoot.resolve("stringworm_tinted_$i.png")}")
             }
         }
         file("$itemsRoot/../block").mkdir()
         exec {
-            commandLine("env", "magick", "xc:#ffffff[16x16]", itemsRoot.resolveSibling("block/border.png"))
+            commandLine("env", "magick", "xc:#ffffff[16x16]", *jxlOpts, "jxl:${itemsRoot.resolveSibling("block/border.png")}")
         }
-        //file("$itemsRoot/stringworm.miff").delete()
+        file("$itemsRoot/stringworm.miff").delete()
         exec {
-            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", itemsRoot.resolve("beans.png"))
+            commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", *jxlOpts, "jxl:${itemsRoot.resolve("beans.png")}")
         }
     }
 

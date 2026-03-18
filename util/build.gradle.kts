@@ -52,6 +52,10 @@ tasks.processResources {
     }
 }
 
+tasks.jar {
+    duplicatesStrategy = DuplicatesStrategy.WARN
+}
+
 publishing {
     publications {
         create<MavenPublication>("mavenJava") {

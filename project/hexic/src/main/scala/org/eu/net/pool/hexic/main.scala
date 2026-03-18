@@ -3,7 +3,7 @@ package org.eu.net.pool
 package hexic
 
 import at.petrak.hexcasting.api.addldata.ADMediaHolder
-import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
+import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, OperatorUtils, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler, SpellAction}
@@ -170,6 +170,7 @@ import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 
 import scala.util.matching.Regex
 import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
+import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
 import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -187,8 +188,8 @@ import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 import scala.concurrent.duration.Duration
 import phlib.{Events as PhEvents, *, given}
 
-given Logger = LoggerFactory.getLogger("hexic")
-given Conversion[String, Identifier] = Identifier.of("hexic", _)
+private[hexic] given Logger = LoggerFactory.getLogger("hexic")
+private[hexic] given Conversion[String, Identifier] = Identifier.of("hexic", _)
 
 extension (i: Iota)
   def asIotaType[T <: Iota: ClassTag](idx: Int, expected: => Text): T = i match
@@ -367,7 +368,6 @@ class PlayerInfoComponent(
   val player: PlayerEntity,
   var leftWeave: ItemStack = ItemStack.EMPTY,
   var rightWeave: ItemStack = ItemStack.EMPTY,
-  var chatLines: Seq[Text] = Seq(),
   var foxType: Option[FoxEntity.Type] = None,
 ) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
@@ -379,7 +379,6 @@ class PlayerInfoComponent(
       rightWeave = ItemStack.fromNbt(c.getCompound("shr"))
     else
       rightWeave = ItemStack.EMPTY
-    chatLines = c.getList("chat", NbtElement.COMPOUND_TYPE).map(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, _)).map(Text.Serializer.fromJson).toSeq
     if c.contains("fox", NbtElement.STRING_TYPE) then
       foxType = Some(FoxEntity.Type.valueOf(c.getString("fox")))
     else
@@ -387,7 +386,6 @@ class PlayerInfoComponent(
   override def writeToNbt(c: NbtCompound): Unit =
     if !leftWeave.isEmpty then c.put("shl", NbtCompound().tap(leftWeave.writeNbt))
     if !rightWeave.isEmpty then c.put("shr", NbtCompound().tap(rightWeave.writeNbt))
-    c.put("chat", NbtList().tap(_.addAll(chatLines.map(Text.Serializer.toJsonTree).map(JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, _)))))
     foxType.fold(c.remove("fox"))(f => c.putString("fox", f.name))
 object PlayerInfoComponent:
   given key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
@@ -497,14 +495,11 @@ case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHo
       case c => c.get("Hex") match
         case c: NbtCompound => c
         case _ => null
-  override def writeable(stack: ItemStack): Boolean = readIotaTag(stack) == null
-  override def canWrite(stack: ItemStack, iota: Iota): Boolean = writeable(stack) && (iota match
-    case l: ListIota =>
-      val i = l.getList.asScala
-      i.isEmpty || i.head.executable && i.last.executable
-    case _ => false)
+  override def writeable(stack: ItemStack): Boolean = true
+  override def canWrite(stack: ItemStack, iota: Iota): Boolean = iota match
+    case l: ListIota => true
+    case _ => iota.executable
   override def writeDatum(stack: ItemStack, iota: Iota): Unit =
-    assume(canWrite(stack, iota))
     stack.getOrCreateNbt.put("Hex", IotaType.serialize(iota))
   override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
     IotaHolderItem.appendHoverText(this, stack, tooltip, context)
@@ -701,40 +696,43 @@ private [hexic] object Extern:
     val p = iota match
       case p: PatternIota => p.getPattern
       case _ => boundary.break(None)
-    val measure = p.anglesSignature match
-      case introPattern (measure) => measure
-      case _ => boundary.break(None)
-    val size = measure.length + 1
-    def mishap(m: Mishap) =
-      val safeVM = CastingVM(vm.getImage, vm.getEnv)
-      OperatorSideEffect.DoMishap(m, Mishap.Context(p, Text.translatable("hexcasting.action.hexic:parenthesize"))).performEffect(safeVM)
-      boundary.break(Some(safeVM.getImage, ResolvedPatternType.ERRORED))
-    val img = vm.getImage
-    val parens = img.getParenCount
-    if parens == size then
-      img.getStack.toSeq match
-        case Seq() => mishap(MishapNotEnoughArgs(1, 0))
-        case tail :+ head => Some((
-          CastingImage(
-            stack = tail,
-            parenCount = parens,
-            parenthesized = img.getParenthesized :+ ParenthesizedIota(head, false),
-            escapeNext = false, 
-            opsConsumed = img.getOpsConsumed,
-            userData = img.getUserData,
-            null
-          ),
-          ResolvedPatternType.EVALUATED
-        ))
-    else if parens > size then
-      None // leave unescaped, so a nested hex can introject
-    else
-      mishap(new Mishap:
-        override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.ORANGE)
-        override def errorMessage(env: CastingEnvironment, ctx: Context): Text = ???
-        override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
-          stack.add(PatternIota(p))
-      )
+    p.anglesSignature match
+      case introPattern (measure) =>
+        val size = measure.length + 1
+        def mishap(m: Mishap) =
+          val safeVM = CastingVM(vm.getImage, vm.getEnv)
+          OperatorSideEffect.DoMishap(m, Mishap.Context(p, Text.translatable("hexcasting.action.hexic:parenthesize"))).performEffect(safeVM)
+          boundary.break(Some(safeVM.getImage, ResolvedPatternType.ERRORED))
+        val img = vm.getImage
+        val parens = img.getParenCount
+        if parens == size then
+          img.getStack.toSeq match
+            case Seq() => mishap(MishapNotEnoughArgs(1, 0))
+            case tail :+ head => Some((
+              CastingImage(
+                stack = tail,
+                parenCount = parens,
+                parenthesized = img.getParenthesized :+ ParenthesizedIota(head, false),
+                escapeNext = false,
+                opsConsumed = img.getOpsConsumed,
+                userData = img.getUserData,
+                null
+              ),
+              ResolvedPatternType.EVALUATED
+            ))
+        else if parens > size then
+          None // leave unescaped, so a nested hex can introject
+        else
+          mishap(new Mishap:
+            override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.ORANGE)
+            override def errorMessage(env: CastingEnvironment, ctx: Context): Text = ???
+            override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
+              stack.add(PatternIota(p))
+          )
+      case "eadedae" =>
+        val img = vm.getImage
+        Some(CastingImage(img.getStack:+ListIota(img.getParenthesized.map(_.getIota)):+DoubleIota(img.getParenCount), 0, Seq(), false, img.getOpsConsumed, img.getUserData, null), ResolvedPatternType.EVALUATED)
+      case _ => None
   private [hexic] def getPocketName(pocket: String) = Text.of(pocketNames(getPocketID(Identifier.tryParse(pocket)).get))
 
 val _ =
@@ -1362,6 +1360,15 @@ def init(): Unit =
       override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
       override def hasCastingSound(env: CastingEnvironment): Boolean = true
       override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
+  Patterns.register("omni_open", w"qdaqadq"):
+    Patterns.mkAction: (img, cont) =>
+      (img.getStack.toSeq: Seq[Iota]) match
+        case stack:+allegedCount =>
+          val count = OperatorUtils.getPositiveInt(Seq(allegedCount), 0, 1)
+          (new CastingImage(stack, count, Seq(), false, img.getOpsConsumed, img.getUserData, null), cont, HexEvalSounds.NORMAL_EXECUTE, Seq())
+  Patterns.register("omni_close", e"eadedae"):
+    Patterns.mkConstAction(0):
+      case Seq() => Seq(ListIota(Seq()), DoubleIota(0))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
@@ -1630,35 +1637,6 @@ def init(): Unit =
         case Seq(i, _: ListIota, _*) => throw MishapInvalidIota.ofType(i, 0, "list")
         case Seq(_, i, _*) => throw MishapInvalidIota.ofType(i, 1, "list")
         case s => throw MishapNotEnoughArgs(2, s.size)
-  lazy val messageFrameType: ContinuationFrame.Type[MessageFrame] = (c: NbtCompound, world: ServerWorld) =>
-    val id = Uuids.toUuid(c.getIntArray("id"))
-    MessageFrame(id, Text.Serializer.fromJson(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, c.getCompound("t"))), world.getServer.getPlayerManager.getPlayer(id))
-  class MessageFrame(id: UUID, text: Text, player: => ServerPlayerEntity) extends ContinuationFrame:
-    override def getType: ContinuationFrame.Type[MessageFrame] = messageFrameType
-    override def evaluate(rest: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
-      boundary:
-        def mishap(m: Mishap) = boundary.break(CastResult(NullIota(), rest, vm.getImage, Seq(DoMishap(m, Mishap.Context(null, text))), ResolvedPatternType.EVALUATED, HexEvalSounds.NORMAL_EXECUTE))
-        vm.getImage.getStack.toSeq.reverse match
-          case Seq() =>
-            mishap(MishapNotEnoughArgs(1, 0))
-          case Seq(s: StringIota, stack*) =>
-            CastResult(NullIota(), rest, vm.getImage.withStack(_ => stack), Seq(
-              OperatorSideEffect.AttemptSpell(
-                new RenderedSpell:
-                  override def cast(env: CastingEnvironment): Unit =
-                    ServerPlayNetworking.send(player, "msg", PacketByteBufs.create.tap(_.writeString(s.getString)))
-                  override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
-                , false, false
-              )
-            ), ResolvedPatternType.EVALUATED, HexEvalSounds.NORMAL_EXECUTE)
-          case Seq(i, _*) =>
-            mishap(MishapInvalidIota.ofType(i, 0, "string"))
-    override def serializeToNBT(): NbtCompound = NbtCompound()
-      .tap(_.putIntArray("id", Uuids.toIntArray(id)))
-      .tap(_.put("t", JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, Text.Serializer.toJsonTree(text))))
-    override def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(false, stack.toSeq)
-    override def size = 0
-  hexXplat.getContinuationTypeRegistry("send_message") = messageFrameType
   CastingEnvironment.addCreateEventListener: (env: CastingEnvironment, data: NbtCompound) =>
     val id = env.getWorld.getRegistryKey.getValue
     if isDev then println(s"Environment created in $id")
@@ -1677,63 +1655,6 @@ def init(): Unit =
               val x = pos.getComponentAlongAxis(axis)
               if x < 0 || x >= 11 then boundary.break(false)
             true
-  ServerPlayNetworking.registerGlobalReceiver("sync_mediaweave", (_, player, _, buf, _) =>
-    val flags = buf.readByte()
-    val c = player.getComponent(PlayerInfoComponent.key)
-    val cursorStack = player.playerScreenHandler.getCursorStack()
-    def currentWeave =
-      if (flags & 4) != 0 then
-        c.leftWeave
-      else
-        c.rightWeave
-    lazy val lastWeave = currentWeave
-    if (flags & 1) != 0 && (flags & 8) == 0 then
-      assume(cursorStack.isEmpty || (flags & 2) != 0, "if this isn't empty, the player's held item gets voided")
-      buf.readItemStack()
-      player.playerScreenHandler.setCursorStack(lastWeave.copyAndEmpty())
-      PlayerInfoComponent.key.sync(player)
-    if (flags & 2) != 0 then
-      buf.readItemStack()
-      assume(currentWeave.isEmpty, "if this isn't empty, an equipped mediaweave gets voided")
-      if (flags & 4) != 0 then
-        c.leftWeave = cursorStack
-      else
-        c.rightWeave = cursorStack
-      PlayerInfoComponent.key.sync(player)
-    if (flags & 8) != 0 then
-      val text = buf.readString()
-      val c = player.getComponent(PlayerInfoComponent.key)
-      val stack = if (flags & 4) != 0 then c.leftWeave else c.rightWeave
-      stack.getItem match
-        case m@Mediaweave(color) => m.readIotaTag(stack) match
-          case t: NbtCompound => IotaType.deserialize(t, player.getServerWorld) match
-            case s: ListIota =>
-              given ServerWorld = env.getWorld
-              lazy val env = new PlayerBasedCastEnv(player,
-                if player.getMainArm match
-                  case Arm.LEFT => (flags & 4) != 0
-                  case Arm.RIGHT => (flags & 4) == 0
-                then Hand.MAIN_HAND else Hand.OFF_HAND
-              ):
-                override def extractMediaEnvironment(cost: Long, simulate: Boolean): Long =
-                  if player.isCreative then 0L else extractMediaFromInventory(cost, canOvercast, simulate)
-                override def getCastingHand: Hand = castingHand
-                override def getPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
-              val context =
-                if (flags & 1) != 0 then
-                  Seq.fill(buf.readInt)(buf.readUnlimitedNbt: Iota)
-                else
-                  Seq()
-              val image = CastingImage(context :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
-              val instrs = s.getList.asScala.toSeq
-              val vm = CastingVM(image, env)
-              val view = vm.queueExecuteAndWrapIotas(instrs :+ ContinuationIota(SpellContinuation.NotDone(MessageFrame(player.getUuid, stack.getName, player), SpellContinuation.Done.INSTANCE)), player.getServerWorld)
-              val packet = MsgNewSpiralPatternsS2C(player.getUuid, instrs.collect { case p: PatternIota => p.getPattern }.asJava, 140)
-              hexXplat.sendPacketToPlayer(player, packet)
-              hexXplat.sendPacketTracking(player, packet)
-            case _ =>
-          case null =>
-        case _ =>)
   // dump patterns
   val out = Files.newOutputStream(Path.of("patterns.csv"))
   try
