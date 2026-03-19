@@ -847,8 +847,7 @@ def init(): Unit =
     possible(Random.nextInt(possible.size))
   Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
   iotaTypeRegistry("access") = PropertyAccessIota.Type
-  for (color, item) <- Mediaweave.colors do
-    Registries.ITEM(s"${color.asString}_mediaweave") = item
+  for color -> item <- Mediaweave.colors do Registries.ITEM(s"${color.asString}_mediaweave") = item
   for item <- MediaBundle.items do
     Registries.ITEM(item.size match
       case 6 => s"small_${item.color.asString}_bundle"

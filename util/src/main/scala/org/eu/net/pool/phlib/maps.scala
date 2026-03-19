@@ -84,24 +84,24 @@ object MapIota extends IotaType[MapIota]:
     output
   def fromJavaMap(map: java.util.Map[Iota, Iota])(using ServerWorld) = MapIota((map: collection.Map[Iota, Iota]).map(e => IotaType.serialize(e._1) -> IotaType.serialize(e._2)).toMap)
 val mapArithmetic = 
-    import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic.*
-    arith("map",
-      ADD -> ((a: MapIota, b: MapIota) => a ++ b),
-      SUB -> ((a: MapIota, b: MapIota) => a -- b),
-      ABS -> ((a: MapIota) => DoubleIota(a.map.size)),
-      INDEX -> ((a: MapIota, k: Iota) => a(k)),
-      UNAPPEND -> ((a: MapIota) => a.lastOption.map(p => Seq(p._1, p._2)).getOrElse(Seq(NullIota(), NullIota())) prepended a.init),
-      INDEX_OF -> ((a: MapIota, v: Iota) =>
-        val c = IotaType.serialize(v)
-        a.update(_.filter(_._2 == c))),
-      REMOVE -> ((a: MapIota, k: Iota) => a - k),
-      REPLACE -> ((a: MapIota, k: Iota, v: Iota) => a + (k -> v)),
-      UNCONS -> ((a: MapIota) => a.headOption.map(p => Seq(p._1, p._2)).getOrElse(Seq(NullIota(), NullIota())) prepended a.tail),
-      AND -> ((a: MapIota, b: MapIota) => a & b),
-      OR -> ((a: MapIota, b: MapIota) => b ++ a),
-      XOR -> ((a: MapIota, b: MapIota) => a ^ b),
-      GREATER -> ((a: MapIota, b: MapIota) => a.map.containsAll(b.map) && a.map != b.map),
-      LESS -> ((a: MapIota, b: MapIota) => b.map.containsAll(a.map) && a.map != b.map),
-      GREATER_EQ -> ((a: MapIota, b: MapIota) => a.map containsAll b.map),
-      LESS_EQ -> ((a: MapIota, b: MapIota) => b.map containsAll a.map),
-    )
+  import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic.*
+  arith("map",
+    ADD -> ((a: MapIota, b: MapIota) => a ++ b),
+    SUB -> ((a: MapIota, b: MapIota) => a -- b),
+    ABS -> ((a: MapIota) => DoubleIota(a.map.size)),
+    INDEX -> ((a: MapIota, k: Iota) => a(k)),
+    UNAPPEND -> ((a: MapIota) => a.lastOption.map(p => Seq(p._1, p._2)).getOrElse(Seq(NullIota(), NullIota())) prepended a.init),
+    INDEX_OF -> ((a: MapIota, v: Iota) =>
+      val c = IotaType.serialize(v)
+      a.update(_.filter(_._2 == c))),
+    REMOVE -> ((a: MapIota, k: Iota) => a - k),
+    REPLACE -> ((a: MapIota, k: Iota, v: Iota) => a + (k -> v)),
+    UNCONS -> ((a: MapIota) => a.headOption.map(p => Seq(p._1, p._2)).getOrElse(Seq(NullIota(), NullIota())) prepended a.tail),
+    AND -> ((a: MapIota, b: MapIota) => a & b),
+    OR -> ((a: MapIota, b: MapIota) => b ++ a),
+    XOR -> ((a: MapIota, b: MapIota) => a ^ b),
+    GREATER -> ((a: MapIota, b: MapIota) => a.map.containsAll(b.map) && a.map != b.map),
+    LESS -> ((a: MapIota, b: MapIota) => b.map.containsAll(a.map) && a.map != b.map),
+    GREATER_EQ -> ((a: MapIota, b: MapIota) => a.map containsAll b.map),
+    LESS_EQ -> ((a: MapIota, b: MapIota) => b.map containsAll a.map),
+  )
