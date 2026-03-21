@@ -8,6 +8,7 @@
 1.4.7-pre.2 make greatspells actually greatspells
 1.4.7-pre.2 meow
 1.4.7-pre.2 remove internal error with out-of-bounds excisor's gambit
+2.0.0 add casting pouch sealing
 2.0.0 add Cessation and Resumption
 2.0.0 add docs for plane-related patterns
 2.0.0 add view iotas (experimental!)
