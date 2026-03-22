@@ -143,8 +143,7 @@ import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.{ItemStackAccess, LivingEntityAccess}
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
-import at.petrak.hexcasting.common.casting.actions.spells.OpBreakBlock
-import at.petrak.hexcasting.common.casting.actions.spells.OpErase
+import at.petrak.hexcasting.common.casting.actions.spells.{OpBreakBlock, OpErase, OpPotionEffect}
 import at.petrak.hexcasting.api.casting.mishaps.MishapBadEntity
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.decoration.ItemFrameEntity
@@ -182,6 +181,7 @@ import java.nio.charset.StandardCharsets
 import java.math.BigInteger
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.ExperienceOrbEntity
+import net.minecraft.entity.effect.StatusEffects
 import net.minecraft.network.packet.s2c.play.PositionFlag
 import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 
@@ -1466,6 +1466,7 @@ def init(): Unit =
           case _ => true
       val sorted = others.toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos))
       sorted.headOption.fold(NullIota())(EntityIota(_))
+  Patterns.register("blind", se"qqqqqadwawawd")(OpPotionEffect(StatusEffects.BLINDNESS, 1000, false, false))
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
     Patterns.mkAction: (img, cont) =>
       def mkResult(scale: Int, pos: => Vec3d, spell: => Unit) =
