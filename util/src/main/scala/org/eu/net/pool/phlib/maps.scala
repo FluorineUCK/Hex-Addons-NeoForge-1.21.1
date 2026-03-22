@@ -11,11 +11,13 @@ import net.minecraft.nbt.NbtElement
 import net.minecraft.text.{MutableText, Text}
 import net.minecraft.util.Formatting
 
+import java.util
 import java.util.List => JavaList
+import scala.collection.immutable.ListMap
 import net.minecraft.server.world.ServerWorld
 import at.petrak.hexcasting.api.utils.HexUtils
 
-case class MapIota(map: Map[NbtCompound, NbtCompound] = Map(), trusted: Boolean = false)(using val world: ServerWorld) extends Iota(MapIota, map):
+case class MapIota(map: Map[NbtCompound, NbtCompound] = ListMap())(using val world: ServerWorld) extends Iota(MapIota, map):
   def get(key: Iota): Option[Iota] = map.get(IotaType.serialize(key)).map(IotaType.deserialize(_, summon))
   def apply(key: Iota): Iota = get(key) getOrElse NullIota()
   def -(keys: Iota*): MapIota = MapIota(map -- (keys map IotaType.serialize))
@@ -45,24 +47,18 @@ case class MapIota(map: Map[NbtCompound, NbtCompound] = Map(), trusted: Boolean 
       c.put("k", p._1)
       c.put("v", p._2)) tap l.add)
   override def size = map.toSeq.map(_.size + _.size - 1).sum + 1
-  override def subIotas(): java.lang.Iterable[Iota] =
-    if trusted then
-      // skip deserialization for performance
-      // this is safe because `trusted` can only be true if truenames have
-      // already been checked, and we override `size`
-      Seq()
-    else
-      toList
-  def asJavaMap: java.util.Map[Iota, Iota] = map.map(e => (IotaType.deserialize(e._1, summon), IotaType.deserialize(e._2, summon))).toMap
+  override def subIotas(): java.lang.Iterable[Iota] = toList
+  def asJavaMap: java.util.Map[Iota, Iota] =
+    val ret = util.LinkedHashMap[Iota, Iota]()
+    for k -> v <- map do
+      ret(IotaType.deserialize(k, summon)) = IotaType.deserialize(v, summon)
+    ret
 object MapIota extends IotaType[MapIota]:
   def color: Int = 0xb0641c
   def deserialize(using data: NbtElement, world: ServerWorld): MapIota =
     val l = HexUtils.downcast(data, NbtList.TYPE)
     val o = HexUtils.downcast(_, NbtCompound.TYPE)
-    l.map(o)
-      .map(c => (o(c("k")), o(c("v"))))
-      .toMap[NbtCompound, NbtCompound]
-      .pipe(new MapIota(_, trusted = true))
+    new MapIota(ListMap.from(l.map(o).map(c => (o(c("k")), o(c("v"))))))
   def display(data: NbtElement): Text =
     val items = HexUtils.downcast(data, NbtList.TYPE)
     val output: MutableText = "["
