@@ -1,6 +1,8 @@
 package org.eu.net.pool.hexic.mixin;
 
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityType;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageSources;
@@ -11,6 +13,7 @@ import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
+import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -56,5 +59,14 @@ public abstract class EntityMixin {
                 return;
             }
         }
+    }
+
+    // stolen from trickster
+    @ModifyExpressionValue(method = {"handleFallDamage", "isFireImmune", "isInvulnerableTo"}, at = {@At(value = "FIELD", target = "Lnet/minecraft/entity/Entity;type:Lnet/minecraft/entity/EntityType;", opcode = Opcodes.GETFIELD), @At(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;getType()Lnet/minecraft/entity/EntityType;")})
+    private EntityType<?> modifyEntityType(EntityType<?> original) {
+        if ((Object) this instanceof PlayerEntity) {
+            
+        }
+        return original;
     }
 }

@@ -231,7 +231,7 @@ tasks.processResources {
             depends("hexal", ">=0.3.0")
             depends("hexcellular", "^1.1.0")
             depends("jsonpatcher", "^1.0.0-beta.4+mc.1.20.1")
-            depends("hexpose", "^1.0.0")
+            depends("hexpose", ">=1.0.0 <3.0.0")
             depends("trinkets", "^3.7.2")
             depends("phlib", ">=0.1.2 <0.2.0")
             conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
@@ -243,7 +243,7 @@ tasks.processResources {
             entrypoint("cardinal-components", "org.eu.net.pool.hexic.ComponentInit")
             mixins("hexic.mixins.json")
             mixins("hexic.client.mixins.json", Environment.Client)
-            cardinalComponents("player_wisp", "server_info", "murmur", "reveal")
+            cardinalComponents("player_wisp", "server_info", "murmur", "reveal", "cat")
         }
     }
 
