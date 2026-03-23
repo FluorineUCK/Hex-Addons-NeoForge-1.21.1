@@ -29,6 +29,9 @@ dependencies {
     modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-level:$cardinal_version")
     modImplementation("dev.onyxstudios.cardinal-components-api:cardinal-components-world:$cardinal_version")
     modRuntimeOnly("dev.onyxstudios.cardinal-components-api:cardinal-components-api:$cardinal_version")
+    include("com.unascribed:lib39-core:[2.0.0,3.0.0)!!2.0.27+1.20.1")
+    include("com.unascribed:lib39-avant:[2.0.0,3.0.0)!!2.0.27+1.20.1")
+    include("com.unascribed:lib39-phantom:[2.0.0,3.0.0)!!2.0.27+1.20.1")
 }
 
 tasks.processResources {
