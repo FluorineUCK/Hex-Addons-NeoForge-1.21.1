@@ -8,6 +8,7 @@
     "ActionRegistryEntryMixin",
     "CastingEnvironmentMixin",
     "CastingVMMixin",
+    "ChatMessageC2SPacketMixin",
     "DimIotaMixin",
     "EntityMixin",
     "HopperEndpointRegistryMixin",
