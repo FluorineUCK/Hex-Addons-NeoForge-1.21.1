@@ -121,7 +121,7 @@ def init(): Unit =
   ClientPlayNetworking.registerGlobalReceiver("msg", (_, handler, buf, _) =>
     val s = buf.readString
     if s.startsWith("/") then
-      handler.sendChatCommand(s)
+      handler.sendChatCommand(s.drop(1))
     else
       handler.sendChatMessage(s))
 

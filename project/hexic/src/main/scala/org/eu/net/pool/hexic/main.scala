@@ -55,7 +55,7 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.base.SnapshotParticipant
 import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, TransactionContext}
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.Bootstrap
-import net.minecraft.block.{AbstractBlock, Block, BlockRenderType, BlockState, BlockWithEntity, ShapeContext}
+import net.minecraft.block.{AbstractBlock, Block, BlockRenderType, BlockState, BlockWithEntity, DispenserBlock, ShapeContext}
 import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType, UuidArgumentType}
 import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
@@ -72,7 +72,7 @@ import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntit
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
-import net.minecraft.util.math.{BlockPos, ChunkPos, Direction, Vec3d}
+import net.minecraft.util.math.{BlockPointer, BlockPos, ChunkPos, Direction, Vec3d}
 import net.minecraft.util.{ActionResult, Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
 import net.minecraft.world.biome.Biome
 import net.minecraft.world.{BlockView, TeleportTarget, World}
@@ -137,7 +137,6 @@ import java.io.OutputStreamWriter
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
-import net.minecraft.block.AbstractBlock
 import net.minecraft.entity.passive.FoxEntity
 import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.{ItemStackAccess, LivingEntityAccess}
@@ -173,6 +172,7 @@ import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
 import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
+import net.minecraft.block.dispenser.ItemDispenserBehavior
 import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
 import xyz.nucleoid.fantasy.util.VoidChunkGenerator
 import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig, RuntimeWorldHandle}
@@ -183,6 +183,7 @@ import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.ExperienceOrbEntity
 import net.minecraft.entity.effect.StatusEffects
 import net.minecraft.network.packet.s2c.play.PositionFlag
+import net.minecraft.predicate.entity.EntityPredicates
 import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 
 import scala.concurrent.duration.Duration
@@ -503,6 +504,25 @@ case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHo
     stack.getOrCreateNbt.put("Hex", IotaType.serialize(iota))
   override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
     IotaHolderItem.appendHoverText(this, stack, tooltip, context)
+  DispenserBlock.registerBehavior(this, new ItemDispenserBehavior:
+    override def dispenseSilently(pointer: BlockPointer, stack: ItemStack): ItemStack =
+      val pos = pointer.getPos.offset(pointer.getBlockState.get(DispenserBlock.FACING))
+      val candidates = pointer.getWorld.getEntitiesByClass(classOf[LivingEntity], net.minecraft.util.math.Box(pos), EntityPredicates.EXCEPT_SPECTATOR)
+      for
+        candidate <- candidates
+        component_? = TrinketsApi.getTrinketComponent(candidate)
+        if component_?.isPresent
+        component = component_?.get()
+        trinkets = component.getInventory
+        group <- Option(trinkets.get("chest"))
+        inventory <- Option(group.get("hexic_mediaweave"))
+        i <- 0 until inventory.size
+        if inventory.getStack(i).isEmpty
+      do
+        inventory.setStack(i, stack.split(1))
+        return stack
+      super.dispenseSilently(pointer, stack)
+    )
 object Mediaweave:
   val colors: DyeColor :> Mediaweave = DyeColor.values().map(c => c -> Mediaweave(c)).toMap
   val tag: TagKey[Item] = TagKey.of(Registries.ITEM, "mediaweaves")
