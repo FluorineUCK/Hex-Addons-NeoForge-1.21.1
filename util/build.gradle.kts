@@ -48,6 +48,7 @@ tasks.processResources {
 
             depends("hexcasting", ">=0.11.2")
             breaks("hexic", "<2.0.0")
+            breaks("essential", "*")
 
             entrypoint("org.eu.net.pool.phlib.main\$package::init")
             mixins("phlib.mixins.json")
