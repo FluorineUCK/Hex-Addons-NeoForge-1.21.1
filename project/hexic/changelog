@@ -1,9 +1,28 @@
-2.0.0 engulfed hexxychests
+1.4.7-pre.2 add a pattern to force snow
+1.4.7-pre.2 add demiplane binding, replacing the positional arg for shattering demiplanes
+1.4.7-pre.2 allow re-enabling old Lani behavior in config
+1.4.7-pre.2 fix crash with canon 0.11.3 versions
+1.4.7-pre.2 fix list math breaking hexdoc
+1.4.7-pre.2 fix void-air scan
+1.4.7-pre.2 make demiplanes not save redundant chunks
+1.4.7-pre.2 make greatspells actually greatspells
+1.4.7-pre.2 meow
+1.4.7-pre.2 remove internal error with out-of-bounds excisor's gambit
+2.0.0 add casting pouch sealing
+2.0.0 add Cessation and Resumption
+2.0.0 add docs for plane-related patterns
+2.0.0 add Hidden Sun's Nadir (blindness)
+2.0.0 add view iotas (experimental!)
 2.0.0 load config from config/*.properties instead of config/jvm.properties
 2.0.0 mediaweave now applies to all chat messages
 2.0.0 !mediaweave now uses trinket slots
 2.0.0 murmur and reveal now use separate components
 2.0.0 !only one mediaweave can be equipped at a time
+2.0.0 removed map iotas → moved to phlib with identical behavior
 2.0.0 !removed NBT iotas
+2.0.0 removed patchwork iotas → moved to iotaworks with identical behavior
 2.0.0 !removed tripwires
+2.0.0 remove snow pattern & fix lithium incompatibility
+2.0.0 !remove suffering
+2.0.0 rename media bundles to casting pouches
 2.0.0 textures now use JPEG XL

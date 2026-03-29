@@ -232,6 +232,7 @@ allprojects {
         exactRepo("https://maven.ladysnake.org/releases/",
             "dev.onyxstudios")
         exactRepo("https://pool.net.eu.org/",
+            "com.unascribed",
             "dev.kineticcat.hexportation",
             "miyucomics.hexcellular",
             "miyucomics.hexical",
@@ -245,8 +246,9 @@ allprojects {
         exactRepo("https://maven.terraformersmc.com/releases",
             "com.terraformersmc",
             "dev.emi")
-        exactRepo("https://repo.sleeping.town/",
-            "com.unascribed")
+        // mirrored by poolmaven due to invalid cert
+        //exactRepo("https://repo.sleeping.town/",
+        //    "com.unascribed")
         exactRepo("https://masa.dy.fi/maven/",
             "carpet")
         exactRepo("https://maven.nucleoid.xyz/",

@@ -292,6 +292,7 @@ def datagen(gen: FabricDataGenerator): Unit =
     new FabricLanguageProvider(_):
       override def generateTranslations(gen: FabricLanguageProvider.TranslationBuilder): Unit =
         for action -> name <- Vector(
+          "blind" -> "Hidden Sun's Nadir",
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",
           "dye_offhand" -> "Apply Pigment",
@@ -317,7 +318,6 @@ def datagen(gen: FabricDataGenerator): Unit =
           "staffcast_factory/lazy" -> "Lani's Lesser Gambit",
           "take" -> "Retention Distillation",
           "unfox" -> "Vulpine Expulsion",
-          "whatthefuck" -> "Suffering",
           "where" -> "Deductive Purification",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
         gen.add("hexcasting.special.hexic:tuple", "Coupler's Gambit")
@@ -358,6 +358,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "get_other_caster" -> "Adds the closest sentient being, excluding me, to the stack.",
           "modulo" -> "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.",
           "murmur" -> "Finds the region of my mind known as the 'chat box' and adds its contents to the stack. If it cannot be found, adds Null instead.",
+          "blind" -> "Inflicts $(thing)blindness/$. Base cost is one $(l:items/amethyst)$(item)Amethyst Dust/$ per 10 seconds.",
         ) do gen.add(s"book.hexic.page.$page", text)
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
         gen.add("hexdoc.hexic.title", "Hexic")

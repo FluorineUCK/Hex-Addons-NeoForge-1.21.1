@@ -143,8 +143,7 @@ import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.{ItemStackAccess, LivingEntityAccess}
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
-import at.petrak.hexcasting.common.casting.actions.spells.OpBreakBlock
-import at.petrak.hexcasting.common.casting.actions.spells.OpErase
+import at.petrak.hexcasting.common.casting.actions.spells.{OpBreakBlock, OpErase, OpPotionEffect}
 import at.petrak.hexcasting.api.casting.mishaps.MishapBadEntity
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.decoration.ItemFrameEntity
@@ -182,6 +181,7 @@ import java.nio.charset.StandardCharsets
 import java.math.BigInteger
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.ExperienceOrbEntity
+import net.minecraft.entity.effect.StatusEffects
 import net.minecraft.network.packet.s2c.play.PositionFlag
 import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 
@@ -526,17 +526,26 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
         .toSeq
     private def heldItems_=(x: Seq[ItemStack]): Unit =
       stack.getOrCreateNbt.put("Contents", NbtList().tap: l =>
-        for item <- x do
+        for item <- x if !item.isEmpty do
           val c = NbtCompound()
           item.writeNbt(c)
           l.add(c)
       )
+    private def isWaxed = Option(stack.getNbt).exists(_.contains("ro"))
+    private def isWaxed_=(value: Boolean) =
+      if value then
+        stack.getOrCreateNbt.put("ro", NbtCompound())
+      else
+        stack.getOrCreateNbt.remove("ro")
     private def withMediaHolders[T](f: Seq[CCMediaHolder] => T): T =
-      val heldItems = stack.heldItems
-      try
-        f(heldItems.flatMap(p => Option(HexCardinalComponents.MEDIA_HOLDER.getNullable(p))))
-      finally
-        stack.heldItems = heldItems
+      if stack.isWaxed then
+        f(Seq())
+      else
+        val heldItems = stack.heldItems
+        try
+          f(heldItems.flatMap(p => Option(HexCardinalComponents.MEDIA_HOLDER.getNullable(p))))
+        finally
+          stack.heldItems = heldItems
     private def mediaHolders = stack.heldItems.flatMap(p => Option(HexCardinalComponents.MEDIA_HOLDER.getNullable(p)))
   override def getMedia(stack: ItemStack): Long = stack.mediaHolders.map(_.getMedia).sum
   override def getMaxMedia(stack: ItemStack): Long = stack.mediaHolders.map(_.getMaxMedia).sum
@@ -577,6 +586,13 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
           cursorStackReference.set(p)
           stack.heldItems = held.tail
           player.playSound(SoundEvents.ITEM_BUNDLE_REMOVE_ONE, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
+      else if otherStack.isOf(Items.HONEYCOMB) && !stack.isWaxed then
+        stack.isWaxed = true
+        otherStack.decrement(1)
+        player.playSound(SoundEvents.ITEM_HONEYCOMB_WAX_ON, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
+      else if otherStack.isOf(Items.WET_SPONGE) && stack.isWaxed then
+        stack.isWaxed = false
+        player.playSound(SoundEvents.BLOCK_SLIME_BLOCK_PLACE, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       else if HexCardinalComponents.MEDIA_HOLDER.getNullable(otherStack) != null then
         val held = stack.heldItems
         if fits(held, otherStack.getItem) then
@@ -635,12 +651,22 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
   override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
     tooltip.add(Text.translatable("hexic.media_bundle.items", stack.heldItems.size, size).styled(_.withColor(Formatting.GRAY)))
     val (consumables, batteries, trinkets) = getMediaInfo(stack)
+    val isWaxed = stack.isWaxed
+    var mentionedSealing = false
+    def convertForWaxing(text: MutableText) =
+      if isWaxed then
+        mentionedSealing = true
+        Text.empty().append(text.styled(_.withStrikethrough(true))).append(" ").append(Text.translatable("hexcasting.tooltip.spellbook.sealed").formatted(Formatting.GOLD))
+      else
+        text
     batteries match
       case Some((total, max)) => tooltip.add(showMedia("external", total + consumables.getOrElse(0L), max))
       case None => for value <- consumables do
-        tooltip.add(showMedia("external", value))
+        tooltip.add(convertForWaxing(showMedia("external", value)))
     for (total, max) <- trinkets do
-      tooltip.add(showMedia("internal", total, max))
+      tooltip.add(convertForWaxing(showMedia("internal", total, max)))
+    if !mentionedSealing then
+      tooltip.add(Text.translatable("hexcasting.tooltip.spellbook.sealed").formatted(Formatting.GOLD))
   private def showMedia(tag: String, media: Long) = Text.translatable("hexic.media.infinite", Text.translatable(s"hexic.media.$tag"), Text.translatable("hexcasting.tooltip.media", dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR))))
   private def showMedia(tag: String, media: Long, maxMedia: Long) = Text.translatable("hexic.media.finite", Text.translatable(s"hexic.media.$tag"), dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.translatable("hexcasting.tooltip.media", dustAmount(maxMedia)).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.literal(PERCENTAGE.format(100.0 * media / maxMedia)+"%").styled(_.withColor(MediaHelper.mediaBarColor(media, maxMedia))))
   private def dustAmount(media: Long) = Text.literal(DUST_AMOUNT.format(media / MediaConstants.DUST_UNIT.toDouble))
@@ -847,8 +873,7 @@ def init(): Unit =
     possible(Random.nextInt(possible.size))
   Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
   iotaTypeRegistry("access") = PropertyAccessIota.Type
-  for (color, item) <- Mediaweave.colors do
-    Registries.ITEM(s"${color.asString}_mediaweave") = item
+  for color -> item <- Mediaweave.colors do Registries.ITEM(s"${color.asString}_mediaweave") = item
   for item <- MediaBundle.items do
     Registries.ITEM(item.size match
       case 6 => s"small_${item.color.asString}_bundle"
@@ -1029,8 +1054,6 @@ def init(): Unit =
   Patterns.register("spellmind/restore", e"deeeeeqdwewewewewewqdwwewwewwewwewwewwqdwwwewwwewwwewwwewwwewww"):
     Patterns.mkAction: (img, cont) =>
       ???
-  Patterns.register("whatthefuck", ne"daadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadadda"):
-    Patterns.mkLiteral(PatternIota(e"wedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqeedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqeedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqqedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqqedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqeedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqqedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqe"))
   def fox(tr: PlayerEntity ?=> PartialFunction[Option[FoxEntity.Type], Option[FoxEntity.Type]]): Action =
     Patterns.mkAction: (img, cont) =>
       img.getStack.lastOption match
@@ -1443,6 +1466,7 @@ def init(): Unit =
           case _ => true
       val sorted = others.toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos))
       sorted.headOption.fold(NullIota())(EntityIota(_))
+  Patterns.register("blind", se"qqqqqadwawawd")(OpPotionEffect(StatusEffects.BLINDNESS, 1000, false, false))
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
     Patterns.mkAction: (img, cont) =>
       def mkResult(scale: Int, pos: => Vec3d, spell: => Unit) =
