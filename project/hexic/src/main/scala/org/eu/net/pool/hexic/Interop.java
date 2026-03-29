@@ -25,6 +25,7 @@ import scala.util.boundary;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 public class Interop extends BlockPos {
     public final @NotNull Entity e;
