@@ -7,12 +7,14 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageSources;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.CuboidBlockIterator;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
+import org.eu.net.pool.hexic.JavaPlaneAccess;
 import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -38,14 +40,21 @@ public abstract class EntityMixin {
 
     @Shadow public abstract boolean damage(DamageSource source, float amount);
 
+    @Shadow public abstract boolean isPlayer();
+
     @Inject(at = @At("TAIL"), method = {"attemptTickInVoid", "method_31473"}, cancellable = true)
     void attemptTickInVoidBlocks(CallbackInfo ci) {
         Box box = getBoundingBox();
         if (!((Object) this instanceof PlayerEntity p && (p.isCreative() || p.isSpectator()))) {
             var id = getWorld().getRegistryKey().getValue();
             if (id.getNamespace().equals("hexic") && id.getPath().startsWith("fresh-") && (box.minX < 0 || box.minY < 0 || box.minZ < 0 || box.maxX > 11 || box.maxY > 11 || box.maxZ > 11)) {
-                damage(getWorld().getDamageSources().outsideBorder(), Float.MAX_VALUE);
-                remove(Entity.RemovalReason.KILLED);
+                if ((Object) this instanceof PlayerEntity p) {
+                    if (p instanceof ServerPlayerEntity sp) {
+                        JavaPlaneAccess.sendDirectlyToHell(sp);
+                    }
+                } else {
+                    discard();
+                }
                 ci.cancel();
                 return;
             }

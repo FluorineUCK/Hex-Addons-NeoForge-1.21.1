@@ -20,7 +20,7 @@ import at.petrak.hexcasting.api.casting.iota.IotaType;
 abstract class DimIotaMixin {
     @WrapOperation(method = "display", at = @At(value = "INVOKE", target = "Lnet/minecraft/text/Text;of(Ljava/lang/String;)Lnet/minecraft/text/Text;"))
     Text getName(String dim, Operation<Text> original) {
-        return dim.startsWith("hexic:fresh_") ? org.eu.net.pool.hexic.Extern.getPocketName(dim) : original.call(dim);
+        return dim.startsWith("hexic:fresh-") ? org.eu.net.pool.hexic.Extern.getPocketName(dim) : original.call(dim);
     }
 
     @WrapMethod(method = "deserialize(Lnet/minecraft/nbt/NbtElement;Lnet/minecraft/server/world/ServerWorld;)Lnet/beholderface/oneironaut/casting/iotatypes/DimIota;")

@@ -15,6 +15,8 @@
 2.0.0 add view iotas (experimental!)
 2.0.0 fix getting kicked if mediaweave sends an overly long message
 2.0.0 load config from config/*.properties instead of config/jvm.properties
+2.0.0 made demiplanes not instantly kill you and void your items if you look at them wrong
+2.0.0 made demiplanes remember where they were entered from
 2.0.0 made stringworms obtainable
 2.0.0 mediaweave now applies to all chat messages
 2.0.0 !mediaweave now uses trinket slots
@@ -27,4 +29,5 @@
 2.0.0 remove snow pattern & fix lithium incompatibility
 2.0.0 !remove suffering
 2.0.0 rename media bundles to casting pouches
+2.0.0 sent Stickia to the milk dimension
 2.0.0 textures now use JPEG XL

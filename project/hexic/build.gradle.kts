@@ -243,7 +243,7 @@ tasks.processResources {
             entrypoint("cardinal-components", "org.eu.net.pool.hexic.ComponentInit")
             mixins("hexic.mixins.json")
             mixins("hexic.client.mixins.json", Environment.Client)
-            cardinalComponents("player_wisp", "server_info", "murmur", "reveal", "cat")
+            cardinalComponents("player_wisp", "server_info", "excursion", "murmur", "reveal", "cat")
         }
     }
 

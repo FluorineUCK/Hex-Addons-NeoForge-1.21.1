@@ -89,7 +89,7 @@ import java.io.{File, FileNotFoundException, FileOutputStream, IOException, Inpu
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
 import java.nio.ByteBuffer
-import java.nio.file.{Files, Path, Paths, StandardOpenOption}
+import java.nio.file.{FileSystemException, Files, Path, Paths, StandardOpenOption}
 import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
@@ -181,7 +181,8 @@ import java.nio.charset.StandardCharsets
 import java.math.BigInteger
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.ExperienceOrbEntity
-import net.minecraft.entity.effect.StatusEffects
+import net.minecraft.entity.damage.DamageSources
+import net.minecraft.entity.effect.{StatusEffectInstance, StatusEffects}
 import net.minecraft.network.packet.s2c.play.PositionFlag
 import net.minecraft.predicate.entity.EntityPredicates
 import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
@@ -403,6 +404,23 @@ object ServerInfoComponent:
   def sync()(using server: MinecraftServer): Unit = server.getOverworld.getLevelProperties.syncComponent(key)
   private[hexic] def register(using fac: LevelComponentFactoryRegistry) =
     fac.register(key, _ => ServerInfoComponent())
+
+class ExcursionComponent(var enteredDemiplaneTick: Long = 0, var excursion: Option[(RegistryKey[World], Vec3d)] = None) extends Component:
+  override def readFromNbt(tag: NbtCompound): Unit =
+    enteredDemiplaneTick = tag.getLong("grace")
+    excursion = for
+      case c: NbtString <- Option(tag.get("dim"))
+      id <- Option(Identifier.tryParse(c.asString))
+    yield (RegistryKey.of(RegistryKeys.WORLD, id), Vec3d(tag.getDouble("x"), tag.getDouble("y"), tag.getDouble("z")))
+  override def writeToNbt(tag: NbtCompound): Unit =
+    tag.putLong("grace", enteredDemiplaneTick)
+    for world -> pos <- excursion do
+      tag.putString("dim", world.getValue.toString)
+      tag.putDouble("x", pos.getX)
+      tag.putDouble("y", pos.getY)
+      tag.putDouble("z", pos.getZ)
+object ExcursionComponent:
+  given key: ComponentKey[ExcursionComponent] = ComponentRegistry.getOrCreate("excursion", classOf[ExcursionComponent])
 
 extension [S, T <: ArgumentBuilder[S, T]] (builder: T)
   def literal(name: String)(body: LiteralArgumentBuilder[S] => Unit): T = builder.`then`(LiteralArgumentBuilder.literal[S](name).tap(body))
@@ -782,7 +800,7 @@ private [hexic] object Extern:
         val img = vm.getImage
         Some(CastingImage(img.getStack:+ListIota(img.getParenthesized.map(_.getIota)):+DoubleIota(img.getParenCount), 0, Seq(), false, img.getOpsConsumed, img.getUserData, null), ResolvedPatternType.EVALUATED)
       case _ => None
-  private [hexic] def getPocketName(pocket: String) = Text.of(pocketNames(getPocketID(Identifier.tryParse(pocket)).get))
+  private [hexic] def getPocketName(pocket: String) = Text.of("Demiplane " + pocketNames(getPocketID(Identifier.tryParse(pocket)).get))
 
 val _ =
   Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
@@ -793,6 +811,88 @@ val _ =
     if !c.leftWeave.isEmpty then
       out.add(c.leftWeave)
       c.leftWeave = ItemStack.EMPTY
+
+given demiplaneExtensions: AnyRef with
+  extension (w: ServerWorld)
+    def meta: String MutableFunction Option[String] =
+      val path = w.getServer.getSavePath(WorldSavePath.ROOT).resolve(s"dimensions/${w.getRegistryKey.getValue.getNamespace}/${w.getRegistryKey.getValue.getPath}")
+      new MutableFunction:
+        def apply(name: String) = try Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[Array[Byte]]].map(buf => String(buf, StandardCharsets.UTF_8)) catch case _: FileSystemException => None
+        def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.map(StandardCharsets.UTF_8.encode).orNull)
+    def parentInfo: Option[(RegistryKey[World], BlockPos)] = for
+      parentStr <- w.meta("parent")
+      parentId <- Option(Identifier.tryParse(parentStr))
+      parentKey = RegistryKey.of(RegistryKeys.WORLD, parentId)
+      if w.getServer.getWorld(parentKey) ne null
+      x <- w.meta("bound_x").flatMap(v => Try(Integer.parseInt(v)).toOption)
+      y <- w.meta("bound_y").flatMap(v => Try(Integer.parseInt(v)).toOption)
+      z <- w.meta("bound_z").flatMap(v => Try(Integer.parseInt(v)).toOption)
+    yield parentKey -> BlockPos(x, y, z)
+    def parentInfo_=(parent: Option[(RegistryKey[World], BlockPos)]) =
+      parent.fold {
+        w.meta("parent") = None
+        w.meta("bound_x") = None
+        w.meta("bound_y") = None
+        w.meta("bound_z") = None
+      } { (world, pos) =>
+        w.meta("parent") = Some(world.getValue.toString)
+        w.meta("bound_x") = Some(pos.getX.toString)
+        w.meta("bound_y") = Some(pos.getY.toString)
+        w.meta("bound_z") = Some(pos.getZ.toString)
+      }
+
+object JavaPlaneAccess:
+  def logExcursion(sp: ServerPlayerEntity) =
+    val c = sp.component[ExcursionComponent]
+    val curDim = sp.getWorld.getRegistryKey
+    c.excursion = Some(curDim, sp.getPos)
+    c.enteredDemiplaneTick = sp.getWorld.getTime
+    sp.syncComponent(ExcursionComponent.key)
+  def getDefaultExcursion(/** must be a demiplane */ world: ServerWorld): (ServerWorld, Vec3d) =
+    locally:
+      // if the plane is bound, where it's bound to is the default excursion
+      for
+        case (key, pos) <- world.parentInfo
+        boundWorld <- Option(world.getServer.getWorld(key))
+      yield
+        (boundWorld, Vec3d.ofBottomCenter(pos))
+    .getOrElse:
+      // idfk just go to spawn or something
+      // someone would never do something silly like setting the world spawn to y 10000 or something like that riiiight?
+      (world.getServer.getOverworld, Vec3d.ofBottomCenter(world.getServer.getOverworld.getSpawnPos))
+  def findExcursion(/* must be in a demiplane */ sp: ServerPlayerEntity): (ServerWorld, Vec3d) =
+    locally:
+      // the happy path, assuming we have a player involved
+      for
+        case (key, pos) <- sp.component[ExcursionComponent].excursion
+        world <- Option(sp.getServer.getWorld(key))
+      yield
+        (world, pos)
+    .getOrElse:
+      given_Logger.warn(s"$sp claims to have never entered a demiplane")
+      getDefaultExcursion(sp.getServerWorld)
+  def findExcursion(target: Entity)(using env: CastingEnvironment): (ServerWorld, Vec3d) =
+    env match
+      case p: PlayerBasedCastEnv =>
+        val (world, pos) = findExcursion(p.getCaster)
+        world -> pos.add(target.getPos).subtract(p.getCaster.getPos)
+      case _ => target match
+        case p: ServerPlayerEntity => findExcursion(p)
+        case _ => target.getWorld match
+          case sw: ServerWorld => getDefaultExcursion(sw)
+          case _ => throw new IllegalStateException("why are you casting Spatial Interchange client-sided")
+  def sendDirectlyToHell(sp: ServerPlayerEntity) =
+    val c = sp.component[ExcursionComponent]
+    if c.enteredDemiplaneTick + cfg[Int]("hexic.demiplaneGracePeriod").getOrElse(5) > sp.getWorld.getTime then
+      given_Logger.warn(s"$sp found outside kitchen")
+      sp.requestTeleport(5.5, 1.0, 5.5)
+    else
+      given_Logger.warn(s"$sp broke out of cell ${sp.getWorld.getRegistryKey}! mods, please check if the borders are broken")
+      val (world, pos) = findExcursion(sp)
+      val sp2 = FabricDimensions.teleport(sp, world, TeleportTarget(pos, Vec3d.ZERO, sp.getYaw, sp.getPitch))
+      sp2.addStatusEffect(StatusEffectInstance(StatusEffects.NAUSEA, 30*20))
+      sp2.addStatusEffect(StatusEffectInstance(StatusEffects.BLINDNESS, 30*20))
+      sp2.damage(sp2.getWorld.getDamageSources.outOfWorld, sp2.getMaxHealth / 2)
 
 given Codec[Int] = Codec.INT.xmap(p => p, p => p)
 
@@ -1115,25 +1215,6 @@ def init(): Unit =
       server.submit((() => handle.asWorld.getChunkManager.setChunkForced(ChunkPos.ORIGIN, true)): Runnable)
       handle
     )
-  extension (w: ServerWorld)
-    def meta: String MutableFunction Option[String] =
-      val path = w.getServer.getSavePath(WorldSavePath.ROOT).resolve(s"dimensions/${w.getRegistryKey.getValue.getNamespace}/${w.getRegistryKey.getValue.getPath}")
-      new MutableFunction:
-        def apply(name: String) = Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[Array[Byte]]].map(buf => String(buf, StandardCharsets.UTF_8))
-        def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.map(StandardCharsets.UTF_8.encode).orNull)
-    def parentInfo: Option[(RegistryKey[World], BlockPos)] = w.meta("parent").flatMap(value => Option(Identifier.tryParse(value))).map(RegistryKey.of(RegistryKeys.WORLD, _)).filter(w.getServer.getWorld(_) ne null).map((_, BlockPos(Integer.parseInt(w.meta("bound_x").get), Integer.parseInt(w.meta("bound_y").get), Integer.parseInt(w.meta("bound_z").get))))
-    def parentInfo_=(parent: Option[(RegistryKey[World], BlockPos)]) =
-      parent.fold {
-        w.meta("parent") = None
-        w.meta("bound_x") = None
-        w.meta("bound_y") = None
-        w.meta("bound_z") = None
-      } { (world, pos) =>
-        w.meta("parent") = Some(world.getValue.toString)
-        w.meta("bound_x") = Some(pos.getX.toString)
-        w.meta("bound_y") = Some(pos.getY.toString)
-        w.meta("bound_z") = Some(pos.getZ.toString)
-      }
   extension (server: MinecraftServer)
     def savedPlanes =
       val file = server.getSavePath(WorldSavePath("fresh"))
@@ -1360,8 +1441,8 @@ def init(): Unit =
                               case p: PlayerEntity =>
                                 // thanks but please stop eating my ears
                                 if isDev then println(s"Teleporting player $p")
-                                FabricDimensions.teleport(p, outer, TeleportTarget(pos, Vec3d.ZERO, p.getYaw, p.getPitch))
-                                if !p.isCreative && !p.isSpectator then p.kill()
+                                val p2 = FabricDimensions.teleport(p, outer, TeleportTarget(pos, Vec3d.ZERO, p.getYaw, p.getPitch))
+                                if !p2.isCreative && !p2.isSpectator then p2.kill()
                               case e: LivingEntity =>
                                 e.kill()
                                 if isDev then println(s"Killing living entity $e")
@@ -1372,8 +1453,8 @@ def init(): Unit =
                                   (e: LivingEntityAccess).callUpdatePostDeath()
                               case e =>
                                 if isDev then println(s"Killing nonliving entity $e")
-                                FabricDimensions.teleport(e, outer, TeleportTarget(pos, Vec3d.ZERO, e.getYaw, e.getPitch))
-                                e.kill()
+                                val e2 = FabricDimensions.teleport(e, outer, TeleportTarget(pos, Vec3d.ZERO, e.getYaw, e.getPitch))
+                                e2.kill()
                           pass += 1
                           if isDev then println(s"Proceeding to pass ${pass}")
                           recurse
@@ -1723,6 +1804,7 @@ private[hexic] class ComponentInit extends EntityComponentInitializer, LevelComp
   override def registerEntityComponentFactories(using r: EntityComponentFactoryRegistry): Unit =
     PlayerInfoComponent.register
     r.registerForPlayers(summon[ComponentKey[MurmurCache]], _ => MurmurCache(None), RespawnCopyStrategy.ALWAYS_COPY)
+    r.registerForPlayers(summon[ComponentKey[ExcursionComponent]], _ => ExcursionComponent(), RespawnCopyStrategy.ALWAYS_COPY)
     r.registerForPlayers(summon[ComponentKey[RevealComponent]], _ => RevealComponent(Seq.empty), RespawnCopyStrategy.LOSSLESS_ONLY)
     r.registerForPlayers(CatHolder.key, new CatHolder(_), RespawnCopyStrategy.NEVER_COPY)
   override def registerLevelComponentFactories(using LevelComponentFactoryRegistry): Unit =
