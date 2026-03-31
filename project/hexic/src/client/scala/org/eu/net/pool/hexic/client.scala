@@ -292,6 +292,7 @@ def datagen(gen: FabricDataGenerator): Unit =
     new FabricLanguageProvider(_):
       override def generateTranslations(gen: FabricLanguageProvider.TranslationBuilder): Unit =
         for action -> name <- Vector(
+          "attachworld" -> "Bind Demiplane",
           "blind" -> "Hidden Sun's Nadir",
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",

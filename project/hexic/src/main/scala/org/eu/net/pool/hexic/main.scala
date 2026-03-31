@@ -1252,8 +1252,8 @@ def init(): Unit =
     for id <- server.savedPlanes do
       planes(id)
   Registries.BLOCK("border") = border
-  Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
-    Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
+  Patterns.register("makeworld", e"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
+    Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.QUENCHED_BLOCK_UNIT * 6): _ =>
       val uuid = UUID.randomUUID()
       val world = planes(uuid).asWorld
       // TODO: world config
@@ -1386,7 +1386,7 @@ def init(): Unit =
                         if isDev then println(s"Spawning final XP orb, $xpToSpawn")
                         ExperienceOrbEntity.spawn(outer, pos, xpToSpawn.toInt)
                     catch case e: Throwable =>
-                      println(s"FAILED TO REMOVE DIMENSION!! $id. Not unloading.")
+                      println(s"\u0007FAILED TO REMOVE DIMENSION!! $id. Not unloading.")
                       e.printStackTrace()
                       boundary.break()
                       throw e
@@ -1394,7 +1394,7 @@ def init(): Unit =
                     server.savedPlanes -= id
                     planes(id).unload()
                 override def cast(env: CastingEnvironment, image: CastingImage): CastingImage = { cast(env); image },
-              MediaConstants.SHARD_UNIT * 750,
+              MediaConstants.SHARD_UNIT * 25,
               Seq(),
               1
             )
