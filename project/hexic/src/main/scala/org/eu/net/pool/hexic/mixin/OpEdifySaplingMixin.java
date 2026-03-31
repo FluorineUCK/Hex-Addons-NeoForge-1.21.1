@@ -22,6 +22,7 @@ import net.minecraft.registry.tag.TagKey;
 import net.minecraft.util.DyeColor;
 import net.minecraft.util.math.BlockPos;
 import org.eu.net.pool.hexic.Mediaweave$;
+import org.eu.net.pool.hexic.Stringworm;
 import org.eu.net.pool.hexic.duck.OpEdifySapling$SpellAccess;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -45,6 +46,10 @@ public abstract class OpEdifySaplingMixin {
         }
         if (original.call(instance, BlockTags.WOOL_CARPETS)) {
             mediaweave.set(2);
+            return true;
+        }
+        if (instance.isOf(Blocks.TRIPWIRE)) {
+            mediaweave.set(-1);
             return true;
         }
         return false;
@@ -71,19 +76,27 @@ public abstract class OpEdifySaplingMixin {
         @Inject(method = "cast(Lat/petrak/hexcasting/api/casting/eval/CastingEnvironment;)V", at = @At("HEAD"), cancellable = true)
         void preCast(CastingEnvironment env, CallbackInfo ci) {
             if (hexic$mediaweave != 0) {
-                BlockState state = env.getWorld().getBlockState(pos);
-                String id = Registries.BLOCK.getId(state.getBlock()).getPath();
-                for (DyeColor color: DyeColor.values()) {
-                    if (id.startsWith(color.asString())) {
-                        int count = Math.max(
-                            env.getWorld().getRandom().nextBetween(hexic$mediaweave, hexic$mediaweave * 3),
-                            env.getWorld().getRandom().nextBetween(hexic$mediaweave, hexic$mediaweave * 2)
-                        );
-                        env.getWorld().setBlockState(pos, Blocks.AIR.getDefaultState());
-                        Block.dropStack(env.getWorld(), pos, new ItemStack(Mediaweave$.MODULE$.colors().apply(color), count));
-                        ci.cancel();
+                ItemStack droppedStack;
+                a: if (hexic$mediaweave == -1) {
+                    droppedStack = new ItemStack(Stringworm.randomFlavor(env.getWorld().getRandom()));
+                } else {
+                    BlockState state = env.getWorld().getBlockState(pos);
+                    String id = Registries.BLOCK.getId(state.getBlock()).getPath();
+                    for (DyeColor color : DyeColor.values()) {
+                        if (id.startsWith(color.asString())) {
+                            int count = Math.max(
+                                env.getWorld().getRandom().nextBetween(hexic$mediaweave, hexic$mediaweave * 3),
+                                env.getWorld().getRandom().nextBetween(hexic$mediaweave, hexic$mediaweave * 2)
+                            );
+                            droppedStack = new ItemStack(Mediaweave$.MODULE$.colors().apply(color), count);
+                            break a;
+                        }
                     }
+                    return;
                 }
+                env.getWorld().setBlockState(pos, Blocks.AIR.getDefaultState());
+                Block.dropStack(env.getWorld(), pos, droppedStack);
+                ci.cancel();
             }
         }
     }

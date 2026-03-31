@@ -15,6 +15,7 @@
 2.0.0 add view iotas (experimental!)
 2.0.0 fix getting kicked if mediaweave sends an overly long message
 2.0.0 load config from config/*.properties instead of config/jvm.properties
+2.0.0 made stringworms obtainable
 2.0.0 mediaweave now applies to all chat messages
 2.0.0 !mediaweave now uses trinket slots
 2.0.0 murmur and reveal now use separate components

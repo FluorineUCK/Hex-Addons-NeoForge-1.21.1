@@ -691,13 +691,16 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
   private def showMedia(tag: String, media: Long, maxMedia: Long) = Text.translatable("hexic.media.finite", Text.translatable(s"hexic.media.$tag"), dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.translatable("hexcasting.tooltip.media", dustAmount(maxMedia)).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.literal(PERCENTAGE.format(100.0 * media / maxMedia)+"%").styled(_.withColor(MediaHelper.mediaBarColor(media, maxMedia))))
   private def dustAmount(media: Long) = Text.literal(DUST_AMOUNT.format(media / MediaConstants.DUST_UNIT.toDouble))
 
+extension [T] (s: => Seq[T]) def *^(n: Int) = Seq.fill(n)(()).flatMap((_) => s)
 class Stringworm extends Item(Stringworm.settings)
 object Stringworm:
   val settings = Item.Settings().maxCount(16)
   val flavors = Seq("pure", "action", "hex", "media", "thing")
-
-val stringworms =
-  Stringworm.flavors.map(_ -> new Stringworm).toMap
+  val biasedFlavors = "pure" +: Seq("action", "hex", "media", "thing") *^ 3
+  def randomFlavor(using rng: net.minecraft.util.math.random.Random) = items(biasedFlavors(rng.nextInt(biasedFlavors.size)))
+  val items =
+    Stringworm.flavors.map(_ -> new Stringworm).toMap
+export Stringworm.items as stringworms
 
 object dyedStringworm extends Stringworm:
   override def getName(stack: ItemStack): Text =
