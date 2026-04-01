@@ -14,6 +14,7 @@
 2.0.0 add Hidden Sun's Nadir (blindness)
 2.0.0 add view iotas (experimental!)
 2.0.0 fix getting kicked if mediaweave sends an overly long message
+2.0.0 fix hitbox for void blocks
 2.0.0 load config from config/*.properties instead of config/jvm.properties
 2.0.0 made demiplanes not instantly kill you and void your items if you look at them wrong
 2.0.0 made demiplanes remember where they were entered from
