@@ -235,6 +235,7 @@ tasks.processResources {
             depends("trinkets", "^3.7.2")
             depends("phlib", ">=0.1.2 <0.2.0")
             conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
+            breaks("java", ">=26")
 
             entrypoint("org.eu.net.pool.hexic.main\$package::init")
             entrypoint("org.eu.net.pool.hexic.client\$package::init", Environment.Client)

@@ -21,6 +21,7 @@
     "LivingEntityMixin",
     "MediafiedItemManagerIndexMixin",
     "OpDimTeleport$SpellMixin",
+    "OpDimTeleportMixin",
     "OpEdifySaplingMixin",
     "OpEdifySaplingMixin$Spell",
     "OpObservePropertyMixin",
@@ -30,6 +31,7 @@
     "PacketByteBufMixin",
     "PlayerInventoryMixin",
     "SimpleRegistryMixin",
+    "SpellAction$ResultAccessor",
     "StaffCastEnvMixin",
     "WorldMixin"
   ],
