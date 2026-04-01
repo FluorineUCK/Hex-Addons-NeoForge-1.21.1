@@ -37,7 +37,7 @@ tasks.processResources {
                 put("discord", "https://discord.com/users/758407438251720795")
             }
 
-            depends("phlib", "0.1.1")
+            depends("phlib", ">=0.1.2")
             depends("hexcasting", ">=0.11.2")
             depends("hexcellular", "^1.0.4")
             recommends("hexpose", "*")
