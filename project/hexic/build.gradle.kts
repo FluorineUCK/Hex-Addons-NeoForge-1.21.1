@@ -307,6 +307,9 @@ tasks.processResources {
         exec {
             commandLine("env", "magick", "xc:#ffffff[16x16]", *jxlOpts, "jxl:${itemsRoot.resolveSibling("block/border.png")}")
         }
+        exec {
+            commandLine("env", "magick", "xc:#000000[16x16]", *jxlOpts, "jxl:${itemsRoot.resolveSibling("block/void_air.png")}")
+        }
         file("$itemsRoot/stringworm.miff").delete()
         exec {
             commandLine("env", "magick", "https://www.masterbuilt.com/cdn/shop/articles/162_20-_20Voodoo_20Baked_20Beans.jpg", "-sample", "256x256", *jxlOpts, "jxl:${itemsRoot.resolve("beans.png")}")

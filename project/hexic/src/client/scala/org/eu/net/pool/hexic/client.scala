@@ -231,6 +231,7 @@ def datagen(gen: FabricDataGenerator): Unit =
     new FabricModelProvider(_):
       override def generateBlockStateModels(gen: BlockStateModelGenerator): Unit =
         gen.registerSimpleCubeAll(Registries.BLOCK("border"))
+        gen.registerSimpleCubeAll(Registries.BLOCK("void_air"))
         gen.registerSimpleState(Registries.BLOCK("chisel_table"))
         gen.modelCollector.accept(ModelIds.getBlockModelId(Registries.BLOCK("chisel_table")), () =>
           new JsonObject().tap: j =>
