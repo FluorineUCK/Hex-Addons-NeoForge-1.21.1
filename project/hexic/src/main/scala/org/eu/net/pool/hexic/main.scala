@@ -168,8 +168,11 @@ import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 
 import scala.util.matching.Regex
 import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
-import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
+import at.petrak.hexcasting.interop.inline.InlinePatternData
+import dev.emi.trinkets.api
+import dev.emi.trinkets.api.{Trinket, TrinketComponent, TrinketEnums, TrinketsApi}
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
+import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback
 import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.minecraft.block.dispenser.ItemDispenserBehavior
@@ -541,9 +544,17 @@ case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHo
         return stack
       super.dispenseSilently(pointer, stack)
     )
+  TrinketsApi.registerTrinket(this, Mediaweave.trinket)
 object Mediaweave:
   val colors: DyeColor :> Mediaweave = DyeColor.values().map(c => c -> Mediaweave(c)).toMap
   val tag: TagKey[Item] = TagKey.of(Registries.ITEM, "mediaweaves")
+  object trinket extends Trinket:
+    override def canUnequip(stack: ItemStack, slot: api.SlotReference, entity: LivingEntity): Boolean = Option(stack).flatMap(s => Option(s.getNbt)).forall(_.get("lock") == null)
+    override def getDropRule(stack: ItemStack, slot: api.SlotReference, entity: LivingEntity): TrinketEnums.DropRule =
+      if Option(stack).flatMap(s => Option(s.getNbt)).exists(_.get("lock") == null) then
+        TrinketEnums.DropRule.KEEP
+      else
+        super.getDropRule(stack, slot, entity)
 
 extension (x: Iterable[Boolean])
   def any: Boolean = x.exists(identity)
@@ -977,6 +988,21 @@ def iotaInt(iota: Iota, under: Int, er: => Nothing): Int =
 trait MutableFunction[T, R] extends (T => R):
   def update(key: T, value: R): Unit
 
+extension (img: CastingImage)
+  def apply(stack: Seq[Iota] = img.getStack.toSeq,
+            parenCount: Int = img.getParenCount,
+            parenthesized: Seq[ParenthesizedIota] = img.getParenthesized.toSeq,
+            escapeNext: Boolean = img.getEscapeNext,
+            opsConsumed: Long = img.getOpsConsumed,
+            userData: NbtCompound = img.getUserData) =
+    CastingImage(stack = stack,
+                 parenCount = parenCount,
+                 parenthesized = parenthesized,
+                 escapeNext = escapeNext,
+                 opsConsumed = opsConsumed,
+                 userData = userData,
+                 null : DefaultConstructorMarker)
+
 def init(): Unit =
   given_Logger.info:
     val possible = Seq(
@@ -1205,6 +1231,59 @@ def init(): Unit =
         FoxEntity.Type.fromBiome(p.getWorld.getBiome(p.getBlockPos))
   Patterns.register("unfox", se"wqwqwqwaeeaw"):
     fox { case Some(_) => None }
+  // /data get entity @s cardinal_components."trinkets:trinkets".chest.hexic_mediaweave.Items[0].tag.lock
+  Patterns.register("collar", sw"aqeqqqwqqqqqaqwqa"):
+    Patterns.mkAction: (img, cont) =>
+      // (→) patterns do not need to modify the image
+      summon[CastingEnvironment] match
+        case env: PlayerBasedCastEnv =>
+          val consume = OperatorSideEffect.ConsumeMedia(15000)
+          if isDev then println(s"starting with ${env.getCaster.equippedMediaweave}")
+          (
+            img, cont,
+            HexEvalSounds.SPELL,
+            for
+              (_, stack) <- env.getCaster.equippedMediaweave
+              if isDev && { println(s"ok ${stack} how ya ${stack.getNbt} okie ${Option(stack.getNbt).forall(_.get("lock") == null)}"); true }
+              if Option(stack.getNbt).forall(_.get("lock") == null)
+              e <- Seq(
+                consume,
+                OperatorSideEffect.AttemptSpell(
+                  new RenderedSpell:
+                    override def cast(env: CastingEnvironment): Unit =
+                      stack.getOrCreateNbt().put("lock", NbtCompound())
+                    override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+                  , true, true
+                )
+              )
+            yield e
+          )
+        case _ => throw MishapBadCaster()
+  Patterns.register("decollar", ne"wwqaqqqqqwqqqew"):
+    Patterns.mkAction: (img, cont) =>
+      // (→) patterns do not need to modify the image
+      summon[CastingEnvironment] match
+        case env: PlayerBasedCastEnv =>
+          val consume = OperatorSideEffect.ConsumeMedia(15000)
+          (
+            img, cont,
+            HexEvalSounds.SPELL,
+            for
+              (_, stack) <- env.getCaster.equippedMediaweave
+              if Option(stack.getNbt).exists(_.get("lock") != null)
+              e <- Seq(
+                consume,
+                OperatorSideEffect.AttemptSpell(
+                  new RenderedSpell:
+                    override def cast(env: CastingEnvironment): Unit =
+                      Option(stack.getNbt).foreach(_.remove("lock"))
+                    override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
+                  , true, true
+                )
+              )
+            yield e
+          )
+        case _ => throw MishapBadCaster()
   hexXplat.getArithmeticRegistry("null_abs") = arith("null_abs", Arithmetic.ABS -> ((_: NullIota) => DoubleIota(0)))
   val planeCaches = ju.WeakHashMap[MinecraftServer, mutable.Map[UUID, RuntimeWorldHandle]]()
   def planeCache(using server: MinecraftServer): mutable.Map[UUID, RuntimeWorldHandle] = planeCaches.computeIfAbsent(server, _ => mutable.Map())
@@ -1783,6 +1862,13 @@ def init(): Unit =
               val x = pos.getComponentAlongAxis(axis)
               if x < 0 || x >= 11 then boundary.break(false)
             true
+  ItemTooltipCallback.EVENT.register: (stack, ctx, lines) =>
+    stack.getItem match
+      case _: Mediaweave if Option(stack.getNbt).exists(_.get("lock") != null) =>
+        lines.append(Text.literal("Tied").styled(_.withColor(0x782fe0)))
+        lines.append(Text.literal("Cannot be unequipped and won't be dropped on death.").styled(_.withColor(0x4b1d8c)))
+        lines.append(Text.literal("Use ").append(Text.empty().append(InlinePatternData(sw"aqeqqqwqqqqqaqwqa").asText(withExtra=false)).styled(_.withColor(0x782fe0))).append(" to untie.").styled(_.withColor(0x4b1d8c)))
+      case _ =>
   // dump patterns
   val out = Files.newOutputStream(Path.of("patterns.csv"))
   try

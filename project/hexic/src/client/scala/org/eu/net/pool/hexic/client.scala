@@ -295,6 +295,8 @@ def datagen(gen: FabricDataGenerator): Unit =
         for action -> name <- Vector(
           "attachworld" -> "Bind Demiplane",
           "blind" -> "Hidden Sun's Nadir",
+          "collar" -> "Tie Mediaweave",
+          "decollar" -> "Untie Mediaweave",
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",
           "dye_offhand" -> "Apply Pigment",
