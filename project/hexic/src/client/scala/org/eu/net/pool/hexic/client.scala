@@ -1,12 +1,16 @@
 package org.eu.net.pool
 package hexic
 
+import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.item.PigmentItem
 import at.petrak.hexcasting.api.mod.HexTags
 import at.petrak.hexcasting.api.pigment.FrozenPigment
+import at.petrak.hexcasting.interop.inline.InlinePatternData
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonArray, JsonObject}
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
+import com.samsthenerd.inline.api.client.InlineClientAPI
+import com.samsthenerd.inline.api.matching.{InlineMatch, InlineMatcher, MatcherInfo, RegexMatcher}
 import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
 import kotlin.jvm.JvmField
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
@@ -105,6 +109,21 @@ def init(): Unit =
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
       json.ItemModelGenerator.LAYERS.add(k)
+  InlineClientAPI.INSTANCE.addMatcher:
+    RegexMatcher.Simple(regex = "([ns]?[ew])\"([qweasd]*)\"",
+                        id = "scala_pattern",
+                        matcher =
+                          m => InlineMatch.DataMatch(InlinePatternData(HexPattern.fromAnglesUnchecked(
+                            m.group(2),
+                            m.group(1) match
+                              case "ne" => HexDir.NORTH_EAST
+                              case "e" => HexDir.EAST
+                              case "se" => HexDir.SOUTH_EAST
+                              case "sw" => HexDir.SOUTH_WEST
+                              case "w" => HexDir.WEST
+                              case "nw" => HexDir.NORTH_WEST
+                          ))),
+                        info = MatcherInfo.fromId("scala_pattern"))
   phlib.Events.registryLookup.register:
     val preferredColor = DyeColor.values()(client.getSession.getUuidOrNull.getLeastSignificantBits.abs.%(16).toInt)
     val preferredStringworm = stringworms(Stringworm.flavors(client.getSession.getUuidOrNull.getLeastSignificantBits.abs.%(48).*(7).%(4).toInt))
