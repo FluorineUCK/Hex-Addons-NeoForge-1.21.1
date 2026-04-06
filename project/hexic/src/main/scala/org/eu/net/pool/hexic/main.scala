@@ -1693,14 +1693,14 @@ def init(): Unit =
         case Seq() => throw MishapNotEnoughArgs(2, 0)
         case Seq(_) => throw MishapNotEnoughArgs(2, 1)
         case saved:+(target: ListIota):+(filter: ListIota) =>
-          if filter.isEmpty then (img.withStack(_ :+ ListIota(target.getList.filter(_.isTruthy).toSeq)), cont, HexEvalSounds.THOTH, Seq()) // short-circuit on empty filter
+          if filter.isEmpty then (img.withStack(_.dropRight(2) :+ ListIota(target.getList.filter(_.isTruthy).toSeq)), cont, HexEvalSounds.THOTH, Seq()) // short-circuit on empty filter
           else target.getList.toSeq match
             case first +: rest =>
               // set up filter, ideally FilterFrame would do this
-              (img.withStack(_ :+ first), cont.pushFrame(FilterFrame(saved, filter.getList.toSeq, first, Seq(), rest)).pushFrame(FrameEvaluate(filter.getList, true)), HexEvalSounds.THOTH, Seq())
+              (img.withStack(_.dropRight(2) :+ first), cont.pushFrame(FilterFrame(saved, filter.getList.toSeq, first, Seq(), rest)).pushFrame(FrameEvaluate(filter.getList, true)), HexEvalSounds.THOTH, Seq())
             case _ =>
               // we can't start a filter with no iota, but it'd always be empty anyway
-              (img.withStack(_ :+ ListIota(Seq())), cont, HexEvalSounds.THOTH, Seq())
+              (img.withStack(_.dropRight(2) :+ ListIota(Seq())), cont, HexEvalSounds.THOTH, Seq())
         case saved:+(_: ListIota):+filter => throw MishapInvalidIota.ofType(filter, 1, "list")
         case saved:+target:+_ => throw MishapInvalidIota.ofType(target, 1, "list")
   Patterns.register("extract", nw"dewaqawed"):
