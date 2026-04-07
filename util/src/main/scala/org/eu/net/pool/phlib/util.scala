@@ -96,7 +96,6 @@ def arithImpl(using q: Quotes)(name: Expr[String], args: Expr[Seq[(HexPattern, A
                   override def operate(env: CastingEnvironment, img: CastingImage, cont: SpellContinuation): OperationResult =
                     val stack = img.getStack.asScala.toSeq
                     val args = stack.takeRight(${Expr(a.size)})
-                    // I'm fairly certain the remainder of this method is considered a war crime
                     ${
                       Block(a.zipWithIndex.map { p =>
                         val (v@ValDef(n, ty, _), i) = p

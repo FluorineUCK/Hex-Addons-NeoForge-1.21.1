@@ -3,7 +3,7 @@ package org.eu.net.pool
 package hexic
 
 import at.petrak.hexcasting.api.addldata.ADMediaHolder
-import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
+import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, OperatorUtils, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler, SpellAction}
@@ -55,7 +55,7 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.base.SnapshotParticipant
 import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, TransactionContext}
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.Bootstrap
-import net.minecraft.block.{AbstractBlock, Block, BlockRenderType, BlockState, BlockWithEntity, ShapeContext}
+import net.minecraft.block.{AbstractBlock, Block, BlockRenderType, BlockState, BlockWithEntity, DispenserBlock, ShapeContext}
 import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType, UuidArgumentType}
 import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.entity.player.PlayerEntity
@@ -72,7 +72,7 @@ import net.minecraft.server.network.{ServerPlayNetworkHandler, ServerPlayerEntit
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
-import net.minecraft.util.math.{BlockPos, ChunkPos, Direction, Vec3d}
+import net.minecraft.util.math.{BlockPointer, BlockPos, ChunkPos, Direction, Vec3d}
 import net.minecraft.util.{ActionResult, Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
 import net.minecraft.world.biome.Biome
 import net.minecraft.world.{BlockView, TeleportTarget, World}
@@ -89,13 +89,13 @@ import java.io.{File, FileNotFoundException, FileOutputStream, IOException, Inpu
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.{Constructor, Field, Member, Method}
 import java.nio.ByteBuffer
-import java.nio.file.{Files, Path, Paths, StandardOpenOption}
+import java.nio.file.{FileSystemException, Files, Path, Paths, StandardOpenOption}
 import java.util.{Optional, UUID}
 import java.{lang, util}
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{elidable, experimental, showAsInfix, tailrec, targetName, unused}
 import scala.ref.WeakReference
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, NotGiven, Random, Success, Try, TupledFunction, Using, boundary}
 import scala.collection.mutable
 import scala.compiletime.summonFrom
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
@@ -103,7 +103,6 @@ import scala.jdk.CollectionConverters.*
 import scala.language.experimental.{macros, saferExceptions}
 import scala.language.{dynamics, existentials, implicitConversions, postfixOps, reflectiveCalls}
 import scala.reflect.{ClassTag, classTag}
-import scala.util.{NotGiven, Random, TupledFunction, boundary}
 import at.petrak.hexcasting.api.casting.mishaps.Mishap.Context
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.PlayChannelHandler
 import net.fabricmc.fabric.api.networking.v1.{FabricPacket, PacketByteBufs, PacketSender, PacketType, ServerPlayNetworking}
@@ -138,14 +137,12 @@ import java.io.OutputStreamWriter
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup
-import net.minecraft.block.AbstractBlock
 import net.minecraft.entity.passive.FoxEntity
 import net.minecraft.stat.Stats
 import org.eu.net.pool.hexic.mixin.{ItemStackAccess, LivingEntityAccess}
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
-import at.petrak.hexcasting.common.casting.actions.spells.OpBreakBlock
-import at.petrak.hexcasting.common.casting.actions.spells.OpErase
+import at.petrak.hexcasting.common.casting.actions.spells.{OpBreakBlock, OpErase, OpPotionEffect}
 import at.petrak.hexcasting.api.casting.mishaps.MishapBadEntity
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.decoration.ItemFrameEntity
@@ -171,9 +168,11 @@ import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 
 import scala.util.matching.Regex
 import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
+import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
 import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
+import net.minecraft.block.dispenser.ItemDispenserBehavior
 import net.minecraft.world.gen.chunk.{ChunkGenerator, ChunkGenerators}
 import xyz.nucleoid.fantasy.util.VoidChunkGenerator
 import xyz.nucleoid.fantasy.{Fantasy, RuntimeWorldConfig, RuntimeWorldHandle}
@@ -182,14 +181,17 @@ import java.nio.charset.StandardCharsets
 import java.math.BigInteger
 import net.minecraft.entity.ItemEntity
 import net.minecraft.entity.ExperienceOrbEntity
+import net.minecraft.entity.damage.DamageSources
+import net.minecraft.entity.effect.{StatusEffectInstance, StatusEffects}
 import net.minecraft.network.packet.s2c.play.PositionFlag
+import net.minecraft.predicate.entity.EntityPredicates
 import net.minecraft.world.chunk.{ChunkStatus, WorldChunk}
 
 import scala.concurrent.duration.Duration
 import phlib.{Events as PhEvents, *, given}
 
-given Logger = LoggerFactory.getLogger("hexic")
-given Conversion[String, Identifier] = Identifier.of("hexic", _)
+private[hexic] given Logger = LoggerFactory.getLogger("hexic")
+private[hexic] given Conversion[String, Identifier] = Identifier.of("hexic", _)
 
 extension (i: Iota)
   def asIotaType[T <: Iota: ClassTag](idx: Int, expected: => Text): T = i match
@@ -366,10 +368,8 @@ private[hexic] object PatternRemapper:
 
 class PlayerInfoComponent(
   val player: PlayerEntity,
-  var murmur: Option[String] = None,
   var leftWeave: ItemStack = ItemStack.EMPTY,
   var rightWeave: ItemStack = ItemStack.EMPTY,
-  var chatLines: Seq[Text] = Seq(),
   var foxType: Option[FoxEntity.Type] = None,
 ) extends Component, AutoSyncedComponent:
   override def readFromNbt(c: NbtCompound): Unit =
@@ -381,7 +381,6 @@ class PlayerInfoComponent(
       rightWeave = ItemStack.fromNbt(c.getCompound("shr"))
     else
       rightWeave = ItemStack.EMPTY
-    chatLines = c.getList("chat", NbtElement.COMPOUND_TYPE).map(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, _)).map(Text.Serializer.fromJson).toSeq
     if c.contains("fox", NbtElement.STRING_TYPE) then
       foxType = Some(FoxEntity.Type.valueOf(c.getString("fox")))
     else
@@ -389,7 +388,6 @@ class PlayerInfoComponent(
   override def writeToNbt(c: NbtCompound): Unit =
     if !leftWeave.isEmpty then c.put("shl", NbtCompound().tap(leftWeave.writeNbt))
     if !rightWeave.isEmpty then c.put("shr", NbtCompound().tap(rightWeave.writeNbt))
-    c.put("chat", NbtList().tap(_.addAll(chatLines.map(Text.Serializer.toJsonTree).map(JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, _)))))
     foxType.fold(c.remove("fox"))(f => c.putString("fox", f.name))
 object PlayerInfoComponent:
   given key: ComponentKey[PlayerInfoComponent] = ComponentRegistry.getOrCreate("player_wisp", classOf[PlayerInfoComponent])
@@ -397,19 +395,32 @@ object PlayerInfoComponent:
   private[hexic] def register(using fac: EntityComponentFactoryRegistry) =
     fac.registerForPlayers(key, PlayerInfoComponent(_), RespawnCopyStrategy.LOSSLESS_ONLY)
 
-class ServerInfoComponent(
-  var endSnowTick: Long = 0
-) extends Component, AutoSyncedComponent:
-  override def readFromNbt(tag: NbtCompound): Unit =
-    endSnowTick = tag.getLong("snow")
-  override def writeToNbt(tag: NbtCompound): Unit =
-    tag.putLong("snow", endSnowTick)
+class ServerInfoComponent() extends Component, AutoSyncedComponent:
+  override def readFromNbt(tag: NbtCompound): Unit = ()
+  override def writeToNbt(tag: NbtCompound): Unit = ()
 object ServerInfoComponent:
   given key: ComponentKey[ServerInfoComponent] = ComponentRegistry.getOrCreate("server_info", classOf[ServerInfoComponent])
   given get: (server: MinecraftServer) => ServerInfoComponent = server.getOverworld.getLevelProperties.getComponent(key)
   def sync()(using server: MinecraftServer): Unit = server.getOverworld.getLevelProperties.syncComponent(key)
   private[hexic] def register(using fac: LevelComponentFactoryRegistry) =
     fac.register(key, _ => ServerInfoComponent())
+
+class ExcursionComponent(var enteredDemiplaneTick: Long = 0, var excursion: Option[(RegistryKey[World], Vec3d)] = None) extends Component:
+  override def readFromNbt(tag: NbtCompound): Unit =
+    enteredDemiplaneTick = tag.getLong("grace")
+    excursion = for
+      case c: NbtString <- Option(tag.get("dim"))
+      id <- Option(Identifier.tryParse(c.asString))
+    yield (RegistryKey.of(RegistryKeys.WORLD, id), Vec3d(tag.getDouble("x"), tag.getDouble("y"), tag.getDouble("z")))
+  override def writeToNbt(tag: NbtCompound): Unit =
+    tag.putLong("grace", enteredDemiplaneTick)
+    for world -> pos <- excursion do
+      tag.putString("dim", world.getValue.toString)
+      tag.putDouble("x", pos.getX)
+      tag.putDouble("y", pos.getY)
+      tag.putDouble("z", pos.getZ)
+object ExcursionComponent:
+  given key: ComponentKey[ExcursionComponent] = ComponentRegistry.getOrCreate("excursion", classOf[ExcursionComponent])
 
 extension [S, T <: ArgumentBuilder[S, T]] (builder: T)
   def literal(name: String)(body: LiteralArgumentBuilder[S] => Unit): T = builder.`then`(LiteralArgumentBuilder.literal[S](name).tap(body))
@@ -476,7 +487,8 @@ trait ServerAware[T <: IotaType[?]]:
 given [T <: java.lang.Enum[T]: ClassTag as ct] => FromString[T]:
   override def fromString(s: String): T = Enum.valueOf[T](ct.runtimeClass.asInstanceOf[Class[T]], s)
 
-case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)):
+case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)) with Registered(Registries.ITEM, s"pen/$color"):
+  override def toString = s"$getClass(color=$color)${super[Item].toString}"
   override def use(world: World, player: PlayerEntity, hand: Hand): TypedActionResult[ItemStack] =
     // if player.getAttributeValue(HexAttributes.FEEBLE_MIND) > 0.0 then
     //   TypedActionResult.fail(player.getStackInHand(hand))
@@ -502,17 +514,33 @@ case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHo
       case c => c.get("Hex") match
         case c: NbtCompound => c
         case _ => null
-  override def writeable(stack: ItemStack): Boolean = readIotaTag(stack) == null
-  override def canWrite(stack: ItemStack, iota: Iota): Boolean = writeable(stack) && (iota match
-    case l: ListIota =>
-      val i = l.getList.asScala
-      i.isEmpty || i.head.executable && i.last.executable
-    case _ => false)
+  override def writeable(stack: ItemStack): Boolean = true
+  override def canWrite(stack: ItemStack, iota: Iota): Boolean = iota match
+    case l: ListIota => true
+    case _ => iota.executable
   override def writeDatum(stack: ItemStack, iota: Iota): Unit =
-    assume(canWrite(stack, iota))
     stack.getOrCreateNbt.put("Hex", IotaType.serialize(iota))
   override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
     IotaHolderItem.appendHoverText(this, stack, tooltip, context)
+  DispenserBlock.registerBehavior(this, new ItemDispenserBehavior:
+    override def dispenseSilently(pointer: BlockPointer, stack: ItemStack): ItemStack =
+      val pos = pointer.getPos.offset(pointer.getBlockState.get(DispenserBlock.FACING))
+      val candidates = pointer.getWorld.getEntitiesByClass(classOf[LivingEntity], net.minecraft.util.math.Box(pos), EntityPredicates.EXCEPT_SPECTATOR)
+      for
+        candidate <- candidates
+        component_? = TrinketsApi.getTrinketComponent(candidate)
+        if component_?.isPresent
+        component = component_?.get()
+        trinkets = component.getInventory
+        group <- Option(trinkets.get("chest"))
+        inventory <- Option(group.get("hexic_mediaweave"))
+        i <- 0 until inventory.size
+        if inventory.getStack(i).isEmpty
+      do
+        inventory.setStack(i, stack.split(1))
+        return stack
+      super.dispenseSilently(pointer, stack)
+    )
 object Mediaweave:
   val colors: DyeColor :> Mediaweave = DyeColor.values().map(c => c -> Mediaweave(c)).toMap
   val tag: TagKey[Item] = TagKey.of(Registries.ITEM, "mediaweaves")
@@ -536,17 +564,26 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
         .toSeq
     private def heldItems_=(x: Seq[ItemStack]): Unit =
       stack.getOrCreateNbt.put("Contents", NbtList().tap: l =>
-        for item <- x do
+        for item <- x if !item.isEmpty do
           val c = NbtCompound()
           item.writeNbt(c)
           l.add(c)
       )
+    private def isWaxed = Option(stack.getNbt).exists(_.contains("ro"))
+    private def isWaxed_=(value: Boolean) =
+      if value then
+        stack.getOrCreateNbt.put("ro", NbtCompound())
+      else
+        stack.getOrCreateNbt.remove("ro")
     private def withMediaHolders[T](f: Seq[CCMediaHolder] => T): T =
-      val heldItems = stack.heldItems
-      try
-        f(heldItems.flatMap(p => Option(HexCardinalComponents.MEDIA_HOLDER.getNullable(p))))
-      finally
-        stack.heldItems = heldItems
+      if stack.isWaxed then
+        f(Seq())
+      else
+        val heldItems = stack.heldItems
+        try
+          f(heldItems.flatMap(p => Option(HexCardinalComponents.MEDIA_HOLDER.getNullable(p))))
+        finally
+          stack.heldItems = heldItems
     private def mediaHolders = stack.heldItems.flatMap(p => Option(HexCardinalComponents.MEDIA_HOLDER.getNullable(p)))
   override def getMedia(stack: ItemStack): Long = stack.mediaHolders.map(_.getMedia).sum
   override def getMaxMedia(stack: ItemStack): Long = stack.mediaHolders.map(_.getMaxMedia).sum
@@ -587,6 +624,13 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
           cursorStackReference.set(p)
           stack.heldItems = held.tail
           player.playSound(SoundEvents.ITEM_BUNDLE_REMOVE_ONE, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
+      else if otherStack.isOf(Items.HONEYCOMB) && !stack.isWaxed then
+        stack.isWaxed = true
+        otherStack.decrement(1)
+        player.playSound(SoundEvents.ITEM_HONEYCOMB_WAX_ON, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
+      else if otherStack.isOf(Items.WET_SPONGE) && stack.isWaxed then
+        stack.isWaxed = false
+        player.playSound(SoundEvents.BLOCK_SLIME_BLOCK_PLACE, 0.8F, 0.8F + player.getWorld.getRandom.nextFloat * 0.4F)
       else if HexCardinalComponents.MEDIA_HOLDER.getNullable(otherStack) != null then
         val held = stack.heldItems
         if fits(held, otherStack.getItem) then
@@ -645,23 +689,36 @@ case class MediaBundle(color: DyeColor, size: Int) extends Item(Item.Settings().
   override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
     tooltip.add(Text.translatable("hexic.media_bundle.items", stack.heldItems.size, size).styled(_.withColor(Formatting.GRAY)))
     val (consumables, batteries, trinkets) = getMediaInfo(stack)
+    val isWaxed = stack.isWaxed
+    var mentionedSealing = false
+    def convertForWaxing(text: MutableText) =
+      if isWaxed then
+        mentionedSealing = true
+        Text.empty().append(text.styled(_.withStrikethrough(true))).append(" ").append(Text.translatable("hexcasting.tooltip.spellbook.sealed").formatted(Formatting.GOLD))
+      else
+        text
     batteries match
       case Some((total, max)) => tooltip.add(showMedia("external", total + consumables.getOrElse(0L), max))
       case None => for value <- consumables do
-        tooltip.add(showMedia("external", value))
+        tooltip.add(convertForWaxing(showMedia("external", value)))
     for (total, max) <- trinkets do
-      tooltip.add(showMedia("internal", total, max))
+      tooltip.add(convertForWaxing(showMedia("internal", total, max)))
+    if !mentionedSealing then
+      tooltip.add(Text.translatable("hexcasting.tooltip.spellbook.sealed").formatted(Formatting.GOLD))
   private def showMedia(tag: String, media: Long) = Text.translatable("hexic.media.infinite", Text.translatable(s"hexic.media.$tag"), Text.translatable("hexcasting.tooltip.media", dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR))))
   private def showMedia(tag: String, media: Long, maxMedia: Long) = Text.translatable("hexic.media.finite", Text.translatable(s"hexic.media.$tag"), dustAmount(media).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.translatable("hexcasting.tooltip.media", dustAmount(maxMedia)).styled(_.withColor(ItemMediaHolder.HEX_COLOR)), Text.literal(PERCENTAGE.format(100.0 * media / maxMedia)+"%").styled(_.withColor(MediaHelper.mediaBarColor(media, maxMedia))))
   private def dustAmount(media: Long) = Text.literal(DUST_AMOUNT.format(media / MediaConstants.DUST_UNIT.toDouble))
 
+extension [T] (s: => Seq[T]) def *^(n: Int) = Seq.fill(n)(()).flatMap((_) => s)
 class Stringworm extends Item(Stringworm.settings)
 object Stringworm:
   val settings = Item.Settings().maxCount(16)
   val flavors = Seq("pure", "action", "hex", "media", "thing")
-
-val stringworms =
-  Stringworm.flavors.map(_ -> new Stringworm).toMap
+  val biasedFlavors = "pure" +: Seq("action", "hex", "media", "thing") *^ 3
+  def randomFlavor(using rng: net.minecraft.util.math.random.Random) = items(biasedFlavors(rng.nextInt(biasedFlavors.size)))
+  val items =
+    Stringworm.flavors.map(_ -> new Stringworm).toMap
+export Stringworm.items as stringworms
 
 object dyedStringworm extends Stringworm:
   override def getName(stack: ItemStack): Text =
@@ -706,41 +763,44 @@ private [hexic] object Extern:
     val p = iota match
       case p: PatternIota => p.getPattern
       case _ => boundary.break(None)
-    val measure = p.anglesSignature match
-      case introPattern (measure) => measure
-      case _ => boundary.break(None)
-    val size = measure.length + 1
-    def mishap(m: Mishap) =
-      val safeVM = CastingVM(vm.getImage, vm.getEnv)
-      OperatorSideEffect.DoMishap(m, Mishap.Context(p, Text.translatable("hexcasting.action.hexic:parenthesize"))).performEffect(safeVM)
-      boundary.break(Some(safeVM.getImage, ResolvedPatternType.ERRORED))
-    val img = vm.getImage
-    val parens = img.getParenCount
-    if parens == size then
-      img.getStack.toSeq match
-        case Seq() => mishap(MishapNotEnoughArgs(1, 0))
-        case tail :+ head => Some((
-          CastingImage(
-            stack = tail,
-            parenCount = parens,
-            parenthesized = img.getParenthesized :+ ParenthesizedIota(head, false),
-            escapeNext = false, 
-            opsConsumed = img.getOpsConsumed,
-            userData = img.getUserData,
-            null
-          ),
-          ResolvedPatternType.EVALUATED
-        ))
-    else if parens > size then
-      None // leave unescaped, so a nested hex can introject
-    else
-      mishap(new Mishap:
-        override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.ORANGE)
-        override def errorMessage(env: CastingEnvironment, ctx: Context): Text = ???
-        override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
-          stack.add(PatternIota(p))
-      )
-  private [hexic] def getPocketName(pocket: String) = Text.of(pocketNames(getPocketID(Identifier.tryParse(pocket)).get))
+    p.anglesSignature match
+      case introPattern (measure) =>
+        val size = measure.length + 1
+        def mishap(m: Mishap) =
+          val safeVM = CastingVM(vm.getImage, vm.getEnv)
+          OperatorSideEffect.DoMishap(m, Mishap.Context(p, Text.translatable("hexcasting.action.hexic:parenthesize"))).performEffect(safeVM)
+          boundary.break(Some(safeVM.getImage, ResolvedPatternType.ERRORED))
+        val img = vm.getImage
+        val parens = img.getParenCount
+        if parens == size then
+          img.getStack.toSeq match
+            case Seq() => mishap(MishapNotEnoughArgs(1, 0))
+            case tail :+ head => Some((
+              CastingImage(
+                stack = tail,
+                parenCount = parens,
+                parenthesized = img.getParenthesized :+ ParenthesizedIota(head, false),
+                escapeNext = false,
+                opsConsumed = img.getOpsConsumed,
+                userData = img.getUserData,
+                null
+              ),
+              ResolvedPatternType.EVALUATED
+            ))
+        else if parens > size then
+          None // leave unescaped, so a nested hex can introject
+        else
+          mishap(new Mishap:
+            override def accentColor(env: CastingEnvironment, ctx: Context): FrozenPigment = dyeColor(DyeColor.ORANGE)
+            override def errorMessage(env: CastingEnvironment, ctx: Context): Text = ???
+            override def execute(env: CastingEnvironment, ctx: Context, stack: util.List[Iota]): Unit =
+              stack.add(PatternIota(p))
+          )
+      case "eadedae" =>
+        val img = vm.getImage
+        Some(CastingImage(img.getStack:+ListIota(img.getParenthesized.map(_.getIota)):+DoubleIota(img.getParenCount), 0, Seq(), false, img.getOpsConsumed, img.getUserData, null), ResolvedPatternType.EVALUATED)
+      case _ => None
+  private [hexic] def getPocketName(pocket: String) = Text.of("Demiplane " + pocketNames(getPocketID(Identifier.tryParse(pocket)).get))
 
 val _ =
   Interop.playerDeathHook = (p: PlayerEntity, out: util.List[ItemStack]) =>
@@ -751,6 +811,88 @@ val _ =
     if !c.leftWeave.isEmpty then
       out.add(c.leftWeave)
       c.leftWeave = ItemStack.EMPTY
+
+given demiplaneExtensions: AnyRef with
+  extension (w: ServerWorld)
+    def meta: String MutableFunction Option[String] =
+      val path = w.getServer.getSavePath(WorldSavePath.ROOT).resolve(s"dimensions/${w.getRegistryKey.getValue.getNamespace}/${w.getRegistryKey.getValue.getPath}")
+      new MutableFunction:
+        def apply(name: String) = try Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[Array[Byte]]].map(buf => String(buf, StandardCharsets.UTF_8)) catch case _: FileSystemException => None
+        def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.map(StandardCharsets.UTF_8.encode).orNull)
+    def parentInfo: Option[(RegistryKey[World], BlockPos)] = for
+      parentStr <- w.meta("parent")
+      parentId <- Option(Identifier.tryParse(parentStr))
+      parentKey = RegistryKey.of(RegistryKeys.WORLD, parentId)
+      if w.getServer.getWorld(parentKey) ne null
+      x <- w.meta("bound_x").flatMap(v => Try(Integer.parseInt(v)).toOption)
+      y <- w.meta("bound_y").flatMap(v => Try(Integer.parseInt(v)).toOption)
+      z <- w.meta("bound_z").flatMap(v => Try(Integer.parseInt(v)).toOption)
+    yield parentKey -> BlockPos(x, y, z)
+    def parentInfo_=(parent: Option[(RegistryKey[World], BlockPos)]) =
+      parent.fold {
+        w.meta("parent") = None
+        w.meta("bound_x") = None
+        w.meta("bound_y") = None
+        w.meta("bound_z") = None
+      } { (world, pos) =>
+        w.meta("parent") = Some(world.getValue.toString)
+        w.meta("bound_x") = Some(pos.getX.toString)
+        w.meta("bound_y") = Some(pos.getY.toString)
+        w.meta("bound_z") = Some(pos.getZ.toString)
+      }
+
+object JavaPlaneAccess:
+  def logExcursion(sp: ServerPlayerEntity) =
+    val c = sp.component[ExcursionComponent]
+    val curDim = sp.getWorld.getRegistryKey
+    c.excursion = Some(curDim, sp.getPos)
+    c.enteredDemiplaneTick = sp.getWorld.getTime
+    sp.syncComponent(ExcursionComponent.key)
+  def getDefaultExcursion(/** must be a demiplane */ world: ServerWorld): (ServerWorld, Vec3d) =
+    locally:
+      // if the plane is bound, where it's bound to is the default excursion
+      for
+        case (key, pos) <- world.parentInfo
+        boundWorld <- Option(world.getServer.getWorld(key))
+      yield
+        (boundWorld, Vec3d.ofBottomCenter(pos))
+    .getOrElse:
+      // idfk just go to spawn or something
+      // someone would never do something silly like setting the world spawn to y 10000 or something like that riiiight?
+      (world.getServer.getOverworld, Vec3d.ofBottomCenter(world.getServer.getOverworld.getSpawnPos))
+  def findExcursion(/* must be in a demiplane */ sp: ServerPlayerEntity): (ServerWorld, Vec3d) =
+    locally:
+      // the happy path, assuming we have a player involved
+      for
+        case (key, pos) <- sp.component[ExcursionComponent].excursion
+        world <- Option(sp.getServer.getWorld(key))
+      yield
+        (world, pos)
+    .getOrElse:
+      given_Logger.warn(s"$sp claims to have never entered a demiplane")
+      getDefaultExcursion(sp.getServerWorld)
+  def findExcursion(target: Entity)(using env: CastingEnvironment): (ServerWorld, Vec3d) =
+    env match
+      case p: PlayerBasedCastEnv =>
+        val (world, pos) = findExcursion(p.getCaster)
+        world -> pos.add(target.getPos).subtract(p.getCaster.getPos)
+      case _ => target match
+        case p: ServerPlayerEntity => findExcursion(p)
+        case _ => target.getWorld match
+          case sw: ServerWorld => getDefaultExcursion(sw)
+          case _ => throw new IllegalStateException("why are you casting Spatial Interchange client-sided")
+  def sendDirectlyToHell(sp: ServerPlayerEntity) =
+    val c = sp.component[ExcursionComponent]
+    if c.enteredDemiplaneTick + cfg[Int]("hexic.demiplaneGracePeriod").getOrElse(5) > sp.getWorld.getTime then
+      given_Logger.warn(s"$sp found outside kitchen")
+      sp.requestTeleport(5.5, 1.0, 5.5)
+    else
+      given_Logger.warn(s"$sp broke out of cell ${sp.getWorld.getRegistryKey}! mods, please check if the borders are broken")
+      val (world, pos) = findExcursion(sp)
+      val sp2 = FabricDimensions.teleport(sp, world, TeleportTarget(pos, Vec3d.ZERO, sp.getYaw, sp.getPitch))
+      sp2.addStatusEffect(StatusEffectInstance(StatusEffects.NAUSEA, 30*20))
+      sp2.addStatusEffect(StatusEffectInstance(StatusEffects.BLINDNESS, 30*20))
+      sp2.damage(sp2.getWorld.getDamageSources.outOfWorld, sp2.getMaxHealth / 2)
 
 given Codec[Int] = Codec.INT.xmap(p => p, p => p)
 
@@ -853,23 +995,15 @@ def init(): Unit =
     )
     possible(Random.nextInt(possible.size))
   Interop.thoughtWorld = RegistryKey.of(RegistryKeys.WORLD, "thought")
-  try System.getProperties.load(Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8))
-  catch
-    case _: FileNotFoundException =>
-    case i: IOException => summon[Logger].warn("Failed to read properties", i)
-  iotaTypeRegistry("location") = LocationIota
-  iotaTypeRegistry("nbt") = NbtIota
-  iotaTypeRegistry("tripwire") = TripwireIota.getType
   iotaTypeRegistry("access") = PropertyAccessIota.Type
-  hexXplat.getContinuationTypeRegistry("tripwire") = TripwireIota.Frame
-  for (color, item) <- Mediaweave.colors do
-    Registries.ITEM(s"${color.asString}_mediaweave") = item
+  for color -> item <- Mediaweave.colors do Registries.ITEM(s"${color.asString}_mediaweave") = item
   for item <- MediaBundle.items do
     Registries.ITEM(item.size match
       case 6 => s"small_${item.color.asString}_bundle"
       case 12 => s"large_${item.color.asString}_bundle") = item
   for (flavor, item) <- stringworms do
     Registries.ITEM(s"stringworm_$flavor") = item
+  Pen.instances
   Registries.ITEM("stringworm_pigmented") = dyedStringworm
   Registries.ITEM("wizard") = wizard
   val cutItem = new Item(Item.Settings().maxCount(16)) with MediaHolderItem:
@@ -968,9 +1102,10 @@ def init(): Unit =
           case _ => ActionResult.PASS
     Registries.BLOCK("chisel_table") = table
     Registries.ITEM("chisel_table") = BlockItem(table, Item.Settings())
-  for (color, item) <- Pen.instances do Registries.ITEM(s"pen/${color.asString}") = item
   Registries.ITEM_GROUP("group") = itemGroup
   //Registries.ITEM("echo") = EchoItem
+  initChat()
+  initViews()
   if fabric.isModLoaded("hexical") then
     for
       HopperEndpointRegistry <- classNamed("miyucomics.hexical.features.hopper.HopperEndpointRegistry")
@@ -997,37 +1132,6 @@ def init(): Unit =
                 , true, true
               ))
           case i => throw MishapInvalidIota.ofType(i, 0, "pigment")
-  def mkNbtLiftAction[T: FromIota](lift: T => NbtElement, expected: Identifier) =
-    Patterns.mkConstAction(1):
-      case Seq(iotaLike[T](x)) => Seq(NbtIota(lift(x)))
-      case Seq(x) => throw MishapInvalidIota.of(x, 0, expected.toString)
-  def mkNbtLiftArrayAction[T: FromIota](lift: T => NbtElement, liftArray: Array[T] => NbtElement, expected: Identifier)(using FromIota[Array[T]]) =
-    Patterns.mkConstAction(1):
-      case Seq(iotaLike[T](x)) => Seq(NbtIota(lift(x)))
-      case Seq(iotaLike[Array[T]](x)) => Seq(NbtIota(liftArray(x)))
-      case Seq(x) => throw MishapInvalidIota.of(x, 0, expected.toString)
-  Patterns.register("nbt/lift1", (HexDir.NORTH_WEST, "edwaqw")):
-    mkNbtLiftArrayAction[Byte](NbtByte.of, (b => NbtByteArray(b)): Array[Byte] => NbtElement, "byte")
-  Patterns.register("nbt/lift2", (HexDir.NORTH_WEST, "edwaqww")):
-    mkNbtLiftAction[Short](NbtShort.of, "short")
-  Patterns.register("nbt/lift4", (HexDir.NORTH_WEST, "edwaqwww")):
-    mkNbtLiftArrayAction[Int](NbtInt.of, (b: Array[Int]) => NbtIntArray(b), "int")
-  Patterns.register("nbt/lift8", (HexDir.NORTH_WEST, "edwaqwwww")):
-    mkNbtLiftArrayAction[Long](NbtLong.of, (b: Array[Long]) => NbtLongArray(b), "long")
-  Patterns.register("nbt/liftf", (HexDir.NORTH_WEST, "edwaqwaa")):
-    mkNbtLiftAction[Float](NbtFloat.of, "float")
-  Patterns.register("nbt/liftd", (HexDir.NORTH_WEST, "edwaqwaawaa")):
-    mkNbtLiftAction[Double](NbtDouble.of, "double")
-  Patterns.register("nbt/literal/collection", (HexDir.EAST, "qqddqdewqaeaaee")):
-    Patterns.mkLiteral(NbtIota(NbtCompound()))
-  Patterns.register("nbt/literal/list", (HexDir.EAST, "eedwaqq")):
-    Patterns.mkLiteral(NbtIota(NbtList()))
-  Patterns.register("nbt/literal/array1", (HexDir.EAST, "eedwaqqe")):
-    Patterns.mkLiteral(NbtIota(NbtByteArray(Array[Byte]())))
-  Patterns.register("nbt/literal/array2", (HexDir.EAST, "eedwaqqew")):
-    Patterns.mkLiteral(NbtIota(NbtIntArray(Array[Int]())))
-  Patterns.register("nbt/literal/array4", (HexDir.EAST, "eedwaqqewww")):
-    Patterns.mkLiteral(NbtIota(NbtLongArray(Array[Long]())))
   Patterns.register("prop_fi", sw"aawqe"):
     Patterns.mkConstAction(1):
       case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Writer(x.getName, "head"))
@@ -1044,9 +1148,6 @@ def init(): Unit =
     Patterns.mkConstAction(1):
       case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Stream(x.getName, "tail"))
       case Seq(x) => throw MishapInvalidIota(x, 0, "property")
-  Patterns.register("nbt/serialize", nw"edwaq"):
-    Patterns.mkConstAction(1):
-      case Seq(x: Iota) => Seq(IotaType.serialize(x))
   Patterns.register("where", nw"qaeaqwdd"):
     Patterns.mkConstAction(1): i =>
       val Seq(x) = i
@@ -1065,8 +1166,6 @@ def init(): Unit =
               case _ => mishap
           ))
         case _ => mishap
-  Patterns.register("tripwire", w"edewqwaqede"):
-    Patterns.mkLiteral(TripwireIota)
   Patterns.arithmetic("modulo", goodModulo)
   Registry.register(hexXplat.getArithmeticRegistry, "goodModulo": Identifier, arith("goodModulo",
     goodModulo -> ((x: DoubleIota, y: DoubleIota) => Seq(DoubleIota((x.getDouble % y.getDouble + y.getDouble) % y.getDouble))),
@@ -1078,176 +1177,6 @@ def init(): Unit =
   Patterns.register("spellmind/restore", e"deeeeeqdwewewewewewqdwwewwewwewwewwewwqdwwwewwwewwwewwwewwwewww"):
     Patterns.mkAction: (img, cont) =>
       ???
-  Patterns.register("whatthefuck", ne"daadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaadaadaddaddaadaddaadaadaddaddaadaddaddaadaddaadaadadda"):
-    Patterns.mkLiteral(PatternIota(e"wedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqeedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqeedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqqedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqqedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqeedqawqeewdeaqeewdeaqqedqawqqedqawqeedqawqqewdeaqqedqawqeewdeaqqewdeaqeewdeaqeedqawqqedqawqqewdeaqe"))
-  Patterns.register("nbt/deserialize", (HexDir.NORTH_WEST, "edwaqa")):
-    Patterns.mkConstAction(1):
-      case Seq(data: NbtIota) =>
-        val env = summon[CastingEnvironment]
-        given ServerWorld = env.getWorld
-        val iota = data.data.asInstanceOf[NbtCompound].iota
-        iota match
-          case p: EntityIota => p.getEntity match
-            case t: PlayerEntity if t != env.getCastingEntity =>
-              throw MishapOthersName(t)
-            case _ =>
-          case _ =>
-        Seq(iota)
-      case Seq(x) =>
-        throw MishapInvalidIota(x, 0, Text.literal("an ").append(Text.literal("NBT compound").styled(_.withColor(NbtIota.color))))
-  Registry.register(hexXplat.getArithmeticRegistry, "nbt": Identifier, {
-    import Arithmetic.*
-    given Conversion[NbtIota, NbtElement] = _.data
-    given Conversion[NbtElement, NbtIota] = NbtIota(_)
-    arith("nbt",
-      ADD -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: NbtDouble, iotaLike[Double](b)) => NbtDouble.of(a.doubleValue + b)
-            case (a: NbtFloat, iotaLike[Float](b)) => NbtFloat.of(a.floatValue + b)
-            case (a: NbtLong, iotaLike[Long](b)) => NbtLong.of(a.longValue + b)
-            case (a: NbtInt, iotaLike[Int](b)) => NbtInt.of(a.intValue + b)
-            case (a: NbtShort, iotaLike[Short](b)) => NbtShort.of((a.shortValue + b).toShort)
-            case (a: NbtByte, iotaLike[Byte](b)) => NbtByte.of((a.byteValue + b).toByte)
-            case (a: NbtByteArray, iotaLike[Seq[Byte]](b)) => NbtByteArray(a.getByteArray ++ b)
-            case (a: NbtIntArray, iotaLike[Seq[Int]](b)) => NbtIntArray(a.getIntArray ++ b)
-            case (a: NbtLongArray, iotaLike[Seq[Long]](b)) => NbtLongArray(a.getLongArray ++ b)
-            case (a: NbtList, iotaLike[Seq[NbtElement]](b)) => NbtList().tap: l =>
-              l.addAll(a)
-              l.addAll(b)
-            case (a: NbtCompound, iotaLike[NbtCompound](b)) => NbtCompound().tap: c =>
-              c.copyFrom(a)
-              c.copyFrom(b)
-      ),
-      SUB -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: NbtDouble, iotaLike[Double](b)) => NbtDouble.of(a.doubleValue - b)
-            case (a: NbtFloat, iotaLike[Float](b)) => NbtFloat.of(a.floatValue - b)
-            case (a: NbtLong, iotaLike[Long](b)) => NbtLong.of(a.longValue - b)
-            case (a: NbtInt, iotaLike[Int](b)) => NbtInt.of(a.intValue - b)
-            case (a: NbtShort, iotaLike[Short](b)) => NbtShort.of((a.shortValue - b).toShort)
-            case (a: NbtByte, iotaLike[Byte](b)) => NbtByte.of((a.byteValue - b).toByte)
-      ),
-      MUL -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: NbtDouble, iotaLike[Double](b)) => NbtDouble.of(a.doubleValue * b)
-            case (a: NbtFloat, iotaLike[Float](b)) => NbtFloat.of(a.floatValue * b)
-            case (a: NbtLong, iotaLike[Long](b)) => NbtLong.of(a.longValue * b)
-            case (a: NbtInt, iotaLike[Int](b)) => NbtInt.of(a.intValue * b)
-            case (a: NbtShort, iotaLike[Short](b)) => NbtShort.of((a.shortValue * b).toShort)
-            case (a: NbtByte, iotaLike[Byte](b)) => NbtByte.of((a.byteValue * b).toByte)
-      ),
-      DIV -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: NbtDouble, iotaLike[Double](b)) => NbtDouble.of(a.doubleValue / b)
-            case (a: NbtFloat, iotaLike[Float](b)) => NbtFloat.of(a.floatValue / b)
-            case (a: NbtLong, iotaLike[Long](b)) => NbtLong.of(a.longValue / b)
-            case (a: NbtInt, iotaLike[Int](b)) => NbtInt.of(a.intValue / b)
-            case (a: NbtShort, iotaLike[Short](b)) => NbtShort.of((a.shortValue / b).toShort)
-            case (a: NbtByte, iotaLike[Byte](b)) => NbtByte.of((a.byteValue / b).toByte)
-      ),
-      INDEX -> ((a: NbtIota, b: DoubleIota | StringIota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (a: AbstractNbtList[? <: NbtElement], b: DoubleIota) => a.get(b.asIntOrThrow(0))
-            case (a: NbtCompound, iotaLike[String](b)) => a.get(b)
-      ),
-      SLICE -> ((a: NbtIota, f: DoubleIota | StringIota, t: DoubleIota) =>
-        Seq[NbtIota]:
-          (a.data, f, t) match
-            case (a: NbtByteArray, b: DoubleIota, c: DoubleIota) => (a: Array[Byte]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtByteArray
-            case (a: NbtIntArray, b: DoubleIota, c: DoubleIota) => (a: Array[Int]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtIntArray
-            case (a: NbtLongArray, b: DoubleIota, c: DoubleIota) => (a: Array[Long]).slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2): NbtLongArray
-            case (a: NbtList, b: DoubleIota, c: DoubleIota) =>
-              val l = NbtList()
-              a.slice(b `asIntOrThrow` 1, c `asIntOrThrow` 2).foreach(l.add)
-              l
-            case (a: NbtCompound, b: StringIota, c: StringIota) =>
-              NbtCompound().tap: r =>
-                a.getKeys.collect:
-                  case k if k <= b.getString && k > c.getString => r(k) = a(k)
-        ),
-      INDEX_OF -> ((a: NbtIota, b: NbtIota) =>
-        Seq[NbtIota]:
-          (a.data, b.data) match
-            case (a: AbstractNbtList[? <: NbtElement], b: NbtElement) => NbtInt.of(a.indexOf(b))
-            case (a: NbtCompound, b: NbtElement) =>
-              val list = NbtList()
-              a.getKeys.foreach: k =>
-                if a.get(k) == b then
-                  list.add(NbtString.of(k))
-              NbtIota(list)
-      ),
-      APPEND -> ((a: NbtIota, b: NbtIota) =>
-        Seq[NbtIota]:
-          (a.data, b.data) match
-            case (a: AbstractNbtList[t], b) if b.isInstanceOf[t] =>
-              a.copy().tap:
-                case c: AbstractNbtList[t] =>
-                  c.add(b.asInstanceOf[t])
-      ),
-      UNAPPEND -> ((a: NbtIota) =>
-        a.data match
-          case a: AbstractNbtList[?] =>
-            val s = a.asScala
-            Seq[NbtIota](NbtList().tap(_.addAll(s.init)), s.last)
-          case c: NbtCompound =>
-            val k = c.getKeys.asScala.toBuffer
-            Seq[NbtIota](
-              NbtCompound().tap: d =>
-                k.init.foreach: k =>
-                  d(k) = c(k),
-              NbtString.of(k.last),
-              c(k.last),
-            )
-      ),
-      CONS -> ((a: NbtIota, b: Iota) =>
-        Seq[NbtIota]:
-          (a.data, b) match
-            case (nbtList(Tagged(a: AbstractNbtList[t], given _)), b) =>
-              b match
-                case iotaLike[t](b) => a.copy.asInstanceOf[AbstractNbtList[t]].tap(_.add(0, b))
-        ),
-      UNCONS -> ((a: NbtIota) =>
-        a.data match
-          case a: AbstractNbtList[?] =>
-            val s = a.asScala
-            Seq[NbtIota](NbtList().tap(_.addAll(s.tail)), s.head)
-          case c: NbtCompound =>
-            val k = c.getKeys.asScala.toBuffer
-            Seq[NbtIota](
-              NbtCompound().tap: d =>
-                k.tail.foreach: k =>
-                  d(k) = c(k),
-              NbtString.of(k.head),
-              c(k.head),
-            )
-        ),
-      REMOVE -> ((a: NbtIota, key: Iota) =>
-        a match
-          case nbtList(Tagged(l: AbstractNbtList[t], given _)) =>
-            key match
-              case iotaLike[Int](i) =>
-                val c: l.type = l.copy.asInstanceOf
-                c.remove(i)
-                Seq(NbtIota(c))
-              case _ => throw MishapInvalidIota.of(key, 0, "int")
-        ),
-      REPLACE -> ((t: NbtIota, k: Iota, v: NbtIota) =>
-        Seq:
-          NbtIota:
-            t.data.copy.tap:
-              case c: NbtCompound =>
-                c(k.asValue[String](1, StringIota.TYPE.typeName)) = v.data
-              case l: AbstractNbtList[t] =>
-                given ClassTag[t] = elementTag(l)
-                l(k.asValue[Int](1, Text.translatable("hexcasting.iota.int"))) = ???
-        ),
-    )
-  })
   def fox(tr: PlayerEntity ?=> PartialFunction[Option[FoxEntity.Type], Option[FoxEntity.Type]]): Action =
     Patterns.mkAction: (img, cont) =>
       img.getStack.lastOption match
@@ -1286,25 +1215,6 @@ def init(): Unit =
       server.submit((() => handle.asWorld.getChunkManager.setChunkForced(ChunkPos.ORIGIN, true)): Runnable)
       handle
     )
-  extension (w: ServerWorld)
-    def meta: String MutableFunction Option[String] =
-      val path = w.getServer.getSavePath(WorldSavePath.ROOT).resolve(s"dimensions/${w.getRegistryKey.getValue.getNamespace}/${w.getRegistryKey.getValue.getPath}")
-      new MutableFunction:
-        def apply(name: String) = Option(Files.getAttribute(path, "user:" + name)).asInstanceOf[Option[Array[Byte]]].map(buf => String(buf, StandardCharsets.UTF_8))
-        def update(name: String, value: Option[String]): Unit = Files.setAttribute(path, "user:" + name, value.map(StandardCharsets.UTF_8.encode).orNull)
-    def parentInfo: Option[(RegistryKey[World], BlockPos)] = w.meta("parent").flatMap(value => Option(Identifier.tryParse(value))).map(RegistryKey.of(RegistryKeys.WORLD, _)).filter(w.getServer.getWorld(_) ne null).map((_, BlockPos(Integer.parseInt(w.meta("bound_x").get), Integer.parseInt(w.meta("bound_y").get), Integer.parseInt(w.meta("bound_z").get))))
-    def parentInfo_=(parent: Option[(RegistryKey[World], BlockPos)]) =
-      parent.fold {
-        w.meta("parent") = None
-        w.meta("bound_x") = None
-        w.meta("bound_y") = None
-        w.meta("bound_z") = None
-      } { (world, pos) =>
-        w.meta("parent") = Some(world.getValue.toString)
-        w.meta("bound_x") = Some(pos.getX.toString)
-        w.meta("bound_y") = Some(pos.getY.toString)
-        w.meta("bound_z") = Some(pos.getZ.toString)
-      }
   extension (server: MinecraftServer)
     def savedPlanes =
       val file = server.getSavePath(WorldSavePath("fresh"))
@@ -1426,8 +1336,8 @@ def init(): Unit =
     for id <- server.savedPlanes do
       planes(id)
   Registries.BLOCK("border") = border
-  Patterns.register("makeworld", ne"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
-    Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.SHARD_UNIT * 3645): _ =>
+  Patterns.register("makeworld", e"qaaqqwaeddeawqqaaqqwwwaeddeewdqaaqdweeddeawwwqqaaqqwaeddeawqqaaqawwwwwwwawwwwwww"):
+    Patterns.mkConstAction(argc = 0, mediaCost = MediaConstants.QUENCHED_BLOCK_UNIT * 6): _ =>
       val uuid = UUID.randomUUID()
       val world = planes(uuid).asWorld
       // TODO: world config
@@ -1531,8 +1441,8 @@ def init(): Unit =
                               case p: PlayerEntity =>
                                 // thanks but please stop eating my ears
                                 if isDev then println(s"Teleporting player $p")
-                                FabricDimensions.teleport(p, outer, TeleportTarget(pos, Vec3d.ZERO, p.getYaw, p.getPitch))
-                                if !p.isCreative && !p.isSpectator then p.kill()
+                                val p2 = FabricDimensions.teleport(p, outer, TeleportTarget(pos, Vec3d.ZERO, p.getYaw, p.getPitch))
+                                if !p2.isCreative && !p2.isSpectator then p2.kill()
                               case e: LivingEntity =>
                                 e.kill()
                                 if isDev then println(s"Killing living entity $e")
@@ -1543,8 +1453,8 @@ def init(): Unit =
                                   (e: LivingEntityAccess).callUpdatePostDeath()
                               case e =>
                                 if isDev then println(s"Killing nonliving entity $e")
-                                FabricDimensions.teleport(e, outer, TeleportTarget(pos, Vec3d.ZERO, e.getYaw, e.getPitch))
-                                e.kill()
+                                val e2 = FabricDimensions.teleport(e, outer, TeleportTarget(pos, Vec3d.ZERO, e.getYaw, e.getPitch))
+                                e2.kill()
                           pass += 1
                           if isDev then println(s"Proceeding to pass ${pass}")
                           recurse
@@ -1560,7 +1470,7 @@ def init(): Unit =
                         if isDev then println(s"Spawning final XP orb, $xpToSpawn")
                         ExperienceOrbEntity.spawn(outer, pos, xpToSpawn.toInt)
                     catch case e: Throwable =>
-                      println(s"FAILED TO REMOVE DIMENSION!! $id. Not unloading.")
+                      println(s"\u0007FAILED TO REMOVE DIMENSION!! $id. Not unloading.")
                       e.printStackTrace()
                       boundary.break()
                       throw e
@@ -1568,7 +1478,7 @@ def init(): Unit =
                     server.savedPlanes -= id
                     planes(id).unload()
                 override def cast(env: CastingEnvironment, image: CastingImage): CastingImage = { cast(env); image },
-              MediaConstants.SHARD_UNIT * 750,
+              MediaConstants.SHARD_UNIT * 25,
               Seq(),
               1
             )
@@ -1577,21 +1487,15 @@ def init(): Unit =
       override def executeWithUserdata(list: util.List[? <: Iota], env: CastingEnvironment, data: NbtCompound): SpellAction.Result = SpellAction.DefaultImpls.executeWithUserdata(this, list, env, data)
       override def hasCastingSound(env: CastingEnvironment): Boolean = true
       override def operate(env: CastingEnvironment, castingImage: CastingImage, cont: SpellContinuation): OperationResult = SpellAction.DefaultImpls.operate(this, env, castingImage, cont)
-  Patterns.register("snow", nw"eewwweewdadadaddwwwaqwwq"):
+  Patterns.register("omni_open", w"qdaqadq"):
     Patterns.mkAction: (img, cont) =>
-      (img, cont, HexEvalSounds.SPELL, Seq(
-        OperatorSideEffect.ConsumeMedia(12 * MediaConstants.DUST_UNIT),
-        OperatorSideEffect.AttemptSpell(
-          new RenderedSpell:
-            override def cast(env: CastingEnvironment): Unit =
-              given MinecraftServer = env.getWorld.getServer
-              val duration = env.getWorld.random.nextBetween(15, 30) * 20 * 60
-              env.getWorld.setWeather(0, duration, true, false)
-              ServerInfoComponent.get.endSnowTick = env.getWorld.getTime + duration
-              ServerInfoComponent.sync()
-            override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
-        , true, true)
-      ))
+      (img.getStack.toSeq: Seq[Iota]) match
+        case stack:+allegedCount =>
+          val count = OperatorUtils.getPositiveInt(Seq(allegedCount), 0, 1)
+          (new CastingImage(stack, count, Seq(), false, img.getOpsConsumed, img.getUserData, null), cont, HexEvalSounds.NORMAL_EXECUTE, Seq())
+  Patterns.register("omni_close", e"eadedae"):
+    Patterns.mkConstAction(0):
+      case Seq() => Seq(ListIota(Seq()), DoubleIota(0))
   Patterns.register("staffcast_factory", ne"wwwwwaqqqqqeaqeaeaeaeaeq"):
     Patterns.mkAction: (img, cont) =>
       summon[CastingEnvironment].getCastingEntity match
@@ -1666,6 +1570,7 @@ def init(): Unit =
           case _ => true
       val sorted = others.toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos))
       sorted.headOption.fold(NullIota())(EntityIota(_))
+  Patterns.register("blind", se"qqqqqadwawawd")(OpPotionEffect(StatusEffects.BLINDNESS, 1000, false, false))
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
     Patterns.mkAction: (img, cont) =>
       def mkResult(scale: Int, pos: => Vec3d, spell: => Unit) =
@@ -1860,35 +1765,6 @@ def init(): Unit =
         case Seq(i, _: ListIota, _*) => throw MishapInvalidIota.ofType(i, 0, "list")
         case Seq(_, i, _*) => throw MishapInvalidIota.ofType(i, 1, "list")
         case s => throw MishapNotEnoughArgs(2, s.size)
-  lazy val messageFrameType: ContinuationFrame.Type[MessageFrame] = (c: NbtCompound, world: ServerWorld) =>
-    val id = Uuids.toUuid(c.getIntArray("id"))
-    MessageFrame(id, Text.Serializer.fromJson(NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, c.getCompound("t"))), world.getServer.getPlayerManager.getPlayer(id))
-  class MessageFrame(id: UUID, text: Text, player: => ServerPlayerEntity) extends ContinuationFrame:
-    override def getType: ContinuationFrame.Type[MessageFrame] = messageFrameType
-    override def evaluate(rest: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
-      boundary:
-        def mishap(m: Mishap) = boundary.break(CastResult(NullIota(), rest, vm.getImage, Seq(DoMishap(m, Mishap.Context(null, text))), ResolvedPatternType.EVALUATED, HexEvalSounds.NORMAL_EXECUTE))
-        vm.getImage.getStack.toSeq.reverse match
-          case Seq() =>
-            mishap(MishapNotEnoughArgs(1, 0))
-          case Seq(s: StringIota, stack*) =>
-            CastResult(NullIota(), rest, vm.getImage.withStack(_ => stack), Seq(
-              OperatorSideEffect.AttemptSpell(
-                new RenderedSpell:
-                  override def cast(env: CastingEnvironment): Unit =
-                    ServerPlayNetworking.send(player, "msg", PacketByteBufs.create.tap(_.writeString(s.getString)))
-                  override def cast(env: CastingEnvironment, img: CastingImage): CastingImage = { cast(env); img }
-                , false, false
-              )
-            ), ResolvedPatternType.EVALUATED, HexEvalSounds.NORMAL_EXECUTE)
-          case Seq(i, _*) =>
-            mishap(MishapInvalidIota.ofType(i, 0, "string"))
-    override def serializeToNBT(): NbtCompound = NbtCompound()
-      .tap(_.putIntArray("id", Uuids.toIntArray(id)))
-      .tap(_.put("t", JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, Text.Serializer.toJsonTree(text))))
-    override def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(false, stack.toSeq)
-    override def size = 0
-  hexXplat.getContinuationTypeRegistry("send_message") = messageFrameType
   CastingEnvironment.addCreateEventListener: (env: CastingEnvironment, data: NbtCompound) =>
     val id = env.getWorld.getRegistryKey.getValue
     if isDev then println(s"Environment created in $id")
@@ -1907,63 +1783,6 @@ def init(): Unit =
               val x = pos.getComponentAlongAxis(axis)
               if x < 0 || x >= 11 then boundary.break(false)
             true
-  ServerPlayNetworking.registerGlobalReceiver("sync_mediaweave", (_, player, _, buf, _) =>
-    val flags = buf.readByte()
-    val c = player.getComponent(PlayerInfoComponent.key)
-    val cursorStack = player.playerScreenHandler.getCursorStack()
-    def currentWeave =
-      if (flags & 4) != 0 then
-        c.leftWeave
-      else
-        c.rightWeave
-    lazy val lastWeave = currentWeave
-    if (flags & 1) != 0 && (flags & 8) == 0 then
-      assume(cursorStack.isEmpty || (flags & 2) != 0, "if this isn't empty, the player's held item gets voided")
-      buf.readItemStack()
-      player.playerScreenHandler.setCursorStack(lastWeave.copyAndEmpty())
-      PlayerInfoComponent.key.sync(player)
-    if (flags & 2) != 0 then
-      buf.readItemStack()
-      assume(currentWeave.isEmpty, "if this isn't empty, an equipped mediaweave gets voided")
-      if (flags & 4) != 0 then
-        c.leftWeave = cursorStack
-      else
-        c.rightWeave = cursorStack
-      PlayerInfoComponent.key.sync(player)
-    if (flags & 8) != 0 then
-      val text = buf.readString()
-      val c = player.getComponent(PlayerInfoComponent.key)
-      val stack = if (flags & 4) != 0 then c.leftWeave else c.rightWeave
-      stack.getItem match
-        case m@Mediaweave(color) => m.readIotaTag(stack) match
-          case t: NbtCompound => IotaType.deserialize(t, player.getServerWorld) match
-            case s: ListIota =>
-              given ServerWorld = env.getWorld
-              lazy val env = new PlayerBasedCastEnv(player,
-                if player.getMainArm match
-                  case Arm.LEFT => (flags & 4) != 0
-                  case Arm.RIGHT => (flags & 4) == 0
-                then Hand.MAIN_HAND else Hand.OFF_HAND
-              ):
-                override def extractMediaEnvironment(cost: Long, simulate: Boolean): Long =
-                  if player.isCreative then 0L else extractMediaFromInventory(cost, canOvercast, simulate)
-                override def getCastingHand: Hand = castingHand
-                override def getPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
-              val context =
-                if (flags & 1) != 0 then
-                  Seq.fill(buf.readInt)(buf.readUnlimitedNbt: Iota)
-                else
-                  Seq()
-              val image = CastingImage(context :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
-              val instrs = s.getList.asScala.toSeq
-              val vm = CastingVM(image, env)
-              val view = vm.queueExecuteAndWrapIotas(instrs :+ ContinuationIota(SpellContinuation.NotDone(MessageFrame(player.getUuid, stack.getName, player), SpellContinuation.Done.INSTANCE)), player.getServerWorld)
-              val packet = MsgNewSpiralPatternsS2C(player.getUuid, instrs.collect { case p: PatternIota => p.getPattern }.asJava, 140)
-              hexXplat.sendPacketToPlayer(player, packet)
-              hexXplat.sendPacketTracking(player, packet)
-            case _ =>
-          case null =>
-        case _ =>)
   // dump patterns
   val out = Files.newOutputStream(Path.of("patterns.csv"))
   try
@@ -1982,8 +1801,12 @@ inline given [T <: Singleton] => Const[T] = Const[T](compiletime.constValue[T])
 given [T] => Conversion[Const[T], T] = _.value
 
 private[hexic] class ComponentInit extends EntityComponentInitializer, LevelComponentInitializer:
-  override def registerEntityComponentFactories(using EntityComponentFactoryRegistry): Unit =
+  override def registerEntityComponentFactories(using r: EntityComponentFactoryRegistry): Unit =
     PlayerInfoComponent.register
+    r.registerForPlayers(summon[ComponentKey[MurmurCache]], _ => MurmurCache(None), RespawnCopyStrategy.ALWAYS_COPY)
+    r.registerForPlayers(summon[ComponentKey[ExcursionComponent]], _ => ExcursionComponent(), RespawnCopyStrategy.ALWAYS_COPY)
+    r.registerForPlayers(summon[ComponentKey[RevealComponent]], _ => RevealComponent(Seq.empty), RespawnCopyStrategy.LOSSLESS_ONLY)
+    r.registerForPlayers(CatHolder.key, new CatHolder(_), RespawnCopyStrategy.NEVER_COPY)
   override def registerLevelComponentFactories(using LevelComponentFactoryRegistry): Unit =
     ServerInfoComponent.register
 
@@ -2051,6 +1874,14 @@ object elementTag:
   def unapply[T <: NbtElement](l: AbstractNbtList[T]): Some[ClassTag[T]] = Some(elementTag(l))
 
 private[hexic] object cfg:
+  locally:
+    Using.resource(Files.list(Path.of("config/"))): dir =>
+      dir.forEach: file =>
+        if file.toString.endsWith(".properties") then
+          try
+            System.getProperties.load(Files.newBufferedReader(file, Charsets.UTF_8))
+          catch
+            case i: IOException => summon[Logger].warn(s"Failed to read properties from $file", i)
   def apply[T: FromString as t](key: String): Option[T] =
     sys.props.get(key).map(t.fromString)
   def flag(key: String): Boolean = cfg[Boolean](s"hexic.$key").contains(true)
@@ -2091,10 +1922,8 @@ object FromIota:
 given FromIota[Iota] = Some(_)
 given FromIota[String] = FromIota.lift:
   case s: StringIota => s.getString
-  case NbtIota(s: NbtString) => s.asString
 given FromIota[Boolean] = FromIota.lift:
   case b: BooleanIota => b.getBool
-  case NbtIota(n: AbstractNbtNumber) => n.longValue != 0
 given [T: ClassTag](using elems: FromIota[T]): FromIota[Seq[T]] = FromIota.liftFlat:
   case l: ListIota =>
     boundary:
@@ -2103,31 +1932,18 @@ given [T: ClassTag](using elems: FromIota[T]): FromIota[Seq[T]] = FromIota.liftF
         case Some(p) => b.add(p)
         case None => boundary.break(None)
       Some(b.toSeq)
-given arrayByteFromIota: FromIota[Array[Byte]] = FromIota.lift:
-  case NbtIota(t: NbtByteArray) => t.getByteArray
-given arrayIntFromIota: FromIota[Array[Int]] = FromIota.lift:
-  case NbtIota(t: NbtIntArray) => t.getIntArray
-given arrayLongFromIota: FromIota[Array[Long]] = FromIota.lift:
-  case NbtIota(t: NbtLongArray) => t.getLongArray
-given [T <: NbtElement: ClassTag]: FromIota[T] = FromIota.lift:
-  case NbtIota(data: T) => data
 given FromIota[Double] = FromIota.lift:
   case d: DoubleIota => d.getDouble
 given FromIota[Float] = FromIota.lift:
   case d: DoubleIota if (d.getDouble.round.toFloat - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round.toFloat
-  case NbtIota(n: NbtFloat) => n.floatValue
 given FromIota[Byte] = FromIota.lift:
   case d: DoubleIota if d.getDouble < Byte.MaxValue && d.getDouble > Byte.MinValue && (d.getDouble.round.toByte - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round.toByte
-  case NbtIota(n: AbstractNbtNumber) => n.byteValue
 given FromIota[Short] = FromIota.lift:
   case d: DoubleIota if d.getDouble < Short.MaxValue && d.getDouble > Short.MinValue && (d.getDouble.round.toShort - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round.toShort
-  case NbtIota(n: AbstractNbtNumber) => n.shortValue
 given FromIota[Int] = FromIota.lift:
   case d: DoubleIota if d.getDouble < Int.MaxValue && d.getDouble > Int.MinValue && (d.getDouble.round.toInt - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round.toInt
-  case NbtIota(n: AbstractNbtNumber) => n.intValue
 given FromIota[Long] = FromIota.lift:
   case d: DoubleIota if d.getDouble < Long.MaxValue && d.getDouble > Long.MinValue && (d.getDouble.round - d.getDouble) < DoubleIota.TOLERANCE => d.getDouble.round
-  case NbtIota(n: AbstractNbtNumber) => n.longValue
 
 object nbtList:
   def unapply(l: NbtElement): Option[Tagged[AbstractNbtList, NbtElement]] =
@@ -2144,15 +1960,6 @@ given Conversion[Array[Long], NbtLongArray] = NbtLongArray(_)
 given Conversion[NbtByteArray, Array[Byte]] = _.getByteArray
 given Conversion[NbtIntArray, Array[Int]] = _.getIntArray
 given Conversion[NbtLongArray, Array[Long]] = _.getLongArray
-
-case class MishapWrongDimensionKiddo(val dim1: RegistryKey[World], val dim2: RegistryKey[World]) extends Mishap:
-  override def accentColor(using CastingEnvironment, Mishap.Context): FrozenPigment = dyeColor(DyeColor.MAGENTA)
-  override def errorMessage(using CastingEnvironment, Mishap.Context): Text =
-    val env = summon[CastingEnvironment]
-    val color = env.getPigment.getColorProvider.getColor(0, Vec3d.ZERO)
-    val mind = t"Mind".styled(_ `withColor` color)
-    t"My ${mind} cannot think in ${dim1.getValue `toTranslationKey` "dimension"} and ${dim2.getValue `toTranslationKey` "dimension"} at once"
-  override def execute(using CastingEnvironment, Mishap.Context, util.List[Iota]): Unit = ???
 
 trait Tagged[+F[_ <: U @uncheckedVariance], +U]:
   type T <: U: ClassTag
@@ -2244,42 +2051,6 @@ def pocketName(using rand: Random) =
   (piece +: Iterator.continually(piece).takeWhile(_ => rand.nextInt(5) == 0).toSeq).mkString("-")
 val pocketNames = memo((id: UUID) => pocketName(using Random(id.getLeastSignificantBits)))
 
-object TripwireIota extends Iota(new IotaType[TripwireIota.type]:
-  override def deserialize(tag: NbtElement, world: ServerWorld): TripwireIota.type = TripwireIota
-  override def color: Int = 0xba4216
-  override def display(tag: NbtElement): Text = typeName
-, Object()):
-  override def isTruthy: Boolean = true
-  override def toleratesOther(that: Iota): Boolean = eq(that)
-  override def serialize(): NbtElement = NbtCompound()
-  class Frame(mishap: Mishap) extends ContinuationFrame:
-    override def breakDownwards(x: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = ???
-    override def evaluate(cont: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult = throw mishap
-    override def getType: Type[?] = Frame
-    override def serializeToNBT(): NbtCompound =
-      val c = NbtCompound()
-      val codec = mishap.getCodec
-      c.putString("Class", mishap.getClass.getName)
-      c.put("Data", codec.encodeStart(NbtOps.INSTANCE, mishap.asInstanceOf).getOrThrow(false, _ => {}))
-      c
-    override def size: Int = 1
-  object Frame extends ContinuationFrame.Type[Frame]:
-    override def deserializeFromNBT(c: NbtCompound, world: ServerWorld): Frame =
-      val klass = classNamed(c.getString("Class"))
-      val codec = klass.get.runtimeClass.getMethod("getCodec").invoke(null).asInstanceOf[Codec[? <: Mishap]]
-      Frame(codec.decode(NbtOps.INSTANCE, c.get("Data")).getOrThrow(false, _ => {}).getFirst)
-
-case class LocationIota(vec: Vec3d, dim: Option[RegistryKey[World]]) extends Vec3Iota(vec), IotaTypeHint:
-  override def serialize: NbtElement = NbtCompound().tap(_.put("vec", super.serialize())).tap(n => dim.map(v => n.putString("dim", v.getValue.toString)))
-  override def hexic$iotaType(): IotaType[?] = LocationIota
-
-object LocationIota extends IotaType[LocationIota]:
-  override def color: Int = Vec3Iota.TYPE.color()
-  override def deserialize(using NbtElement, ServerWorld): LocationIota = ???
-  override def display(d: NbtElement): Text = d match
-    case d: NbtCompound => Vec3Iota.TYPE.display(d.get("vec"))
-    case _ => null
-
 inline def repeat[T](inline value: T, inline cond: T => Boolean)(inline body: T => T): T =
   var current = value
   while (cond(current)) current = body(current)
@@ -2309,18 +2080,6 @@ trait MediaContainerProvider:
   type Context: ClassTag;
   @targetName("hexic$MediaContainerProvider$getMediaContainer")
   def getMediaContainer(c: Context): Option[MediaContainer]
-
-case class NbtIota(data: NbtElement) extends Iota(NbtIota, data):
-  override def isTruthy: Boolean = data match
-    case d: AbstractNbtNumber => d.numberValue != 0
-    case a: AbstractNbtList[?] => a.size != 0
-    case s: NbtString => s.asString != ""
-    case c: NbtCompound => c.getSize != 0
-    case _ => true
-  override def toleratesOther(that: Iota): Boolean = that match
-    case that: NbtIota => this.data == that.data
-    case _ => this.data == that
-  override def serialize: NbtElement = data
 
 object registerHopperEndpoint extends (() => Unit):
   def apply(): Unit =
@@ -2356,8 +2115,3 @@ trait IotaCoercion[T]:
 def downcast[R: ClassTag](t: Any): Option[R] = t match
   case r: R => Some(r)
   case _ => None
-object NbtIota extends IotaType[NbtIota]:
-  def name: Text = ("NBT": MutableText).styled(_.withColor(color))
-  def color: Int = Formatting.DARK_AQUA.getColorValue
-  def deserialize(using NbtElement, ServerWorld): NbtIota = NbtIota(summon)
-  def display(e: NbtElement): Text = Text.literal(StringNbtWriter()(e)).styled(_.withColor(color))

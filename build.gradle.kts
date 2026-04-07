@@ -1,6 +1,5 @@
 import de.undercouch.gradle.tasks.download.Download
 import groovy.json.JsonSlurper
-import org.eu.net.pool.mc_plugin.Environment
 import org.gradle.api.publish.maven.internal.publication.MavenPomInternal
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
 import kotlin.io.path.exists
@@ -27,7 +26,7 @@ plugins {
     id("maven-publish")
     id("idea")
     id("de.undercouch.download") version "5.6.0"
-    id("org.eu.net.pool.mc-plugin")
+    //id("org.eu.net.pool.mc-plugin")
 }
 
 allprojects {
@@ -54,127 +53,136 @@ allprojects {
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 allprojects {
-    val p = P(project)
+    val p by lazy {
+        val p = P(project)
+        ext["p"] = p
+        p
+    }
     val modid: String by project.properties
-    ext["p"] = p
     ext["release"] = release
-    version = project.property("mod_version") as String
-    if (!release) version = "${version}+${p.commit_id.take(7)}"
-    group = rootProject.property("maven_group") as String
-    println("configuring $modid ($project) v$version @ $group")
+    val isProject = project.projectDir.path.contains("/project/") || project == project(":util")
+
     plugins.withId("java") {
-        base {
-            archivesBaseName = modid
-        }
         java {
             toolchain.languageVersion = JavaLanguageVersion.of(17)
             withSourcesJar()
         }
-        // be extra sure
-        version = project.property("mod_version") as String
+    }
+
+    if (isProject) {
         if (!release) version = "${version}+${p.commit_id.take(7)}"
         group = rootProject.property("maven_group") as String
-
-        tasks.named<Jar>("jar").configure {
-            from("LICENSE") {
-                rename { "LICENSE_$modid" }
+        println("configuring $modid ($project) v$version @ $group")
+        plugins.withId("java") {
+            base {
+                archivesBaseName = modid
             }
-            duplicatesStrategy = DuplicatesStrategy.WARN
+            tasks.named<Jar>("jar").configure {
+                from("LICENSE") {
+                    rename { "LICENSE_$modid" }
+                }
+                duplicatesStrategy = DuplicatesStrategy.WARN
+            }
+        }
+
+        plugins.withId("fabric-loom") {
+            extensions.getByType<LoomGradleExtensionAPI>().apply {
+                splitEnvironmentSourceSets()
+                runs["client"].programArgs += listOf(
+                    "--username",
+                    "Player",
+                    "--uuid",
+                    "9e1b34e3-8031-4623-8918-eb7914ab564b"
+                )
+
+                mods {
+                    register(modid) {
+                        sourceSet("main")
+                        sourceSet("client")
+                    }
+                }
+
+                mixin.useLegacyMixinAp = false
+            }
+
+            extensions.getByType<net.fabricmc.loom.api.fabricapi.FabricApiExtension>().apply {
+                configureTests {
+                    modId = modid
+                    eula = true
+                }
+            }
+
+            dependencies {
+                "modLocalRuntime"("maven.modrinth:ears:1.4.7+fabric-1.20")
+            }
+
+            if (project != rootProject) {
+                tasks.named("runClient") {
+                    doFirst {
+                        val rootOptions = rootProject.file("run/options.txt").toPath()
+                        val options = file("run/options.txt").toPath()
+                        options.deleteIfExists()
+                        Files.createSymbolicLink(options, rootOptions)
+                    }
+                }
+            }
+
+            tasks.processResources {
+                val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
+                val langRoot = destinationDir.resolve("assets/$modid/lang")
+
+                doLast {
+                    bookRoot.list()?.forEach { lang ->
+                        val langFile = langRoot.resolve("$lang.json")
+                        if (langFile.exists()) {
+                            val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
+                            var n = 0
+                            for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
+                                if (bookFile.isFile) {
+                                    val json = JsonSlurper().parseText(bookFile.readText())
+                                    if (json !is Map<*, *>) continue
+                                    json as MutableMap<Any, Any>
+                                    val name = json["name"]
+                                    if (name is String) {
+                                        entries["text.$modid.book.${n}"] = name
+                                        json["name"] = "text.$modid.book.${n}"
+                                        n++
+                                    }
+                                    val pages = json["pages"]
+                                    if (pages !is MutableList<*>) continue
+                                    pages as MutableList<Any>
+                                    for (i in pages.indices) {
+                                        val page = pages[i]
+                                        if (page is String) {
+                                            entries["text.$modid.book.${n}"] = page
+                                            pages[i] = "text.$modid.book.${n}"
+                                            n++
+                                        } else if (page is MutableMap<*, *>) {
+                                            page as MutableMap<Any, Any>
+                                            for (key in listOf("text", "title", "header")) {
+                                                val text = page[key]
+                                                if (text != null && text is String) {
+                                                    entries["text.$modid.book.${n}"] = text
+                                                    page[key] = "text.$modid.book.${n}"
+                                                    n++
+                                                }
+                                            }
+                                        }
+                                    }
+                                    bookFile.writeText(JsonOutput.toJson(json))
+                                }
+                            }
+                            langFile.writeText(JsonOutput.toJson(entries))
+                        }
+                    }
+                }
+            }
         }
     }
 
     plugins.withId("scala") {
         scala {
             scalaVersion = "3.7.1"
-        }
-    }
-
-    plugins.withId("fabric-loom") {
-        extensions.getByType<LoomGradleExtensionAPI>().apply {
-            splitEnvironmentSourceSets()
-            runs["client"].programArgs += listOf("--username", "Player", "--uuid", "9e1b34e3-8031-4623-8918-eb7914ab564b")
-
-            mods {
-                register(modid) {
-                    sourceSet("main")
-                    sourceSet("client")
-                }
-            }
-
-            mixin.useLegacyMixinAp = false
-        }
-
-        extensions.getByType<net.fabricmc.loom.api.fabricapi.FabricApiExtension>().apply {
-            configureTests {
-                modId = modid
-                eula = true
-            }
-        }
-
-        dependencies {
-            "modLocalRuntime"("maven.modrinth:ears:1.4.7+fabric-1.20")
-        }
-
-        if (project != rootProject) {
-            tasks.named("runClient") {
-                doFirst {
-                    val rootOptions = rootProject.file("run/options.txt").toPath()
-                    val options = file("run/options.txt").toPath()
-                    options.deleteIfExists()
-                    Files.createSymbolicLink(options, rootOptions)
-                }
-            }
-        }
-
-        tasks.processResources {
-            val bookRoot = destinationDir.resolve("assets/hexcasting/patchouli_books/thehexbook")
-            val langRoot = destinationDir.resolve("assets/$modid/lang")
-
-            doLast {
-                bookRoot.list()?.forEach { lang ->
-                    val langFile = langRoot.resolve("$lang.json")
-                    if (langFile.exists()) {
-                        val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
-                        var n = 0
-                        for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
-                            if (bookFile.isFile) {
-                                val json = JsonSlurper().parseText(bookFile.readText())
-                                if (json !is Map<*, *>) continue
-                                json as MutableMap<Any, Any>
-                                val name = json["name"]
-                                if (name is String) {
-                                    entries["text.$modid.book.${n}"] = name
-                                    json["name"] = "text.$modid.book.${n}"
-                                    n++
-                                }
-                                val pages = json["pages"]
-                                if (pages !is MutableList<*>) continue
-                                pages as MutableList<Any>
-                                for (i in pages.indices) {
-                                    val page = pages[i]
-                                    if (page is String) {
-                                        entries["text.$modid.book.${n}"] = page
-                                        pages[i] = "text.$modid.book.${n}"
-                                        n++
-                                    } else if (page is MutableMap<*, *>) {
-                                        page as MutableMap<Any, Any>
-                                        for (key in listOf("text", "title", "header")) {
-                                            val text = page[key]
-                                            if (text != null && text is String) {
-                                                entries["text.$modid.book.${n}"] = text
-                                                page[key] = "text.$modid.book.${n}"
-                                                n++
-                                            }
-                                        }
-                                    }
-                                }
-                                bookFile.writeText(JsonOutput.toJson(json))
-                            }
-                        }
-                        langFile.writeText(JsonOutput.toJson(entries))
-                    }
-                }
-            }
         }
     }
 
@@ -224,6 +232,7 @@ allprojects {
         exactRepo("https://maven.ladysnake.org/releases/",
             "dev.onyxstudios")
         exactRepo("https://pool.net.eu.org/",
+            "com.unascribed",
             "dev.kineticcat.hexportation",
             "miyucomics.hexcellular",
             "miyucomics.hexical",
@@ -234,11 +243,12 @@ allprojects {
         exactRepo("https://maven.shedaniel.me/",
             "dev.architectury",
             "me.shedaniel")
-        exactRepo("https://maven.terraformersmc.com/",
+        exactRepo("https://maven.terraformersmc.com/releases",
             "com.terraformersmc",
             "dev.emi")
-        exactRepo("https://repo.sleeping.town/",
-            "com.unascribed")
+        // mirrored by poolmaven due to invalid cert
+        //exactRepo("https://repo.sleeping.town/",
+        //    "com.unascribed")
         exactRepo("https://masa.dy.fi/maven/",
             "carpet")
         exactRepo("https://maven.nucleoid.xyz/",

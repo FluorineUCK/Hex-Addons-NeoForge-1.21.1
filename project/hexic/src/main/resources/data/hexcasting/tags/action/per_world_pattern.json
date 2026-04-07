@@ -1,7 +1,8 @@
 {
   "values": [
-    "hexcasting:craft/artifact",
-    "hexcasting:craft/trinket",
-    "hexic:snow"
+    "hexic:moveentity",
+    "hexic:makeworld",
+    "hexic:attachworld",
+    "hexic:deleteworld"
   ]
 }

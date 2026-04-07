@@ -1,0 +1,10 @@
+@version "1";
+@target "hexcasting:patchouli_books/thehexbook/en_us/entries/patterns/spells/nadirs.json";
+$pages = arrays.push($pages, {
+  type: "hexcasting:pattern",
+  op_id: "hexic:blind",
+  anchor: "hexic:blind",
+  input: "entity, number",
+  output: "",
+  text: "book.hexic.page.blind"
+});

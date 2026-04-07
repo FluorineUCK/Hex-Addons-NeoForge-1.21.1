@@ -18,9 +18,13 @@ pluginManagement {
     }
 }
 
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 include("util")
 includeBuild("plugin")
-for (mod in listOf("hexic", "iotaworks", "hexxytounge", "hexxychests")) {
+for (mod in listOf("hexic", "iotaworks", "hexxytounge")) {
     include(mod)
     project(":$mod").projectDir = file("project/$mod")
 }
