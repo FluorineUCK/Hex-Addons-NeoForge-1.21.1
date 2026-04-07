@@ -3,8 +3,9 @@ package org.eu.net.pool.hexic
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
 import at.petrak.hexcasting.api.casting.circles.BlockEntityAbstractImpetus
 import at.petrak.hexcasting.api.casting.eval.CastingEnvironment
+import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.iota.*
-import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota, MishapOthersName}
 import com.mojang.serialization.Codec
 import com.samsthenerd.inline.api.InlineAPI
 import com.samsthenerd.inline.api.data.ItemInlineData
@@ -19,6 +20,7 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, Transaction
 import net.minecraft.block.BlockState
 import net.minecraft.block.entity.AbstractFurnaceBlockEntity
 import net.minecraft.entity.Entity
+import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.Fluid
 import net.minecraft.item.Item
 import net.minecraft.nbt.{NbtCompound, NbtElement, NbtList, NbtLong}
@@ -274,6 +276,17 @@ def initViews() =
       val pos = BlockPos.ofFloored(block.getVec3)
       summon[CastingEnvironment].assertPosInRangeForEditing(pos)
       InventoryView.OfBlock(pos)
+    case entity: EntityIota =>
+      given MinecraftServer = summon[CastingEnvironment].getWorld.getServer
+      entity.getEntity match
+        case p: PlayerEntity =>
+          summon[CastingEnvironment] match
+            case env: PlayerBasedCastEnv =>
+              if env.getCaster == p then
+                InventoryView.OfEntity(p.getUuid)
+              else
+                throw MishapOthersName(p)
+        case e => InventoryView.OfEntity(e.getUuid)
   hexXplat.getArithmeticRegistry("view") = arith("view",
     Arithmetic.ADD -> {
       (view1: BoxedView.Instance, view2: BoxedView.Instance) => Seq(BoxedView.Instance(InventoryView.OfSum(view1.view, view2.view)))
