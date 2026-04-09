@@ -33,10 +33,11 @@ import org.eu.net.pool.phlib.{*, given}
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.util.UUID
+import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq.unsafeWrapArray
 import scala.collection.mutable
 import scala.reflect.ClassTag
-import scala.util.{Failure, Success, Using}
+import scala.util.{Failure, Success, Using, boundary}
 
 trait InventoryView(val viewType: InventoryView.Type[?]) extends InventoryView.Handler:
   def isTruthy = true
@@ -284,20 +285,27 @@ def initViews() =
   setConceptScale[SingletonVariant.heat.type](20)
   Patterns.register("moveconcept", se"wawdwawqdewewedqwawdwaw"):
     Patterns.mkConstAction(4):
-      case Seq(isIota[BoxedView.Instance, 3](from), isIota[BoxedView.Instance, 2](into), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
-        Using.resource(Transaction.openOuter()):
+      case Seq(isIota[BoxedView.Instance, 3](BoxedView.Instance(from)), isIota[BoxedView.Instance, 2](BoxedView.Instance(into)), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
+        val key = ClassTag(typ.data.getClass)
+        val scale = conceptScale(key)
+        @tailrec def negotiate(limit: Long): Seq[Iota] =
+          val compromise = Using.resource(Transaction.openOuter()):
+            case tx@given TransactionContext =>
+              val extracted = (from: InventoryView).tryExtract((typ: VariantIota[?]).data, limit)
+              val inserted = (into: InventoryView).tryInsert((typ: VariantIota[?]).data, extracted)
+              if extracted == inserted then
+                tx.commit()
+                return Seq(DoubleIota(inserted / scale))
+              else
+                inserted
+          negotiate(compromise)
+        val initialLimit = Using.resource(Transaction.openOuter()):
           case tx@given TransactionContext =>
-            val key = ClassTag(typ.data.getClass)
-            val scale = conceptScale(key)
-            val toExtract = (scale * count.getDouble).toLong
-            val extract = from.view.tryExtract(typ.data, toExtract)
-            if extract < toExtract then
-              ??? // TODO: mishap
-            val insert = into.view.tryInsert(typ.data, extract)
-            if insert < extract then
-              ??? // TODO: mishap
-            tx.commit()
-            Seq(DoubleIota(insert / scale))
+            val value = (into: InventoryView).tryInsert(typ.data, (scale * count.getDouble).toLong)
+            tx.abort()
+            value
+        negotiate(initialLimit)
+
   Patterns.register("moveentity", se"edeeewawdweaaddaqwqwqaddaaewdwawewdqd"):
     Patterns.mkConstAction(3):
       case Seq(isIota[BoxedView.Instance, 2](from), isIota[BoxedView.Instance, 1](into), isIota[DoubleIota, 0](count)) =>
