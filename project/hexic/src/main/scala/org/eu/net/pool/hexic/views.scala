@@ -103,13 +103,6 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
       if w.getPath != "overworld" then c.put("w", w.getPath)
       c.putLong("p", pos.asLong)
       c
-  class OfExactEntity(entity: => Entity)(using ServerWorld) extends InventoryView(typeOfExactEntity):
-    override val viewType = typeOfExactEntity
-    override def entities(using TransactionContext) = Set(entity)
-    override def serialize =
-      val c = super.serialize
-      // TODO
-      c
   def deserialize(data: NbtCompound)(using ServerWorld): Option[InventoryView] = for
     id <- Option(Identifier.tryParse(data.getString("id")))
     viewType <- Option(InventoryView.registry.get(id))
@@ -135,12 +128,9 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
         key = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(namespace, path))
         given ServerWorld <- Option(summon[ServerWorld].getServer.getWorld(key))
       yield OfBlock(pos)
-  private given typeOfExactEntity: InventoryView.Type[OfExactEntity]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfExactEntity] = ???
   registry("sum") = typeOfSum
   registry("entity") = typeOfEntity
   registry("block") = typeOfBlock
-  registry("exact") = typeOfExactEntity
   Events.forBlock.register: (pos, state) =>
     val storage = ItemStorage.SIDED.find(summon, pos, null): Storage[ItemVariant]
     if storage == null then Seq()
