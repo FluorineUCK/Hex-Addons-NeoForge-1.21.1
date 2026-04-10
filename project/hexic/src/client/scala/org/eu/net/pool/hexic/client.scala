@@ -7,6 +7,9 @@ import at.petrak.hexcasting.api.pigment.FrozenPigment
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonArray, JsonObject}
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
+import com.samsthenerd.inline.api.client.InlineClientAPI
+import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback
+import com.samsthenerd.inline.api.matching.{InlineMatch, InlineMatcher, MatcherInfo, RegexMatcher}
 import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
 import kotlin.jvm.JvmField
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
@@ -15,6 +18,8 @@ import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, FabricModelProvider, FabricRecipeProvider, FabricTagProvider}
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
+import net.minecraft.text.Text
+import java.util.function.UnaryOperator
 import net.minecraft.advancement.criterion.InventoryChangedCriterion
 import net.minecraft.block.entity.{BlockEntity, BlockEntityType}
 import net.minecraft.client.MinecraftClient
@@ -124,6 +129,13 @@ def init(): Unit =
       handler.sendChatCommand(s.drop(1))
     else
       handler.sendChatMessage(s))
+  ItemTooltipCallback.EVENT.register: (stack, ctx, lines) =>
+    stack.getItem match
+      case _: Mediaweave if Option(stack.getNbt).exists(_.get("lock") != null) =>
+        lines.append(Text.literal("Tied").styled(_.withColor(0x782fe0)))
+        lines.append(Text.literal("Cannot be unequipped and won't be dropped on death.").styled(_.withColor(0x4b1d8c)))
+        lines.append(Text.literal("Use ").append(Text.empty().append(InlinePatternData(sw"aqeqqqwqqqqqaqwqa").asText(withExtra=false)).styled(_.withColor(0x782fe0))).append(" to untie.").styled(_.withColor(0x4b1d8c)))
+      case _ =>
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
 
