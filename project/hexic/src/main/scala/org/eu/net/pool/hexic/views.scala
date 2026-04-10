@@ -122,7 +122,9 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
         view <- InventoryView.deserialize(c)
       yield view)*))
   private given typeOfEntity: InventoryView.Type[OfEntity]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfEntity] = ???
+    override def deserialize(data: NbtCompound)(using world: ServerWorld): Option[OfEntity] =
+      given MinecraftServer = world.getServer
+      Some(OfEntity(UUID(data.getLong("m"), data.getLong("l"))))
   private given typeOfBlock: InventoryView.Type[OfBlock]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfBlock] =
       for
