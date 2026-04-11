@@ -6,7 +6,9 @@ import at.petrak.hexcasting.api.casting.eval.CastingEnvironment
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota}
 import com.mojang.serialization.Codec
+import com.samsthenerd.inline.api.InlineAPI
 import com.samsthenerd.inline.api.data.ItemInlineData
+import com.samsthenerd.inline.impl.InlineStyle
 import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.{Event, EventFactory}
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant
@@ -348,15 +350,17 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
       new TaggedVariant:
         type T = Item
         def variant: TransferVariant[Item] = s
-        def display: Text = t"${s.getItem.getName(s.toStack)}: ${ItemInlineData(s.toStack).asText(true)}"
-          .styled(_.withHoverEvent(HoverEvent(HoverEvent.Action.SHOW_ITEM, HoverEvent.ItemStackContent(s.toStack))))
+        def display: Text = t"⌠${ItemInlineData(s.toStack).asText(true).copy().styled(InlineAPI.INSTANCE.withSizeModifier(_, 1.5))}⌡"
+          .styled(_.withColor(0x7c7145).withHoverEvent(HoverEvent(HoverEvent.Action.SHOW_ITEM, HoverEvent.ItemStackContent(s.toStack))))
   registry(Identifier("fluid")) = c =>
     val s = FluidVariant.fromNbt(c)
     Option.unless(s.isBlank):
       new TaggedVariant:
         type T = Fluid
         def variant: TransferVariant[Fluid] = s
-        def display: MutableText = t"${s.getFluid.getDefaultState.getBlockState.getBlock.getName}: ${ItemInlineData.make(s.getFluid.getBucketItem.getDefaultStack)}"
+        def display: MutableText =
+          val bs = s.getFluid.getDefaultState.getBlockState
+          t"(${bs.getBlock.getName.styled(_.withColor(bs.getMapColor(null, null).color))})".styled(_.withColor(0x3c5e34))
   registry("media") = c =>
     Some(new TaggedVariant:
       type T = SingletonVariant

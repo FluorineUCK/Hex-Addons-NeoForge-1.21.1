@@ -1862,13 +1862,6 @@ def init(): Unit =
               val x = pos.getComponentAlongAxis(axis)
               if x < 0 || x >= 11 then boundary.break(false)
             true
-  ItemTooltipCallback.EVENT.register: (stack, ctx, lines) =>
-    stack.getItem match
-      case _: Mediaweave if Option(stack.getNbt).exists(_.get("lock") != null) =>
-        lines.append(Text.literal("Tied").styled(_.withColor(0x782fe0)))
-        lines.append(Text.literal("Cannot be unequipped and won't be dropped on death.").styled(_.withColor(0x4b1d8c)))
-        lines.append(Text.literal("Use ").append(Text.empty().append(InlinePatternData(sw"aqeqqqwqqqqqaqwqa").asText(withExtra=false)).styled(_.withColor(0x782fe0))).append(" to untie.").styled(_.withColor(0x4b1d8c)))
-      case _ =>
   // dump patterns
   val out = Files.newOutputStream(Path.of("patterns.csv"))
   try
