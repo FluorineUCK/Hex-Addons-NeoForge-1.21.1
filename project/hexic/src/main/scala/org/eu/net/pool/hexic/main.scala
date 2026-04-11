@@ -1647,7 +1647,7 @@ def init(): Unit =
         others = others.filter:
           case _: EntityPlayerMPFake => false
           case _ => true
-      val sorted = others.toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos))
+      val sorted = others.toSeq.sortBy(_.getPos.squaredDistanceTo(summon[CastingEnvironment].mishapSprayPos)).filter(summon[CastingEnvironment].isEntityInRange(_, true))
       sorted.headOption.fold(NullIota())(EntityIota(_))
   Patterns.register("blind", se"qqqqqadwawawd")(OpPotionEffect(StatusEffects.BLINDNESS, 1000, false, false))
   Patterns.register("erase", e"wqwdwqwawwwwwawwwww"):
