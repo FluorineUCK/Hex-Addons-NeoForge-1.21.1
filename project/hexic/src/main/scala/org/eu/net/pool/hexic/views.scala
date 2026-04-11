@@ -430,6 +430,11 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
       type T = SingletonVariant
       def variant = SingletonVariant.media
       def display: Text = Text.literal("Media").styled(_.withColor(0x74b3f2)))
+  registry("heat") = c =>
+    Some(new TaggedVariant:
+      type T = SingletonVariant
+      def variant = SingletonVariant.heat
+      def display: Text = Text.literal("Heat").styled(_.withColor(0xe08355)))
 
 //noinspection UnstableApiUsage
 class SingletonVariant extends TransferVariant[SingletonVariant]:
