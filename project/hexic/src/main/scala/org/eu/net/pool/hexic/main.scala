@@ -518,11 +518,18 @@ case class Mediaweave(color: DyeColor) extends Item(Item.Settings()) with IotaHo
         case c: NbtCompound => c
         case _ => null
   override def writeable(stack: ItemStack): Boolean = true
-  override def canWrite(stack: ItemStack, iota: Iota): Boolean = iota match
-    case l: ListIota => true
-    case _ => iota.executable
+  override def canWrite(stack: ItemStack, iota: Iota): Boolean =
+    iota match
+      case null => true
+      case l: ListIota => true
+      case _ => iota.executable
   override def writeDatum(stack: ItemStack, iota: Iota): Unit =
-    stack.getOrCreateNbt.put("Hex", IotaType.serialize(iota))
+    iota match
+      case null =>
+        for nbt <- Option(stack.getNbt) do
+          nbt.remove("Hex")
+          if nbt.isEmpty then stack.setNbt(null)
+      case iota => stack.getOrCreateNbt.put("Hex", IotaType.serialize(iota))
   override def appendTooltip(stack: ItemStack, world: World, tooltip: util.List[Text], context: TooltipContext): Unit =
     IotaHolderItem.appendHoverText(this, stack, tooltip, context)
   DispenserBlock.registerBehavior(this, new ItemDispenserBehavior:
@@ -1160,20 +1167,20 @@ def init(): Unit =
           case i => throw MishapInvalidIota.ofType(i, 0, "pigment")
   Patterns.register("prop_fi", sw"aawqe"):
     Patterns.mkConstAction(1):
-      case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Writer(x.getName, "head"))
-      case Seq(x) => throw MishapInvalidIota(x, 0, "property")
+      case Seq(x: PropertyIota) if !x.getReadonly => Seq(PropertyAccessIota.Writer(x.getName, "head"))
+      case Seq(x) => throw MishapInvalidIota(x, 0, "writeable_prop")
   Patterns.register("prop_fo", sw"aawqd"):
     Patterns.mkConstAction(1):
-      case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Stream(x.getName, "head"))
-      case Seq(x) => throw MishapInvalidIota(x, 0, "property")
+      case Seq(x: PropertyIota) if !x.getReadonly => Seq(PropertyAccessIota.Stream(x.getName, "head"))
+      case Seq(x) => throw MishapInvalidIota(x, 0, "writeable_prop")
   Patterns.register("prop_li", sw"aawdwq"):
     Patterns.mkConstAction(1):
-      case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Writer(x.getName, "tail"))
-      case Seq(x) => throw MishapInvalidIota(x, 0, "property")
+      case Seq(x: PropertyIota) if !x.getReadonly => Seq(PropertyAccessIota.Writer(x.getName, "tail"))
+      case Seq(x) => throw MishapInvalidIota(x, 0, "writeable_prop")
   Patterns.register("prop_lo", sw"aawdwa"):
     Patterns.mkConstAction(1):
-      case Seq(x: PropertyIota) => Seq(PropertyAccessIota.Stream(x.getName, "tail"))
-      case Seq(x) => throw MishapInvalidIota(x, 0, "property")
+      case Seq(x: PropertyIota) if !x.getReadonly => Seq(PropertyAccessIota.Stream(x.getName, "tail"))
+      case Seq(x) => throw MishapInvalidIota(x, 0, "writeable_prop")
   Patterns.register("where", nw"qaeaqwdd"):
     Patterns.mkConstAction(1): i =>
       val Seq(x) = i
@@ -1454,7 +1461,7 @@ def init(): Unit =
                 override def cast(env: CastingEnvironment): Unit =
                   world.parentInfo = Some(env.getWorld.getRegistryKey, pos)
                 override def cast(env: CastingEnvironment, image: CastingImage): CastingImage = { cast(env); image },
-                MediaConstants.SHARD_UNIT * 3,
+                MediaConstants.SHARD_UNIT,
                 Seq(),
                 1
             )
