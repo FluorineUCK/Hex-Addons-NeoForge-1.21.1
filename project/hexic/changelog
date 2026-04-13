@@ -40,3 +40,4 @@
 2.1.0 read-only properties can no longer be converted to access iotas
 2.1.0 Refinement Distillation now properly drops input iotas on first loop as it should
 2.1.0 translations have been updated [@chuijk]
+2.1.0 wool and carpet edification are now actually somewhat balanced wrt each other
