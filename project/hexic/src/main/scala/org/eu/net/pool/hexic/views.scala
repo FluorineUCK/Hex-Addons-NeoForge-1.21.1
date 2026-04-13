@@ -300,6 +300,26 @@ def initViews() =
   setConceptScale[FluidVariant](81000)
   setConceptScale[SingletonVariant.media.type](10000)
   setConceptScale[SingletonVariant.heat.type](20)
+  Patterns.register("conceptavailable", sw"wedwqwdewwaqaa"):
+    Patterns.mkConstAction(2):
+      case Seq(BoxedView.Instance(target), VariantIota(typ, _)) =>
+        Using.resource(Transaction.openOuter()):
+          case tx@given Transaction =>
+            val amt = target.tryExtract(typ, Long.MaxValue) / conceptScale(ClassTag(typ.getClass))
+            tx.abort()
+            Seq(DoubleIota(amt))
+      case Seq(_: BoxedView.Instance, perp) => throw MishapInvalidIota(perp, 0, VariantIota.typeName)
+      case Seq(perp, _) => throw MishapInvalidIota(perp, 1, BoxedView.typeName)
+  Patterns.register("conceptremaining", sw"wedwqwdewadedd"):
+    Patterns.mkConstAction(2):
+      case Seq(BoxedView.Instance(target), VariantIota(typ, _)) =>
+        Using.resource(Transaction.openOuter()):
+          case tx@given Transaction =>
+            val amt = target.tryInsert(typ, Long.MaxValue) / conceptScale(ClassTag(typ.getClass))
+            tx.abort()
+            Seq(DoubleIota(amt))
+      case Seq(_: BoxedView.Instance, perp) => throw MishapInvalidIota(perp, 0, VariantIota.typeName)
+      case Seq(perp, _) => throw MishapInvalidIota(perp, 1, BoxedView.typeName)
   Patterns.register("moveconcept", se"wawdwawqdewewedqwawdwaw"):
     Patterns.mkConstAction(4):
       case Seq(isIota[BoxedView.Instance, 3](BoxedView.Instance(from)), isIota[BoxedView.Instance, 2](BoxedView.Instance(into)), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
@@ -430,6 +450,11 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
       type T = SingletonVariant
       def variant = SingletonVariant.media
       def display: Text = Text.literal("Media").styled(_.withColor(0x74b3f2)))
+  registry("heat") = c =>
+    Some(new TaggedVariant:
+      type T = SingletonVariant
+      def variant = SingletonVariant.heat
+      def display: Text = Text.literal("Heat").styled(_.withColor(0xe08355)))
 
 //noinspection UnstableApiUsage
 class SingletonVariant extends TransferVariant[SingletonVariant]:

@@ -1,0 +1,2 @@
+package dev.tizu.hexcessible.smartsig
+export SmartSig.SmartSigRegistry.register as _hexic_registerSmartSig

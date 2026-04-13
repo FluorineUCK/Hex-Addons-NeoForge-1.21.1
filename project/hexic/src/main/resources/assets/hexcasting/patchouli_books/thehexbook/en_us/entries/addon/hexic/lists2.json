@@ -1,4 +1,5 @@
 {
+    "$schema": "https://hexdoc.hexxy.media/schema/patchouli/Entry.json",
     "name": "Advanced Lists",
     "category": "hexcasting:patterns",
     "icon": "minecraft:birch_sign",
@@ -44,6 +45,18 @@
             "input": "[a], [int]",
             "output": "[a]",
             "text": "Drops from the list iotas at the given indices. All other iotas are kept in the same order as the input."
+        },
+        {
+            "type": "patchouli:empty",
+            "draw_filler": true
+        },
+        {
+            "type": "hexcasting:pattern",
+            "op_id": "hexic:connect",
+            "anchor": "hexic:connect",
+            "input": "[a], (a, a → bool)",
+            "output": "[[a]]",
+            "text": "Casts the supplied _Hex between each pair of elements in the given list, and splits the list at locations that return False."
         },
         {
             "type": "hexcasting:pattern",

@@ -963,6 +963,17 @@ lazy val itemGroup = FabricItemGroup.builder()
 val goodModulo = ne"daawdda"
 val getEntity: PartialFunction[Iota, Entity] = { case e: EntityIota => e.getEntity }
 
+extension (iota: Iota)
+  def executeInPlace(cont: SpellContinuation, cause: Iota = iota)(using vm: CastingVM): CastResult =
+    iota match
+      case li: ListIota =>
+        val l = li.getList
+        if l.getNonEmpty then
+          l.getCar.execute(vm, vm.getEnv.getWorld, cont.pushFrame(FrameFinishEval.INSTANCE).pushFrame(FrameEvaluate(l.getCdr, true)))
+        else
+          CastResult(cause, cont, null, Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.NORMAL_EXECUTE)
+      case i => i.execute(vm, vm.getEnv.getWorld, cont)
+
 def memo[T, R](f: T => R, limit: Option[Int] = Some(128)): T => R =
   val cache = limit.fold(ju.HashMap()): cap =>
     new ju.LinkedHashMap[T, R](cap + 1, 1, true):
@@ -1131,6 +1142,7 @@ def init(): Unit =
   Registries.ITEM_GROUP("group") = itemGroup
   //Registries.ITEM("echo") = EchoItem
   initChat()
+  initMacros()
   initViews()
   if fabric.isModLoaded("hexical") then
     for
@@ -1244,7 +1256,7 @@ def init(): Unit =
             HexEvalSounds.SPELL,
             for
               (_, stack) <- env.getCaster.equippedMediaweave
-              if isDev && { println(s"ok ${stack} how ya ${stack.getNbt} okie ${Option(stack.getNbt).forall(_.get("lock") == null)}"); true }
+              if !isDev || { println(s"ok ${stack} how ya ${stack.getNbt} okie ${Option(stack.getNbt).forall(_.get("lock") == null)}"); true }
               if Option(stack.getNbt).forall(_.get("lock") == null)
               e <- Seq(
                 consume,
@@ -1751,13 +1763,16 @@ def init(): Unit =
   class FilterFrame(stack: Seq[Iota], filter: Seq[Iota], focus: Iota, received: Seq[Iota], remaining: Seq[Iota]) extends ContinuationFrame:
     override def getType: ContinuationFrame.Type[FilterFrame] = filterFrameType
     override def evaluate(cont: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
-      val newReceived = vm.getImage.getStack.toSeq match
-        case Seq() => throw MishapNotEnoughArgs(1, 0)
-        case _ :+ x => if x.isTruthy then received :+ focus else received
-      val (newStack, newCont) = remaining match
-        case next +: rest => (stack :+ next, cont.pushFrame(FilterFrame(stack, filter, next, newReceived, rest)).pushFrame(FrameEvaluate(SpellList.LList(0, filter), true)))
-        case Seq() => (stack :+ ListIota(newReceived), cont)
-      CastResult(ListIota(filter), newCont, vm.getImage.withStack(_ => newStack), Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.THOTH)
+      def toMishap(mishap: Mishap) = CastResult(PatternIota(nw"qaeaqea"), cont, vm.getImage, Seq(OperatorSideEffect.DoMishap(mishap, Mishap.Context(nw"qaeaqea", null))), ResolvedPatternType.ERRORED, HexEvalSounds.MISHAP)
+      vm.getImage.getStack.toSeq match
+        case Seq() => toMishap(MishapNotEnoughArgs(1, 0))
+        case _ :+ (x: BooleanIota) =>
+          val newReceived = if x.getBool then received :+ focus else received
+          val (newStack, newCont) = remaining match
+            case next +: rest => (stack :+ next, cont.pushFrame(FilterFrame(stack, filter, next, newReceived, rest)).pushFrame(FrameEvaluate(SpellList.LList(0, filter), true)))
+            case Seq() => (stack :+ ListIota(newReceived), cont)
+          CastResult(PatternIota(nw"qaeaqea"), newCont, vm.getImage.withStack(_ => newStack), Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.THOTH)
+        case _ :+ i => toMishap(MishapInvalidIota(i, 0, BooleanIota.TYPE.typeName))
     override def serializeToNBT(): NbtCompound = NbtCompound()
       .tap(_.put("p", seqToNBT(stack.map(IotaType.serialize))))
       .tap(_.put("k", seqToNBT(received.map(IotaType.serialize))))
@@ -1765,7 +1780,7 @@ def init(): Unit =
       .tap(_.put("f", IotaType.serialize(focus)))
       .tap(_.put("d", seqToNBT(filter.map(IotaType.serialize))))
     override def breakDownwards(stack: ju.List[? <: Iota]): Pair[java.lang.Boolean, ju.List[Iota]] = Pair(true, this.stack :+ ListIota(received))
-    override def size = 0
+    override def size = (Iterable(focus) ++ stack ++ filter ++ received ++ remaining).map(_.size).sum
   Patterns.register("grep", nw"qaeaqea"):
     Patterns.mkAction: (img, cont) =>
       img.getStack.toSeq match
@@ -1780,8 +1795,68 @@ def init(): Unit =
             case _ =>
               // we can't start a filter with no iota, but it'd always be empty anyway
               (img.withStack(_.dropRight(2) :+ ListIota(Seq())), cont, HexEvalSounds.THOTH, Seq())
-        case saved:+(_: ListIota):+filter => throw MishapInvalidIota.ofType(filter, 1, "list")
-        case saved:+target:+_ => throw MishapInvalidIota.ofType(target, 1, "list")
+        case saved:+(_: ListIota):+filter => throw MishapInvalidIota(filter, 1, ListIota.TYPE.typeName)
+        case saved:+target:+_ => throw MishapInvalidIota(target, 0, ListIota.TYPE.typeName)
+  lazy val connectFrameType: ContinuationFrame.Type[ConnectFrame] = (c: NbtCompound, world: ServerWorld) =>
+    ConnectFrame(
+      stack = c.getList("p", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
+      filter = c.getList("d", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
+      done = c.getList("k", NbtElement.LIST_TYPE).asScala.collect { case l: NbtList => l.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq }.toSeq,
+      wip = c.getList("c", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
+      focus = IotaType.deserialize(c.getCompound("f"), world),
+      remaining = c.getList("r", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
+    )
+  case class ConnectFrame(stack: Seq[Iota], filter: Seq[Iota], done: Seq[Seq[Iota]], wip: Seq[Iota], focus: Iota, remaining: Seq[Iota]) extends ContinuationFrame:
+    override def getType = connectFrameType
+    override def breakDownwards(list: util.List[? <: Iota]): kotlin.Pair[lang.Boolean, util.List[Iota]] = ???
+    override def evaluate(next: SpellContinuation, world: ServerWorld, vm: CastingVM): CastResult =
+      def toMishap(mishap: Mishap) = CastResult(PatternIota(nw"qaeaqeeaqwaqa"), next, vm.getImage, Seq(OperatorSideEffect.DoMishap(mishap, Mishap.Context(nw"qaeaqeeaqwaqa", null))), ResolvedPatternType.ERRORED, HexEvalSounds.MISHAP)
+      vm.getImage.getStack.toSeq match
+        case Seq() => toMishap(MishapNotEnoughArgs(expected = 1, got = 0))
+        case _ :+ (x: BooleanIota) =>
+          val (newDone, newWip) =
+            if x.getBool then
+              // no slice here
+              (done, wip :+ focus)
+            else
+              // slice and start a new wip
+              (done :+ wip, Seq(focus))
+          remaining match
+            case Seq() =>
+              // we're free, restore saved stack and push results
+              val fin = newDone :+ newWip
+              val finIota = ListIota(fin.map(ListIota(_)))
+              CastResult(PatternIota(nw"qaeaqeeaqwaqa"), next, vm.getImage() (stack = stack :+ finIota), Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.THOTH)
+            case newFocus +: newRemaining =>
+              // prepare for next iteration
+              val nextWithEval = next.pushFrame(copy(done = newDone, wip = newWip, focus = newFocus, remaining = newRemaining)).pushFrame(FrameEvaluate(SpellList.LList(0, filter), true))
+              CastResult(PatternIota(nw"qaeaqeeaqwaqa"), nextWithEval, vm.getImage() (stack = stack :+ focus :+ newFocus), Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.THOTH)
+        case _ :+ i => toMishap(MishapInvalidIota(i, 0, BooleanIota.TYPE.typeName))
+    override def serializeToNBT: NbtCompound = NbtCompound()
+      .tap(_.put("p", seqToNBT(stack.map(IotaType.serialize))))
+      .tap(_.put("k", seqToNBT(done.map(k => seqToNBT(k.map(IotaType.serialize))))))
+      .tap(_.put("c", seqToNBT(wip.map(IotaType.serialize))))
+      .tap(_.put("r", seqToNBT(remaining.map(IotaType.serialize))))
+      .tap(_.put("f", IotaType.serialize(focus)))
+      .tap(_.put("d", seqToNBT(filter.map(IotaType.serialize))))
+    override def size: Int = (Iterable(focus) ++ filter ++ done.iterator.flatten ++ wip ++ remaining).map(_.size).sum
+  // edge-detection pattern, casts $filter with each n=2 window from $target then splits between iotas where it returns false
+  // ^ [a], (^ a, a → bool) → ^ [[a]]
+  Patterns.register("connect", nw"qaeaqeeaqwaqa"):
+    Patterns.mkAction: (img, cont) =>
+      img.getStack.toSeq match
+        case Seq() => throw MishapNotEnoughArgs(2, 0)
+        case Seq(_) => throw MishapNotEnoughArgs(2, 1)
+        case saved:+(target: ListIota):+(filter: ListIota) =>
+          target.getList.toSeq match
+            case prev +: focus +: remaining =>
+              // put the first two iotas on the stack and arrange for the rest of the procedure
+              (img(stack = saved :+ prev :+ focus), cont.pushFrame(ConnectFrame(stack = saved, filter = filter.getList.toSeq, done = Seq(), wip = Seq(prev), focus = focus, remaining = remaining)).pushFrame(FrameEvaluate(filter.getList, true)), HexEvalSounds.THOTH, Seq())
+            case l =>
+              // these seqs are too short to meaningfully slice
+              (img.withStack(_.dropRight(2) :+ ListIota(l)), cont, HexEvalSounds.THOTH, Seq())
+        case saved:+(_: ListIota):+filter => throw MishapInvalidIota(filter, 1, ListIota.TYPE.typeName)
+        case saved:+target:+_ => throw MishapInvalidIota(target, 0, ListIota.TYPE.typeName)
   Patterns.register("extract", nw"dewaqawed"):
     Patterns.mkConstAction(2):
       case Seq(ary: ListIota, nr: DoubleIota) =>
@@ -2325,7 +2400,7 @@ object CastingEngine extends BlockWithEntity(AbstractBlock.Settings.copy(Blocks.
         // Δt=(M-ω)/α
         val Δt1 = (ωMax-ω)/α
         val Δt2 = Δt - Δt1;
-        (θ+ω*Δt1+α*Δt1*Δt1+ωMax*Δt2/2,ωMax)
+        (θ+ω*Δt1+α*Δt1*Δt1/2+ωMax*Δt2,ωMax)
       else
         (θ+ω*Δt+α*Δt*Δt/2,ω+α*Δt)
     //endregion

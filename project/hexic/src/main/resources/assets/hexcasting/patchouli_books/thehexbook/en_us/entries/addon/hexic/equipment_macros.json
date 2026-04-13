@@ -1,0 +1,16 @@
+{
+  "name": "Pattern Etching",
+  "category": "hexcasting:patterns",
+  "icon": "minecraft:brush",
+  "pages": [
+    "I've discovered a convenient way to etch _Hexes into pieces of equipment I wear, providing me with an easy way to share them with others (though not as easy-to-use as a proper casting item, of course). These so-called ‘equipment macros’ are exposed to my casts whenever they are on an item I'm wearing: items in my hands, armor I'm wearing, or trinkets I have equipped.",
+    {
+      "type": "hexcasting:pattern",
+      "anchor": "hexic:mkmacro",
+      "op_id": "hexic:mkmacro",
+      "input": "pattern, str?, entity, iota",
+      "output": "",
+      "text": "Etches a macro into the given item entity with the given name (optional); removes a macro if the hex (topmost argument) is null. New macros cost 5 dust; replacing/removing macros is free."
+    }
+  ]
+}

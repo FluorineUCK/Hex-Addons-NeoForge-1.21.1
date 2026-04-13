@@ -184,6 +184,7 @@ dependencies {
     modRuntimeOnly("com.unascribed:lib39-phantom:[2.0.0,3.0.0)!!2.0.27+1.20.1")
     modRuntimeOnly("com.unascribed:lib39-lockpick:[2.0.0,3.0.0)!!2.0.27+1.20.1")
     modLocalRuntime("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
+    modCompileOnly("maven.modrinth:hexcessible:0.2.0")
     modLocalRuntime("maven.modrinth:hexcessible:0.2.0")
     modLocalRuntime("maven.modrinth:complex-hex:0.1.3-beta")
 }
@@ -234,7 +235,7 @@ tasks.processResources {
             depends("jsonpatcher", "^1.0.0-beta.4+mc.1.20.1")
             depends("hexpose", ">=1.0.0 <3.0.0")
             depends("trinkets", "^3.7.2")
-            depends("phlib", ">=0.1.2 <0.2.0")
+            depends("phlib", ">=0.1.3 <0.2.0")
             conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
             breaks("java", ">=26")
 
