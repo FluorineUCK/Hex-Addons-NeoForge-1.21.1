@@ -14,7 +14,7 @@ import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, Contin
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, CastingEnvironmentComponent, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens, MishapBadOffhandItem as MishapBadOffpawItem}
 import at.petrak.hexcasting.api.pigment.FrozenPigment
 import at.petrak.hexcasting.api.utils.{HexUtils, MediaHelper}
 import at.petrak.hexcasting.common.lib.{HexAttributes, HexItems, HexRegistries, HexSounds}
@@ -73,7 +73,7 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, LiteralTextContent, MutableText, Style, Text, TextColor, TextContent, Texts}
 import net.minecraft.util.dynamic.Codecs
 import net.minecraft.util.math.{BlockPointer, BlockPos, ChunkPos, Direction, Vec3d}
-import net.minecraft.util.{ActionResult, Arm, ClickType, DyeColor, Formatting, Hand, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath}
+import net.minecraft.util.{ActionResult, Arm, ClickType, DyeColor, Formatting, Identifier, Rarity, TypedActionResult, Util, Uuids, WorldSavePath, Hand as Paw}
 import net.minecraft.world.biome.Biome
 import net.minecraft.world.{BlockView, TeleportTarget, World}
 import org.eu.net.pool.hexic
@@ -492,18 +492,18 @@ given [T <: java.lang.Enum[T]: ClassTag as ct] => FromString[T]:
 
 case class Pen private [hexic] (color: DyeColor) extends Item(Item.Settings().maxCount(1)) with Registered(Registries.ITEM, s"pen/$color"):
   override def toString = s"$getClass(color=$color)${super[Item].toString}"
-  override def use(world: World, player: PlayerEntity, hand: Hand): TypedActionResult[ItemStack] =
+  override def use(world: World, player: PlayerEntity, paw: Paw): TypedActionResult[ItemStack] =
     // if player.getAttributeValue(HexAttributes.FEEBLE_MIND) > 0.0 then
-    //   TypedActionResult.fail(player.getStackInHand(hand))
+    //   TypedActionResult.fail(player.getStackInHand(paw))
     // else
       if !world.isClient && player.isInstanceOf[ServerPlayerEntity] then
         val serverPlayer: ServerPlayerEntity = player.asInstanceOf[ServerPlayerEntity]
-        val vm = IXplatAbstractions.INSTANCE.getStaffcastVM(serverPlayer, hand)
+        val vm = IXplatAbstractions.INSTANCE.getStaffcastVM(serverPlayer, paw)
         val patterns = IXplatAbstractions.INSTANCE.getPatternsSavedInUi(serverPlayer).asScala
         val descs = vm.generateDescs
-        IXplatAbstractions.INSTANCE.sendPacketToPlayer(serverPlayer, new MsgOpenSpellGuiS2C(hand, patterns, descs.getFirst, descs.getSecond, 0))
+        IXplatAbstractions.INSTANCE.sendPacketToPlayer(serverPlayer, new MsgOpenSpellGuiS2C(paw, patterns, descs.getFirst, descs.getSecond, 0))
       player.incrementStat(Stats.USED.getOrCreateStat(this))
-      TypedActionResult.success(player.getStackInHand(hand))
+      TypedActionResult.success(player.getStackInHand(paw))
 object Pen:
   val instances: DyeColor :> Pen = DyeColor.values.map(c => c -> new Pen(c)).toMap
 
@@ -923,7 +923,7 @@ object MediaBundle:
   private val DUST_AMOUNT = new DecimalFormat("###,###.##")
 val wizard = Item(Item.Settings().rarity(Rarity.EPIC).maxCount(1))
 
-val aLotOfMedia = (200000 /* max phial size */ * 6 /* phials per small pouch */ * 4 /* small pouches per large pouch */ * (36 /* inventory slots */ + 4 /* armor slots */ + 2 /* offhands */) + 20 /* healthcasting */) * MediaConstants.DUST_UNIT
+val aLotOfMedia = (200000 /* max phial size */ * 6 /* phials per small pouch */ * 4 /* small pouches per large pouch */ * (36 /* inventory slots */ + 4 /* armor slots */ + 2 /* offpaws */) + 20 /* healthcasting */) * MediaConstants.DUST_UNIT
 
 class Event[T, R](default: T => R) extends (T => R):
   private var current = default
@@ -1104,9 +1104,9 @@ def init(): Unit =
       override def getCollisionShape(state: BlockState, world: BlockView, pos: BlockPos, context: ShapeContext): VoxelShape =
         getOutlineShape(state, world, pos, context)
 
-      override def onUse(state: BlockState, world: World, pos: BlockPos, player: PlayerEntity, hand: Hand, hit: BlockHitResult): ActionResult = boundary:
+      override def onUse(state: BlockState, world: World, pos: BlockPos, player: PlayerEntity, paw: Paw, hit: BlockHitResult): ActionResult = boundary:
         lazy val entity = findEntity(world, pos).getOrElse(boundary.break(ActionResult.FAIL))
-        player.getStackInHand(hand) match
+        player.getStackInHand(paw) match
           case stack@ItemStackAccess(HexItems.CHARGED_AMETHYST, _, _) if !(for i <- 0 until 14; j <- 0 until 14 yield entity.bit(i, j)).all =>
             for i <- 0 until 14; j <- 0 until 14 do
               entity.bit(i, j) = true
@@ -1146,12 +1146,12 @@ def init(): Unit =
       registerHopperEndpoint <- classNamed("org.eu.net.pool.registerHopperEndpoint")
     do
       registerHopperEndpoint.runtimeClass.newInstance().asInstanceOf[() => Unit]()
-    Patterns.register("dye_offhand", w"eqdeeqdweeqddqdwwdew"):
+    Patterns.register("dye_offpaw", w"eqdeeqdweeqddqdwwdew"):
       Patterns.mkAction: (img, cont) =>
         val stack = img.getStack.asScala
         stack.lastOption.getOrElse(throw MishapNotEnoughArgs(1, 0)) match
           case p: PigmentIota =>
-            val info = summon[CastingEnvironment].getHeldItemToOperateOn(!_.isEmpty).pipe(Option(_)).getOrElse(throw MishapBadOffhandItem(null, Text.translatable("text.hexic.pigment_holder_item")))
+            val info = summon[CastingEnvironment].getHeldItemToOperateOn(!_.isEmpty).pipe(Option(_)).getOrElse(throw MishapBadOffpawItem(null, Text.translatable("text.hexic.pigment_holder_item")))
             (img.withStack(_.init), cont, HexEvalSounds.SPELL, Seq:
               OperatorSideEffect.AttemptSpell(
                 new RenderedSpell:
@@ -1587,7 +1587,7 @@ def init(): Unit =
       summon[CastingEnvironment].getCastingEntity match
         case caster: ServerPlayerEntity =>
           val staffcast = HexCardinalComponents.STAFFCAST_IMAGE.get(caster)
-          val oldImage = staffcast.getVM(Hand.MAIN_HAND).getImage
+          val oldImage = staffcast.getVM(Paw.MAIN_HAND).getImage
           staffcast.setImage(img)
           val vm = staffcast.getVM(summon[CastingEnvironment].getCastingHand)
           try

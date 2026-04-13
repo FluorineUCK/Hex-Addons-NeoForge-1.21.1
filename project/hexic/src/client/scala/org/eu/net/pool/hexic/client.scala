@@ -328,7 +328,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "decollar" -> "Untie Mediaweave",
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",
-          "dye_offhand" -> "Apply Pigment",
+          "dye_offpaw" -> "Apply Pigment",
           "erase" -> "Erase Block",
           "extract" -> "Excisor's Gambit",
           "findview" -> "Reflection Purification",
@@ -386,7 +386,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           case p: PigmentItem => gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
           case e => println(e)
         for page -> text <- Vector(
-          "dye_offhand" -> "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.",
+          "dye_offpaw" -> "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.",
           "erase" -> "Erases the _Hex or iota contained within a dropped item or block. Costs one dust per item.",
           "get_other_caster" -> "Adds the closest sentient being, excluding me, to the stack.",
           "modulo" -> "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.",
