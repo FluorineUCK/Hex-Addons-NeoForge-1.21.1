@@ -1808,7 +1808,7 @@ def init(): Unit =
     ConnectFrame(
       stack = c.getList("p", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
       filter = c.getList("d", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
-      done = c.getList("k", NbtElement.LIST_TYPE).asScala.map(_.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq).toSeq,
+      done = c.getList("k", NbtElement.LIST_TYPE).asScala.collect { case l: NbtList => l.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq }.toSeq,
       wip = c.getList("c", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
       focus = IotaType.deserialize(c.getCompound("f"), world),
       remaining = c.getList("r", NbtElement.COMPOUND_TYPE).asScala.collect { case c: NbtCompound => IotaType.deserialize(c, world) }.toSeq,
