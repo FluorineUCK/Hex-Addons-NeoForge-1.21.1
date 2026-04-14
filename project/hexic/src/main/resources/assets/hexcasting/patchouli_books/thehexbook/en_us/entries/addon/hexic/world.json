@@ -27,7 +27,7 @@
       "type": "hexcasting:pattern",
       "op_id": "hexic:deleteworld",
       "anchor": "hexic:deleteworld",
-      "input": "imprint, vec",
+      "input": "imprint",
       "output": "",
       "text": "Ruptures the boundaries of the given demiplane, destroying its contents. All dropped items and experience are spewed at the plane's attachment point. Costs five shards."
     }
