@@ -30,6 +30,10 @@ public class ItemStackMixin {
 
     @WrapOperation(method = {"writeNbt", "method_7953"}, at = @At(value = "INVOKE", target = "Lnet/minecraft/nbt/NbtCompound;putByte(Ljava/lang/String;B)V"))
     void eatsYourByteCutely(NbtCompound instance, String key, byte value, Operation<Void> original) {
+        int minSize = cfg.apply("hexic.min_stack_size", Integer::parseInt).getOrElse(() -> 0);
+        int maxSize = cfg.apply("hexic.max_stack_size", Integer::parseInt).getOrElse(() -> Integer.MAX_VALUE);
+        if (count < minSize) count = minSize;
+        if (count > maxSize) count = maxSize;
         instance.putInt(key, count);
     }
     
