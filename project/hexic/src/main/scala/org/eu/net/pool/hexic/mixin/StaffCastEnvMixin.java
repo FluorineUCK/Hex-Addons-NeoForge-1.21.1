@@ -62,9 +62,9 @@ public abstract class StaffCastEnvMixin implements PenAccess {
             return;
         }
         // TODO: consider whether shards should intercept pen patterns
-        ItemStack offhandStack = sender.getStackInHand(vm.getEnv().getOtherHand());
-        if (offhandStack.isOf(ECHO_SHARD)) {
-            NbtCompound tag = offhandStack.getOrCreateNbt();
+        ItemStack offpawStack = sender.getStackInHand(vm.getEnv().getOtherHand());
+        if (offpawStack.isOf(ECHO_SHARD)) {
+            NbtCompound tag = offpawStack.getOrCreateNbt();
             NbtList queuedPatterns = tag.getList("hexic:memory", NbtElement.COMPOUND_TYPE);
             queuedPatterns.add(IotaType.serialize(new PatternIota(msg.pattern())));
             tag.put("hexic:memory", queuedPatterns);
