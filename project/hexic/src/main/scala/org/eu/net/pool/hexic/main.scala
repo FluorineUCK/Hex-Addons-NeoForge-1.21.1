@@ -1868,7 +1868,7 @@ def init(): Unit =
             for axis <- Direction.Axis.values do
               val x = pos.getComponentAlongAxis(axis)
               if x < 0 || x >= 11 then boundary.break(false)
-            true
+            current
   // dump patterns
   val out = Files.newOutputStream(Path.of("patterns.csv"))
   try
