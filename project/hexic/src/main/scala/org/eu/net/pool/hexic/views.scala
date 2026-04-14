@@ -12,17 +12,19 @@ import com.samsthenerd.inline.api.data.ItemInlineData
 import com.samsthenerd.inline.impl.InlineStyle
 import net.fabricmc.fabric.api.dimension.v1.FabricDimensions
 import net.fabricmc.fabric.api.event.{Event, EventFactory}
+import net.fabricmc.fabric.api.resource.ResourceReloadListenerKeys
 import net.fabricmc.fabric.api.transfer.v1.fluid.FluidVariant
 import net.fabricmc.fabric.api.transfer.v1.item.{ItemStorage, ItemVariant}
 import net.fabricmc.fabric.api.transfer.v1.storage.{Storage, TransferVariant}
 import net.fabricmc.fabric.api.transfer.v1.transaction.base.SnapshotParticipant
 import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, TransactionContext}
-import net.minecraft.block.BlockState
+import net.minecraft.block.{AbstractFurnaceBlock, BlockState}
 import net.minecraft.block.entity.AbstractFurnaceBlockEntity
-import net.minecraft.entity.Entity
+import net.minecraft.entity.decoration.ItemFrameEntity
 import net.minecraft.entity.player.PlayerEntity
-import net.minecraft.fluid.Fluid
-import net.minecraft.item.Item
+import net.minecraft.entity.{Entity, ItemEntity}
+import net.minecraft.fluid.{Fluid, Fluids}
+import net.minecraft.item.{Item, Items}
 import net.minecraft.nbt.{NbtCompound, NbtElement, NbtList, NbtLong}
 import net.minecraft.registry.{RegistryKey, RegistryKeys}
 import net.minecraft.server.MinecraftServer
@@ -30,15 +32,17 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.text.{HoverEvent, MutableText, Text}
 import net.minecraft.util.Identifier
 import net.minecraft.util.math.{BlockPos, Box}
-import net.minecraft.world.{TeleportTarget, World}
+import net.minecraft.world.{BlockView, TeleportTarget, World}
 import org.eu.net.pool.phlib.{*, given}
 import org.slf4j.{Logger, LoggerFactory}
+import ram.talia.moreiotas.api.casting.iota.{ItemStackIota, ItemTypeIota}
 
 import java.util.UUID
+import scala.annotation.tailrec
 import scala.collection.immutable.ArraySeq.unsafeWrapArray
 import scala.collection.mutable
 import scala.reflect.ClassTag
-import scala.util.{Failure, Success, Using}
+import scala.util.{Failure, Success, Using, boundary}
 
 trait InventoryView(val viewType: InventoryView.Type[?]) extends InventoryView.Handler:
   def isTruthy = true
@@ -48,6 +52,7 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
     def deserialize(data: NbtCompound)(using ServerWorld): Option[T]
   trait Handler:
     def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = None
+    def contents(using TransactionContext, CastingEnvironment): Set[VariantIota[?]] = Set()
     def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
     def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = 0
     def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment): Long =
@@ -72,6 +77,7 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   abstract class OfMerged(viewType: InventoryView.Type[?], views: => Seq[Handler]) extends InventoryView(viewType):
     def getViews = views
     override def apply(idx: Int)(using CastingEnvironment): Option[SlotReference] = views.collectFirst(Function.unlift(_(idx)))
+    override def contents(using TransactionContext, CastingEnvironment) = views.flatMap(_.contents).toSet
     override def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryExtract(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
     override def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = LazyList.from(views).scanLeft(0L)((n, view) => view.tryInsert(variant, amount - n) + n).findFirstOrLast(_ >= amount).getOrElse(0)
     override def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment) = views.map(_.capacity(variant)).sum
@@ -105,13 +111,6 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
       if w.getPath != "overworld" then c.put("w", w.getPath)
       c.putLong("p", pos.asLong)
       c
-  class OfExactEntity(entity: => Entity)(using ServerWorld) extends InventoryView(typeOfExactEntity):
-    override val viewType = typeOfExactEntity
-    override def entities(using TransactionContext) = Set(entity)
-    override def serialize =
-      val c = super.serialize
-      // TODO
-      c
   def deserialize(data: NbtCompound)(using ServerWorld): Option[InventoryView] = for
     id <- Option(Identifier.tryParse(data.getString("id")))
     viewType <- Option(InventoryView.registry.get(id))
@@ -126,7 +125,9 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
         view <- InventoryView.deserialize(c)
       yield view)*))
   private given typeOfEntity: InventoryView.Type[OfEntity]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfEntity] = ???
+    override def deserialize(data: NbtCompound)(using world: ServerWorld): Option[OfEntity] =
+      given MinecraftServer = world.getServer
+      Some(OfEntity(UUID(data.getLong("m"), data.getLong("l"))))
   private given typeOfBlock: InventoryView.Type[OfBlock]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfBlock] =
       for
@@ -137,17 +138,15 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
         key = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(namespace, path))
         given ServerWorld <- Option(summon[ServerWorld].getServer.getWorld(key))
       yield OfBlock(pos)
-  private given typeOfExactEntity: InventoryView.Type[OfExactEntity]:
-    override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfExactEntity] = ???
   registry("sum") = typeOfSum
   registry("entity") = typeOfEntity
   registry("block") = typeOfBlock
-  registry("exact") = typeOfExactEntity
   Events.forBlock.register: (pos, state) =>
     val storage = ItemStorage.SIDED.find(summon, pos, null): Storage[ItemVariant]
     if storage == null then Seq()
     else Seq(
       new Handler:
+        override def contents(using TransactionContext, CastingEnvironment): Set[VariantIota[?]] = storage.nonEmptyIterator.map(v => VariantIota(v.getResource, RegistryKey.of(VariantIota.key, Identifier("item")))).toSet
         override def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long =
           variant match
             case i: ItemVariant => storage.insert(i, amount, summon)
@@ -167,7 +166,10 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
           true
       )
     else Seq()
-  trait SingleVariantHandler(variant: TransferVariant[?]) extends Handler:
+  trait SingleVariantHandler[O: ClassTag](variant: TransferVariant[O], key: RegistryKey[VariantIota.Reader]) extends Handler:
+    def asIota = VariantIota(variant, key)
+    def isPresent(using TransactionContext, CastingEnvironment): Boolean = true
+    override def contents(using TransactionContext, CastingEnvironment): Set[VariantIota[?]] = if isPresent then Set(asIota) else Set()
     override def tryExtract(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = if variant == this.variant then trySubtract(amount) else 0L
     override def tryInsert(variant: TransferVariant[?], amount: Long)(using TransactionContext, CastingEnvironment): Long = if variant == this.variant then tryAdd(amount) else 0L
     override def capacity(variant: TransferVariant[?])(using TransactionContext, CastingEnvironment): Long = if variant == this.variant then cap else 0L
@@ -177,7 +179,7 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
 
   Events.forBlock.register: (pos, state) =>
     summon[ServerWorld].getBlockEntity(pos) match
-      case e: BlockEntityAbstractImpetus => Seq(new SingleVariantHandler(SingletonVariant.media) {
+      case e: BlockEntityAbstractImpetus => Seq(new SingleVariantHandler(SingletonVariant.media, RegistryKey.of(VariantIota.key, "media")) {
         private def mediaCapacity = 9000000000000000000L - e.getMedia
         override def trySubtract(amount: Long)(using TransactionContext, CastingEnvironment): Long =
           val toExtract = amount min e.getMedia
@@ -193,10 +195,11 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   Events.forBlock.register: (pos, state) =>
     summon[ServerWorld].getBlockEntity(pos) match
       case e: AbstractFurnaceBlockEntity => Seq(
-        new SingleVariantHandler(SingletonVariant.heat):
+        new SingleVariantHandler(SingletonVariant.heat, RegistryKey.of(VariantIota.key, "heat")):
           override def trySubtract(amount: Long)(using TransactionContext, CastingEnvironment): Long =
             val action = (amount min e.burnTime).toInt
             doSnapshot(e.burnTime, e.burnTime = _)(e.burnTime - action)
+            doSnapshot(summon[ServerWorld].getBlockState(pos), summon[ServerWorld].setBlockState(pos, _, 3))(summon[ServerWorld].getBlockState(pos).`with`(AbstractFurnaceBlock.LIT, true))
             action
           override def tryAdd(amount: Long)(using TransactionContext, CastingEnvironment): Long =
             val action = (amount min cap).toInt
@@ -230,7 +233,7 @@ def doSnapshot[T](current: => T, apply: T => Unit)(toApply: T)(using tx: Transac
 
 object BoxedView extends IotaType[BoxedView.Instance]:
   InventoryView
-  class Instance(val view: InventoryView) extends Iota(BoxedView, view):
+  case class Instance(view: InventoryView) extends Iota(BoxedView, view):
     export view.{isTruthy, serialize}
     override def toleratesOther(that: Iota): Boolean = that match
       case that: BoxedView.Instance => view == that.view
@@ -297,20 +300,27 @@ def initViews() =
   setConceptScale[SingletonVariant.heat.type](20)
   Patterns.register("moveconcept", se"wawdwawqdewewedqwawdwaw"):
     Patterns.mkConstAction(4):
-      case Seq(isIota[BoxedView.Instance, 3](from), isIota[BoxedView.Instance, 2](into), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
-        Using.resource(Transaction.openOuter()):
+      case Seq(isIota[BoxedView.Instance, 3](BoxedView.Instance(from)), isIota[BoxedView.Instance, 2](BoxedView.Instance(into)), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
+        val key = ClassTag(typ.data.getClass)
+        val scale = conceptScale(key)
+        @tailrec def negotiate(limit: Long): Seq[Iota] =
+          val compromise = Using.resource(Transaction.openOuter()):
+            case tx@given TransactionContext =>
+              val extracted = (from: InventoryView).tryExtract((typ: VariantIota[?]).data, limit)
+              val inserted = (into: InventoryView).tryInsert((typ: VariantIota[?]).data, extracted)
+              if extracted == inserted then
+                tx.commit()
+                return Seq(DoubleIota(inserted / scale))
+              else
+                inserted
+          negotiate(compromise)
+        val initialLimit = Using.resource(Transaction.openOuter()):
           case tx@given TransactionContext =>
-            val key = ClassTag(typ.data.getClass)
-            val scale = conceptScale(key)
-            val toExtract = (scale * count.getDouble).toLong
-            val extract = from.view.tryExtract(typ.data, toExtract)
-            if extract < toExtract then
-              ??? // TODO: mishap
-            val insert = into.view.tryInsert(typ.data, extract)
-            if insert < extract then
-              ??? // TODO: mishap
-            tx.commit()
-            Seq(DoubleIota(insert / scale))
+            val value = (into: InventoryView).tryInsert(typ.data, (scale * count.getDouble).toLong)
+            tx.abort()
+            value
+        negotiate(initialLimit)
+
   Patterns.register("moveentity", se"edeeewawdweaaddaqwqwqaddaaewdwawewdqd"):
     Patterns.mkConstAction(3):
       case Seq(isIota[BoxedView.Instance, 2](from), isIota[BoxedView.Instance, 1](into), isIota[DoubleIota, 0](count)) =>
@@ -319,7 +329,40 @@ def initViews() =
             val count = from.view.entities.count(into.view.teleportEntity)
             if count > 0 then tx.commit()
             Seq(DoubleIota(count))
-
+  Patterns.register("thinkaboutit", e"awqawewaqw"):
+    Patterns.mkConstAction(1):
+      case Seq(iota) =>
+        def dieOfBadType() = throw MishapInvalidIota.of(iota, 0, "hexic:not_eldritch_horror")
+        iota match
+          case BoxedView.Instance(view) =>
+            Using.resource(Transaction.openOuter()):
+              case given TransactionContext =>
+                Seq(ListIota(view.contents.toSeq))
+          case i: ItemStackIota => Seq(if i.getItemStack.getItem == Items.AIR then NullIota() else VariantIota(ItemVariant.of(i.getItemStack), RegistryKey.of(VariantIota.key, Identifier("item"))))
+          case i: ItemTypeIota => Seq(if i.getItem == Items.AIR then NullIota() else VariantIota(ItemVariant.of(i.getItem), RegistryKey.of(VariantIota.key, Identifier("item"))))
+          case v: Vec3Iota =>
+            val pos = BlockPos.ofFloored(v.getVec3)
+            summon[CastingEnvironment].assertPosInRange(pos)
+            val state = summon[BlockView].getBlockState(pos)
+            if state.isAir then
+              Seq(NullIota())
+            else
+              state.getFluidState.getFluid match
+                case Fluids.EMPTY =>
+                  state.getBlock.asItem match
+                    case null | Items.AIR =>
+                      state.getBlock.getPickStack(summon, pos, state) match
+                      case null | Items.AIR =>
+                        Seq(NullIota())
+                      case item => Seq(VariantIota(ItemVariant.of(item), RegistryKey.of(VariantIota.key, Identifier("item"))))
+                    case item => Seq(VariantIota(ItemVariant.of(item), RegistryKey.of(VariantIota.key, Identifier("item"))))
+                case fluid => Seq(VariantIota(FluidVariant.of(fluid), RegistryKey.of(VariantIota.key, Identifier("fluid"))))
+          case e: EntityIota if !e.getEntity.isRemoved =>
+            e.getEntity match
+              case s: ItemEntity => Seq(if s.getStack.getItem == Items.AIR then NullIota() else VariantIota(ItemVariant.of(s.getStack), RegistryKey.of(VariantIota.key, Identifier("item"))))
+              case s: ItemFrameEntity => Seq(if s.getHeldItemStack.getItem == Items.AIR then NullIota() else VariantIota(ItemVariant.of(s.getHeldItemStack), RegistryKey.of(VariantIota.key, Identifier("item"))))
+              case _ => dieOfBadType()
+          case _ => dieOfBadType()
 //noinspection UnstableApiUsage
 case class VariantIota[T: ClassTag](data: TransferVariant[T], key: RegistryKey[VariantIota.Reader]) extends Iota(VariantIota, data):
   override def isTruthy: Boolean = true
