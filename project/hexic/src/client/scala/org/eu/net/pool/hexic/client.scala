@@ -325,6 +325,8 @@ def datagen(gen: FabricDataGenerator): Unit =
           "attachworld" -> "Bind Demiplane",
           "blind" -> "Hidden Sun's Nadir",
           "collar" -> "Tie Mediaweave",
+          "conceptavailable" -> "Debit Purification",
+          "conceptremaining" -> "Credit Purification",
           "decollar" -> "Untie Mediaweave",
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",

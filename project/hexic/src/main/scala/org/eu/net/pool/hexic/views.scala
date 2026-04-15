@@ -300,6 +300,26 @@ def initViews() =
   setConceptScale[FluidVariant](81000)
   setConceptScale[SingletonVariant.media.type](10000)
   setConceptScale[SingletonVariant.heat.type](20)
+  Patterns.register("conceptavailable", sw"wedwqwdewwaqaa"):
+    Patterns.mkConstAction(2):
+      case Seq(BoxedView.Instance(target), VariantIota(typ, _)) =>
+        Using.resource(Transaction.openOuter()):
+          case tx@given Transaction =>
+            val amt = target.tryExtract(typ, Long.MaxValue) / conceptScale(ClassTag(typ.getClass))
+            tx.abort()
+            Seq(DoubleIota(amt))
+      case Seq(_: BoxedView.Instance, perp) => throw MishapInvalidIota(perp, 0, VariantIota.typeName)
+      case Seq(perp, _) => throw MishapInvalidIota(perp, 1, BoxedView.typeName)
+  Patterns.register("conceptremaining", sw"wedwqwdewadedd"):
+    Patterns.mkConstAction(2):
+      case Seq(BoxedView.Instance(target), VariantIota(typ, _)) =>
+        Using.resource(Transaction.openOuter()):
+          case tx@given Transaction =>
+            val amt = target.tryInsert(typ, Long.MaxValue) / conceptScale(ClassTag(typ.getClass))
+            tx.abort()
+            Seq(DoubleIota(amt))
+      case Seq(_: BoxedView.Instance, perp) => throw MishapInvalidIota(perp, 0, VariantIota.typeName)
+      case Seq(perp, _) => throw MishapInvalidIota(perp, 1, BoxedView.typeName)
   Patterns.register("moveconcept", se"wawdwawqdewewedqwawdwaw"):
     Patterns.mkConstAction(4):
       case Seq(isIota[BoxedView.Instance, 3](BoxedView.Instance(from)), isIota[BoxedView.Instance, 2](BoxedView.Instance(into)), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
