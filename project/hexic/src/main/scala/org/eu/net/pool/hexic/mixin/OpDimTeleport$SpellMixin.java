@@ -14,6 +14,7 @@ import org.eu.net.pool.hexic.JavaPlaneAccess;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(targets = "net.beholderface.oneironaut.casting.patterns.spells.great.OpDimTeleport$Spell")
@@ -42,6 +43,13 @@ class OpDimTeleport$SpellMixin {
       coords = dest._2;
     }
   }
+
+  @WrapOperation(method = "cast(Lat/petrak/hexcasting/api/casting/eval/CastingEnvironment;)V", at = @At(value = "INVOKE", target = "Lkotlin/jvm/internal/Intrinsics;areEqual(Ljava/lang/Object;Ljava/lang/Object;)Z"), slice = @Slice(from = @At(value = "INVOKE", target = "Lat/petrak/hexcasting/api/casting/eval/CastingEnvironment;getPigment()Lat/petrak/hexcasting/api/pigment/FrozenPigment;"), to = @At(value = "INVOKE", target = "Lnet/minecraft/server/network/ServerPlayerEntity;sendMessage(Lnet/minecraft/text/Text;)V")))
+  boolean lieAboutEquality(Object first, Object second, Operation<Boolean> original) {
+    System.out.printf("considering lying (value=%s, from=%s, to=%s)\n", original, fromDemiplane, toDemiplane);
+    return (!fromDemiplane || toDemiplane) && original.call(first, second);
+  }
+
   @WrapOperation(method = "cast(Lat/petrak/hexcasting/api/casting/eval/CastingEnvironment;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/dimension/DimensionType;coordinateScale()D", ordinal = -1))
   double wrapCoordinateScale(DimensionType instance, Operation<Double> original) {
     return toDemiplane ? 1.0 : original.call(instance);
