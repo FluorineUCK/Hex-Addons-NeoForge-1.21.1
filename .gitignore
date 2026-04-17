@@ -129,14 +129,14 @@ runs/
 !libs/*.jar
 
 # Hexdoc
-*.egg-info
-.hexdoc/
-.vscode/
-__pycache__/
-_site/
-doc/src/hexdoc_hexic/__version__.py
-doc/src/hexdoc_hexic/__gradle_version__.py
-doc/src/hexdoc_hexic/_export/generated/
+**/*.egg-info
+**/.hexdoc/
+**/.vscode/
+**/__pycache__/
+**/_site/
+**/doc/src/hexdoc_*/__version__.py
+**/doc/src/hexdoc_*/__gradle_version__.py
+**/doc/src/hexdoc_*/_export/generated/
 
 # Chloebuild
 .cb_cache
