@@ -347,7 +347,8 @@ allprojects {
     }
 
     tasks.withType<ScalaCompile>().configureEach {
-        scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature", "-Ycc-debug"))
+        scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-experimental", "-Xprint:all"))
+        scalaCompileOptions.forkOptions.memoryMaximumSize = "4G"
     }
 }
 

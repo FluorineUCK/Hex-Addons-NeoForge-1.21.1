@@ -88,6 +88,11 @@ allprojects {
         plugins.withId("fabric-loom") {
             extensions.getByType<LoomGradleExtensionAPI>().apply {
                 splitEnvironmentSourceSets()
+
+                runs.configureEach {
+                    isIdeConfigGenerated = true
+                }
+
                 runs["client"].programArgs += listOf(
                     "--username",
                     "Player",

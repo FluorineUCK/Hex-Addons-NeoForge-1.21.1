@@ -10,7 +10,9 @@ pkgs.mkShell {
   LD_LIBRARY_PATH = if pkgs.system == "x86_64-linux" then pkgs.symlinkJoin {
     name = "extraLibs";
     paths = [
+      "${pkgs.alsa-lib}/lib"
       "${pkgs.apulse}/lib/apulse"
+      "${pkgs.libpulseaudio}/lib"
       "${pkgs.libGL}/lib"
       "${pkgs.libgcc.lib}/lib"
       "${pkgs.openal}/lib"
