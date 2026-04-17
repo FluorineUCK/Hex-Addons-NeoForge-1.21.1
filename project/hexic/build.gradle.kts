@@ -222,10 +222,7 @@ tasks.processResources {
             description = "Miscellaneous neat features and QoL patterns for Hex Casting."
             license = "LGPL-3.0"
             icon = "assets/hexic/icon.png"
-
-            author("PoolloverNathan") {
-                put("discord", "https://discord.com/users/402104961812660226")
-            }
+            knownAuthors.pool()
 
             depends("mixinextras", "*")
             depends("mm", "^2.3")

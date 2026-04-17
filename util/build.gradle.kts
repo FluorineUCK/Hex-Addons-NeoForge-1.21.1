@@ -41,10 +41,7 @@ tasks.processResources {
             description = "Internal library for my Hex Casting addons."
             license = "LGPL-3.0"
             icon = "phlib.icon.png"
-
-            author("pool") {
-                put("discord", "https://discord.com/users/758407438251720795")
-            }
+            knownAuthors.pool()
 
             depends("hexcasting", ">=0.11.2")
             breaks("hexic", "<2.0.0")

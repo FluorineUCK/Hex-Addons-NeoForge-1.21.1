@@ -32,10 +32,7 @@ tasks.processResources {
             description = "Adds chat manipulation to Hex Casting because that's certainly a great idea."
             license = "LGPL-3.0"
             icon = "hexxytounge.icon.png"
-
-            author("pool") {
-                put("discord", "https://discord.com/users/758407438251720795")
-            }
+            knownAuthors.pool()
 
             depends("phlib", "0.1.1")
             depends("hexcasting", ">=0.11.2")
