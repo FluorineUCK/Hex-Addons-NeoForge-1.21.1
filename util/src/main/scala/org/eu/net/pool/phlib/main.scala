@@ -22,7 +22,7 @@ import net.minecraft.nbt.*
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
-import net.minecraft.util.Hand
+import net.minecraft.util.{Arm, Hand}
 import net.minecraft.util.dynamic.Codecs
 
 import scala.annotation.tailrec
@@ -224,6 +224,59 @@ implicit class IterOnceExt[T](i: IterableOnceOps[T, ?, ?]):
             boundary.break(Some(x))
           else
             Some(x)
+
+extension (arm: Arm)
+  def ^(hand: Hand): Arm = arm ^ (hand == Hand.MAIN_HAND)
+  def ^(invert: Boolean): Arm = if invert then arm.getOpposite else arm
+  def ^(OtherArm: Arm): Hand = arm match
+    case OtherArm => Hand.MAIN_HAND
+    case _ => Hand.OFF_HAND
+extension (hand: Hand)
+  def ^(arm: Arm): Arm = arm ^ hand
+  def ^(invert: Boolean): Hand =
+    if invert then
+      hand match
+        case Hand.MAIN_HAND => Hand.OFF_HAND
+        case Hand.OFF_HAND => Hand.MAIN_HAND
+    else hand
+
+extension (t: Throwable) def toMishap =
+  t match
+    case m: Mishap => m
+    case e: Exception => MishapInternalException(e)
+    case _ => MishapInternalException(RuntimeException(t))
+
+extension [T] (x: => T) def trying: Try[T] = Try(x)
+
+given castingImageUpdate: AnyRef with
+  extension (img: CastingImage)
+    def apply(stack: Seq[Iota] = img.getStack.toSeq,
+              parenCount: Int = img.getParenCount,
+              parenthesized: Seq[ParenthesizedIota] = img.getParenthesized.toSeq,
+              escapeNext: Boolean = img.getEscapeNext,
+              opsConsumed: Long = img.getOpsConsumed,
+              userData: NbtCompound = img.getUserData) =
+      CastingImage(stack = stack,
+                   parenCount = parenCount,
+                   parenthesized = parenthesized,
+                   escapeNext = escapeNext,
+                   opsConsumed = opsConsumed,
+                   userData = userData,
+                   null : DefaultConstructorMarker)
+given castResultUpdate: AnyRef with
+  extension (r: CastResult)
+    def apply(cast: Iota = r.getCast,
+              continuation: SpellContinuation = r.getContinuation,
+              newData: Option[CastingImage] = Option(r.getNewData),
+              sideEffects: Seq[OperatorSideEffect] = r.getSideEffects.toSeq,
+              resolutionType: ResolvedPatternType = r.getResolutionType,
+              sound: EvalSound = r.getSound) =
+      CastResult(cast = cast,
+                 continuation = continuation,
+                 newData = newData.orNull,
+                 sideEffects = sideEffects,
+                 resolutionType = resolutionType,
+                 sound = sound)
 
 extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
   if isDev || fabric.isModLoaded(ctx.parts(0)) then

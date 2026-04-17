@@ -995,21 +995,6 @@ def iotaInt(iota: Iota, under: Int, er: => Nothing): Int =
 trait MutableFunction[T, R] extends (T => R):
   def update(key: T, value: R): Unit
 
-extension (img: CastingImage)
-  def apply(stack: Seq[Iota] = img.getStack.toSeq,
-            parenCount: Int = img.getParenCount,
-            parenthesized: Seq[ParenthesizedIota] = img.getParenthesized.toSeq,
-            escapeNext: Boolean = img.getEscapeNext,
-            opsConsumed: Long = img.getOpsConsumed,
-            userData: NbtCompound = img.getUserData) =
-    CastingImage(stack = stack,
-                 parenCount = parenCount,
-                 parenthesized = parenthesized,
-                 escapeNext = escapeNext,
-                 opsConsumed = opsConsumed,
-                 userData = userData,
-                 null : DefaultConstructorMarker)
-
 def init(): Unit =
   given_Logger.info:
     val possible = Seq(
@@ -2166,6 +2151,8 @@ trait MediaContainerProvider:
   type Context: ClassTag;
   @targetName("hexic$MediaContainerProvider$getMediaContainer")
   def getMediaContainer(c: Context): Option[MediaContainer]
+
+extension [T] (x: => T) def trying: Try[T] = Try(x)
 
 object registerHopperEndpoint extends (() => Unit):
   def apply(): Unit =
