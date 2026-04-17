@@ -1,6 +1,12 @@
 package org.eu.net.pool
 package phlib
 
+
+import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
+import at.petrak.hexcasting.api.casting.mishaps.{MishapInternalException, MishapStackSize}
+import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
+import kotlin.jvm.internal.DefaultConstructorMarker
 import at.petrak.hexcasting.api.casting.ActionRegistryEntry
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction}
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
@@ -277,6 +283,44 @@ given castResultUpdate: AnyRef with
                  sideEffects = sideEffects,
                  resolutionType = resolutionType,
                  sound = sound)
+
+extension (continuation: SpellContinuation.NotDone)
+  @tailrec
+  def executePreemptive(vm: CastingVM /* do not do the bad thing */ , ttl: Int): Option[SpellContinuation.NotDone] =
+    // spin the vm around a bit
+    val result =
+      val maybeResult = continuation.getFrame.evaluate(continuation.getNext, vm.getEnv.getWorld, vm)
+      // check for stack-overflow
+      if maybeResult.getNewData != null && IotaType.isTooLargeToSerialize(maybeResult.getNewData.getStack) then
+        // blindly doing what hexmod does
+        maybeResult(newData = None,
+                    sideEffects = Seq(OperatorSideEffect.DoMishap(MishapStackSize(), Mishap.Context(null, null))),
+                    resolutionType = ResolvedPatternType.ERRORED,
+                    sound = HexEvalSounds.MISHAP)
+      else
+        maybeResult
+    // update the vm with the new image immediately (if we have one)
+    if result.getNewData != null then vm.setImage(result.getNewData)
+    // notify anyone interested
+    vm.getEnv.postExecution(result)
+    // execute each side effect (ignoring errors)
+    result.getSideEffects.foreach(_.performEffect(vm).trying)
+    // finally, decide our fate
+    result.getContinuation match
+      // we're only interested in continuing execution if we have more to execute and nothing bad happened
+      case newContinuation: SpellContinuation.NotDone if result.getResolutionType.getSuccess =>
+        if vm.getImage.getOpsConsumed < ttl then
+          // we still have time left, go for another round
+          newContinuation.executePreemptive(vm, ttl)
+        else
+          // stick the hex in the pear wiggler, we'll return next tick
+          Some(newContinuation)
+      case _ => None
+extension (continuation: SpellContinuation)
+  def executePreemptive(vm: CastingVM /* do not do the bad thing */ , ttl: Int): Option[SpellContinuation.NotDone] =
+    continuation match
+      case done: SpellContinuation.Done => None
+      case notDone: SpellContinuation.NotDone => notDone.executePreemptive(vm, ttl)
 
 extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
   if isDev || fabric.isModLoaded(ctx.parts(0)) then
