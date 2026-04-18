@@ -41,11 +41,11 @@ public abstract class OpEdifySaplingMixin {
             return true;
         }
         if (original.call(instance, BlockTags.WOOL)) {
-            mediaweave.set(3);
+            mediaweave.set(2);
             return true;
         }
         if (original.call(instance, BlockTags.WOOL_CARPETS)) {
-            mediaweave.set(2);
+            mediaweave.set(3);
             return true;
         }
         if (instance.isOf(Blocks.TRIPWIRE)) {

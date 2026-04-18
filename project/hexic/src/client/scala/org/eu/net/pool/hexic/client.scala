@@ -1,12 +1,17 @@
 package org.eu.net.pool
 package hexic
 
+import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
 import at.petrak.hexcasting.api.item.PigmentItem
 import at.petrak.hexcasting.api.mod.HexTags
 import at.petrak.hexcasting.api.pigment.FrozenPigment
+import at.petrak.hexcasting.interop.inline.InlinePatternData
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonArray, JsonObject}
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation
+import com.samsthenerd.inline.api.client.InlineClientAPI
+import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback
+import com.samsthenerd.inline.api.matching.{InlineMatch, InlineMatcher, MatcherInfo, RegexMatcher}
 import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
 import kotlin.jvm.JvmField
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
@@ -15,6 +20,8 @@ import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
 import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, FabricModelProvider, FabricRecipeProvider, FabricTagProvider}
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
+import net.minecraft.text.Text
+import java.util.function.UnaryOperator
 import net.minecraft.advancement.criterion.InventoryChangedCriterion
 import net.minecraft.block.entity.{BlockEntity, BlockEntityType}
 import net.minecraft.client.MinecraftClient
@@ -105,6 +112,21 @@ def init(): Unit =
     val k = s"layer$i"
     if !json.ItemModelGenerator.LAYERS.contains(k) then
       json.ItemModelGenerator.LAYERS.add(k)
+  InlineClientAPI.INSTANCE.addMatcher:
+    RegexMatcher.Simple(regex = "([ns]?[ew])\"([qweasd]*)\"",
+                        id = "scala_pattern",
+                        matcher =
+                          m => InlineMatch.DataMatch(InlinePatternData(HexPattern.fromAnglesUnchecked(
+                            m.group(2),
+                            m.group(1) match
+                              case "ne" => HexDir.NORTH_EAST
+                              case "e" => HexDir.EAST
+                              case "se" => HexDir.SOUTH_EAST
+                              case "sw" => HexDir.SOUTH_WEST
+                              case "w" => HexDir.WEST
+                              case "nw" => HexDir.NORTH_WEST
+                          ))),
+                        info = MatcherInfo.fromId("scala_pattern"))
   phlib.Events.registryLookup.register:
     val preferredColor = DyeColor.values()(client.getSession.getUuidOrNull.getLeastSignificantBits.abs.%(16).toInt)
     val preferredStringworm = stringworms(Stringworm.flavors(client.getSession.getUuidOrNull.getLeastSignificantBits.abs.%(48).*(7).%(4).toInt))
@@ -124,6 +146,13 @@ def init(): Unit =
       handler.sendChatCommand(s.drop(1))
     else
       handler.sendChatMessage(s))
+  ItemTooltipCallback.EVENT.register: (stack, ctx, lines) =>
+    stack.getItem match
+      case _: Mediaweave if Option(stack.getNbt).exists(_.get("lock") != null) =>
+        lines.append(Text.literal("Tied").styled(_.withColor(0x782fe0)))
+        lines.append(Text.literal("Cannot be unequipped and won't be dropped on death.").styled(_.withColor(0x4b1d8c)))
+        lines.append(Text.literal("Use ").append(Text.empty().append(InlinePatternData(sw"aqeqqqwqqqqqaqwqa").asText(withExtra=false)).styled(_.withColor(0x782fe0))).append(" to untie.").styled(_.withColor(0x4b1d8c)))
+      case _ =>
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
 
@@ -295,9 +324,11 @@ def datagen(gen: FabricDataGenerator): Unit =
         for action -> name <- Vector(
           "attachworld" -> "Bind Demiplane",
           "blind" -> "Hidden Sun's Nadir",
+          "collar" -> "Tie Mediaweave",
+          "decollar" -> "Untie Mediaweave",
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",
-          "dye_offhand" -> "Apply Pigment",
+          "dye_offpaw" -> "Apply Pigment",
           "erase" -> "Erase Block",
           "extract" -> "Excisor's Gambit",
           "findview" -> "Reflection Purification",
@@ -319,6 +350,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "staffcast_factory" -> "Lani's Greater Gambit",
           "staffcast_factory/lazy" -> "Lani's Lesser Gambit",
           "take" -> "Retention Distillation",
+          "thinkaboutit" -> "Inquiry Purification",
           "unfox" -> "Vulpine Expulsion",
           "where" -> "Deductive Purification",
         ) do gen.add(s"hexcasting.action.hexic:$action", name)
@@ -355,7 +387,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           case p: PigmentItem => gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
           case e => println(e)
         for page -> text <- Vector(
-          "dye_offhand" -> "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.",
+          "dye_offpaw" -> "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.",
           "erase" -> "Erases the _Hex or iota contained within a dropped item or block. Costs one dust per item.",
           "get_other_caster" -> "Adds the closest sentient being, excluding me, to the stack.",
           "modulo" -> "Similar to Modulus, but differs for negative numbers: -8 %%₁ 3 = -2, but -8 %%₂ 3 = 1.",

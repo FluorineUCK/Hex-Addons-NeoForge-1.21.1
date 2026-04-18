@@ -1,56 +1,47 @@
 package org.eu.net.pool
 package phlib
 
-import at.petrak.hexcasting.api.utils.HexUtils
-import com.google.gson.JsonElement
-import com.mojang.serialization.{Codec, DynamicOps, JsonOps}
-import net.minecraft.nbt.{NbtByte, NbtByteArray, NbtDouble, NbtEnd, NbtFloat, NbtInt, NbtIntArray, NbtList, NbtLong, NbtLongArray, NbtOps, NbtShort, NbtString, NbtType}
-import net.minecraft.util.dynamic.Codecs
-import at.petrak.hexcasting.api.addldata.ADMediaHolder
-import scala.collection.{IterableOnceOps, IterableOps}
-import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, ParticleSpray, RenderedSpell, SpellList}
-import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
-import at.petrak.hexcasting.api.casting.arithmetic.operator.Operator
-import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction, SpecialHandler, SpellAction}
-import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
-import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect.DoMishap
+import at.petrak.hexcasting.api.casting.ActionRegistryEntry
+import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction}
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
-import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, FrameEvaluate, SpellContinuation}
-import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, CastingEnvironmentComponent, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
+import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, SpellContinuation}
+import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, CastingEnvironmentComponent, OperationResult}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
-import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapBadCaster, MishapBadOffhandItem, MishapInvalidIota, MishapInvalidOperatorArgs, MishapNotEnoughArgs, MishapOthersName, MishapTooManyCloseParens}
+import at.petrak.hexcasting.api.casting.mishaps.{Mishap, MishapInvalidIota, MishapNotEnoughArgs}
+import at.petrak.hexcasting.api.utils.HexUtils
 import at.petrak.hexcasting.common.lib.HexRegistries
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
+import com.google.gson.JsonElement
 import com.mojang.brigadier.builder.{LiteralArgumentBuilder, RequiredArgumentBuilder}
+import com.mojang.serialization.{Codec, DynamicOps, JsonOps}
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
-import net.minecraft.command.{CommandException, EntitySelector}
 import net.minecraft.command.argument.{EntityArgumentType, NbtElementArgumentType, RegistryEntryArgumentType}
-import net.minecraft.nbt.{NbtCompound, NbtElement}
+import net.minecraft.command.{CommandException, EntitySelector}
+import net.minecraft.nbt.*
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.Hand
+import net.minecraft.util.dynamic.Codecs
 
 import scala.annotation.tailrec
+import scala.collection.{IterableOnceOps, IterableOps}
 import scala.math.Ordered.orderingToOrdered
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
 export scala.collection.convert.ImplicitConversions.*
 export scala.util.chaining._
-import java.util
-import net.fabricmc.loader.api.FabricLoader
-import net.minecraft.util.Identifier
-import scala.util.boundary
-import org.slf4j.LoggerFactory
-import org.slf4j.Logger
 import at.petrak.hexcasting.xplat.IXplatAbstractions
-import net.minecraft.registry.Registry
-import net.minecraft.registry.RegistryKey
-import net.minecraft.text.MutableText
-import net.minecraft.text.Text
-import net.fabricmc.fabric.api.event.Event
-import net.fabricmc.fabric.api.event.EventFactory
+import net.fabricmc.fabric.api.event.{Event, EventFactory}
+import net.fabricmc.loader.api.FabricLoader
+import net.minecraft.registry.{Registry, RegistryKey}
+import net.minecraft.text.{MutableText, Text}
+import net.minecraft.util.Identifier
+import org.slf4j.{Logger, LoggerFactory}
+
+import java.util
+import scala.util.boundary
 
 val fabric = FabricLoader.getInstance
 val isDev = fabric.isDevelopmentEnvironment
@@ -254,7 +245,6 @@ private[phlib] trait AllocationTracked:
 package mixin:
   import net.minecraft.block.Block
   import net.minecraft.item.Item
-  import org.spongepowered.asm.mixin.injection.{At, Inject}
   import org.spongepowered.asm.mixin.Mixin
   @Mixin(value = Array(classOf[Item], classOf[Block]))
   private[phlib] class AllocationTrackerMixin() extends AnyRef with AllocationTracked:

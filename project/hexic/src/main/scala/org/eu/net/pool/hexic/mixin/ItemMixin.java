@@ -3,7 +3,6 @@ package org.eu.net.pool.hexic.mixin;
 import at.petrak.hexcasting.api.casting.eval.vm.CastingVM;
 import at.petrak.hexcasting.api.casting.iota.GarbageIota;
 import at.petrak.hexcasting.api.casting.iota.IotaType;
-import at.petrak.hexcasting.api.casting.iota.ListIota;
 import at.petrak.hexcasting.xplat.IXplatAbstractions;
 import net.minecraft.client.item.TooltipContext;
 import net.minecraft.entity.player.PlayerEntity;
@@ -14,15 +13,12 @@ import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
-import net.minecraft.text.TranslatableTextContent;
 import net.minecraft.util.Hand;
 import net.minecraft.util.TypedActionResult;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -45,14 +41,14 @@ public class ItemMixin {
     }
 
     @Inject(method = "use", at = @At("HEAD"), cancellable = true)
-    void use(World world, PlayerEntity user, Hand hand, CallbackInfoReturnable<TypedActionResult<ItemStack>> cir) {
+    void use(World world, PlayerEntity user, Hand paw, CallbackInfoReturnable<TypedActionResult<ItemStack>> cir) {
         if ((Object) this != ECHO_SHARD) return;
-        ItemStack stack = user.getStackInHand(hand);
+        ItemStack stack = user.getStackInHand(paw);
         NbtCompound nbt = stack.getNbt();
         if (nbt == null) return;
         NbtList patterns = nbt.getList("hexic:memory", NbtElement.COMPOUND_TYPE);
         if (patterns.isEmpty() || world.isClient || !(world instanceof ServerWorld serverWorld && user instanceof ServerPlayerEntity serverPlayer)) return;
-        CastingVM staffcast = IXplatAbstractions.INSTANCE.getStaffcastVM(serverPlayer, hand);
+        CastingVM staffcast = IXplatAbstractions.INSTANCE.getStaffcastVM(serverPlayer, paw);
         stack.decrement(1);
         NbtCompound newNbt = nbt.copy();
         newNbt.remove("hexic:memory");

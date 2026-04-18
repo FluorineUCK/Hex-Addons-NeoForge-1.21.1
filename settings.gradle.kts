@@ -22,6 +22,8 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
+rootProject.name = "hex-addons"
+
 include("util")
 includeBuild("plugin")
 for (mod in listOf("hexic", "iotaworks", "hexxytounge")) {

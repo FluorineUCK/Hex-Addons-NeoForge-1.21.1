@@ -3,9 +3,9 @@
 
 $pages = arrays.push($pages, {
   type: "hexcasting:pattern",
-  op_id: "hexic:dye_offhand",
-  anchor: "hexic:dye_offhand",
+  op_id: "hexic:dye_offpaw",
+  anchor: "hexic:dye_offpaw",
   input: "pigment",
   output: "",
-  text: "book.hexic.page.dye_offhand"
+  text: "book.hexic.page.dye_offpaw"
 });
