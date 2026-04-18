@@ -31,3 +31,15 @@
 2.0.0 rename media bundles to casting pouches
 2.0.0 sent Stickia to the milk dimension
 2.0.0 textures now use JPEG XL
+2.1.0 added -Dhexic.max_stack_size to cap itemstack size at deserialization-time (default: max integer)
+2.1.0 demiplane spells' docs have been changed again
+2.1.0 dual's reflection only considers players in ambit
+2.1.0 hitbox for void blocks is no longer weirdly offset
+2.1.0 item/fluid concept displays no longer suck
+2.1.0 mediaweave can now actually be erased, sorry
+2.1.0 mediaweave can now be tied
+2.1.0 negative item stacks are now disabled by default, they can be reenabled by setting -Dhexic.min_stack_size to your favorite value
+2.1.0 read-only properties can no longer be converted to access iotas
+2.1.0 Refinement Distillation now properly drops input iotas on first loop as it should
+2.1.0 translations have been updated [@chuijk]
+2.1.0 wool and carpet edification are now actually somewhat balanced wrt each other

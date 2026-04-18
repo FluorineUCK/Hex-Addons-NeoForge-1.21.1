@@ -27,8 +27,6 @@ import static org.eu.net.pool.hexic.Interop.VOID_AIR;
 
 @Mixin(Entity.class)
 public abstract class EntityMixin {
-    @Unique BlockPos.Mutable hexic$scanPos = new BlockPos.Mutable();
-
     @Shadow public abstract World getWorld();
     @Shadow public abstract Box getBoundingBox();
     @Shadow private World world;
@@ -59,14 +57,10 @@ public abstract class EntityMixin {
                 return;
             }
         }
-        CuboidBlockIterator iter = new CuboidBlockIterator(MathHelper.ceil(box.minX), MathHelper.ceil(box.minY), MathHelper.ceil(box.minZ), MathHelper.ceil(box.maxX), MathHelper.ceil(box.maxY), MathHelper.ceil(box.maxZ));
-        while (iter.step()) {
-            hexic$scanPos.set(iter.getX(), iter.getY(), iter.getZ());
-            if (world.getBlockState(hexic$scanPos).isOf(VOID_AIR)) {
-                tickInVoid();
-                ci.cancel();
-                return;
-            }
+        if (BlockPos.stream(box).anyMatch(p -> world.getBlockState(p).isOf(VOID_AIR))) {
+            tickInVoid();
+            ci.cancel();
+            return;
         }
     }
 

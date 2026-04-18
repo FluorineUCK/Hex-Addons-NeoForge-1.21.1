@@ -137,36 +137,34 @@ package mixin:
     @targetName("hexic$setPos") @Accessor("pos") private[hexic] def pos_=(pos: Float): Unit
 
 extension (p: PlayerEntity)
-  def validMediaweave: Option[(NbtCompound, DyeColor, ItemStack)] =
+  def equippedMediaweave: Seq[(Mediaweave, ItemStack)] =
     TrinketsApi.getTrinketComponent(p)
-      .pipe(o => Option.when[TrinketComponent](o.isPresent)(o.get()))
+      .pipe(o => Option.when[TrinketComponent](o.isPresent)(o.get()).toSeq)
       .flatMap: (c: TrinketComponent) =>
-        c.getEquipped(_.getItem.isInstanceOf[Mediaweave]).asScala.collectFirst:
-          Function.unlift: p =>
-            p.getRight.getItem match
-              case m@Mediaweave(color) => Option(m.readIotaTag(p.getRight)).map((_, color, p.getRight))
+        c.getEquipped(_.getItem.isInstanceOf[Mediaweave]).asScala.collect:
+          Function.unlift: e =>
+            e.getRight.getItem match
+              case m: Mediaweave => Some(m, e.getRight)
               case _ => None
+  def validMediaweave: Option[(Mediaweave, ItemStack, ServerWorld ?=> Iota)] =
+    p.equippedMediaweave.collectFirst:
+      Function.unlift:
+        case (item, stack) => Option(item.readIotaTag(stack)).map(tag => (item, stack, IotaType.deserialize(tag, summon[ServerWorld])))
   def catCollarColor: Option[DyeColor] =
-    TrinketsApi.getTrinketComponent(p)
-      .pipe(o => Option.when[TrinketComponent](o.isPresent)(o.get()))
-      .flatMap: (c: TrinketComponent) =>
-        c.getEquipped(_.getItem.isInstanceOf[Mediaweave]).asScala.collectFirst:
-          Function.unlift: p =>
-            p.getRight.getItem match
-              case m@Mediaweave(color) if p.getRight.hasCustomName && p.getRight.getName.getString.toLowerCase == "instant cat" => Some(m.color)
-              case _ => None
+    p.equippedMediaweave.collectFirst:
+      case (item, stack) if stack.hasCustomName && stack.getName.getString.toLowerCase == "instant cat" => item.color
 extension (p: ServerPlayerEntity)
   def executeMediaweave(text: String, ctx: Seq[Iota]): Boolean =
     p.validMediaweave match
-      case Some(hex, color, stack) =>
+      case Some(item, stack, hex) =>
         given world: ServerWorld = p.getWorld.asInstanceOf[ServerWorld]
         lazy val env = new PlayerBasedCastEnv(p, Hand.OFF_HAND):
           override def extractMediaEnvironment(cost: Long, simulate: Boolean): Long =
             if p.isCreative then 0L else extractMediaFromInventory(cost, canOvercast, simulate)
           override def getCastingHand: Hand = castingHand
-          override def getPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(color)), Util.NIL_UUID)
+          override def getPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(item.color)), Util.NIL_UUID)
         val image = CastingImage(ctx :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
-        val instrs = IotaType.deserialize(hex, world) match
+        val instrs = hex match
           case list: ListIota => list.getList.asScala.toSeq
           case iota => Seq(iota)
         val vm = CastingVM(image, env)
