@@ -21,8 +21,8 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, Transaction
 import net.minecraft.block.{AbstractFurnaceBlock, BlockState}
 import net.minecraft.block.entity.AbstractFurnaceBlockEntity
 import net.minecraft.entity.decoration.ItemFrameEntity
-import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.entity.{Entity, ItemEntity}
+import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.{Fluid, Fluids}
 import net.minecraft.item.{Item, Items}
 import net.minecraft.nbt.{NbtCompound, NbtElement, NbtList, NbtLong}
@@ -404,6 +404,19 @@ case class VariantIota[T: ClassTag](data: TransferVariant[T], key: RegistryKey[V
 object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reader]("transfer_variants"):
   given IotaType[VariantIota[?]] = this
   type Reader = NbtCompound => Option[VariantIota.TaggedVariant]
+  def apply[T: ClassTag](data: TransferVariant[T], id: Identifier): VariantIota[T] = apply(data, RegistryKey.of(key, id))
+  def ofItem(i: ItemVariant): VariantIota[Item] = apply(i, RegistryKey.of(key, Identifier.of("minecraft", "item")))
+  object ofItem:
+    def unapply(v: VariantIota[?]): Option[ItemVariant] =
+      v match
+        case VariantIota(data: ItemVariant, key) if key == Identifier.of("minecraft", "item") => Some(data)
+        case _ => None
+  def ofFluid(i: FluidVariant): VariantIota[Fluid] = apply(i, RegistryKey.of(key, Identifier.of("minecraft", "fluid")))
+  object ofFluid:
+    def unapply(v: VariantIota[?]): Option[FluidVariant] =
+      v match
+        case VariantIota(data: FluidVariant, key) if key == Identifier.of("minecraft", "fluid") => Some(data)
+        case _ => None
   trait TaggedVariant:
     type T: ClassTag
     def variant: TransferVariant[T]
