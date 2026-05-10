@@ -10,7 +10,7 @@ import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, Ope
 import at.petrak.hexcasting.api.casting.eval.env.PlayerBasedCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.OperatorSideEffect.DoMishap
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
-import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, FrameEvaluate, SpellContinuation}
+import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, ContinuationFrame, FrameEvaluate, FrameFinishEval, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, CastingEnvironmentComponent, MishapEnvironment, OperationResult, ResolvedPattern, ResolvedPatternType}
 import at.petrak.hexcasting.api.casting.iota.*
 import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
@@ -959,6 +959,17 @@ lazy val itemGroup = FabricItemGroup.builder()
 val goodModulo = ne"daawdda"
 val getEntity: PartialFunction[Iota, Entity] = { case e: EntityIota => e.getEntity }
 
+extension (iota: Iota)
+  def executeInPlace(cont: SpellContinuation, cause: Iota = iota)(using vm: CastingVM): CastResult =
+    iota match
+      case li: ListIota =>
+        val l = li.getList
+        if l.getNonEmpty then
+          l.getCar.execute(vm, vm.getEnv.getWorld, cont.pushFrame(FrameFinishEval.INSTANCE).pushFrame(FrameEvaluate(l.getCdr, true)))
+        else
+          CastResult(cause, cont, null, Seq(), ResolvedPatternType.EVALUATED, HexEvalSounds.NORMAL_EXECUTE)
+      case i => i.execute(vm, vm.getEnv.getWorld, cont)
+
 def memo[T, R](f: T => R, limit: Option[Int] = Some(128)): T => R =
   val cache = limit.fold(ju.HashMap()): cap =>
     new ju.LinkedHashMap[T, R](cap + 1, 1, true):
@@ -1138,6 +1149,7 @@ def init(): Unit =
   Registries.ITEM_GROUP("group") = itemGroup
   //Registries.ITEM("echo") = EchoItem
   initChat()
+  initMacros()
   initViews()
   if fabric.isModLoaded("hexical") then
     for

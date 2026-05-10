@@ -1,7 +1,7 @@
 package org.eu.net.pool
 package hexic
 
-import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
+import at.petrak.hexcasting.api.casting.math.{HexAngle, HexDir, HexPattern}
 import at.petrak.hexcasting.api.item.PigmentItem
 import at.petrak.hexcasting.api.mod.HexTags
 import at.petrak.hexcasting.api.pigment.FrozenPigment
@@ -13,6 +13,9 @@ import com.samsthenerd.inline.api.client.InlineClientAPI
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback
 import com.samsthenerd.inline.api.matching.{InlineMatch, InlineMatcher, MatcherInfo, RegexMatcher}
 import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
+import dev.tizu.hexcessible.entries.PatternEntries
+import dev.tizu.hexcessible.smartsig.SmartSig
+import dev.tizu.hexcessible.smartsig._hexic_registerSmartSig as registerSmartSig
 import kotlin.jvm.JvmField
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry
@@ -46,6 +49,7 @@ import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
 import net.minecraft.util.collection.DefaultedList
 import net.minecraft.util.math.{Direction, MathHelper, Vec3d}
 import net.minecraft.util.{DyeColor, Identifier}
+import org.slf4j.Logger
 
 import java.io.{InputStreamReader, Reader}
 import java.util.function.Consumer
@@ -57,6 +61,8 @@ import scala.util.boundary
 import scala.util.boundary.Label
 import scala.util.chaining.scalaUtilChainingOps
 import phlib.{*, given}
+
+import java.util.regex.Pattern
 
 given client: MinecraftClient = MinecraftClient.getInstance
 
@@ -153,6 +159,65 @@ def init(): Unit =
         lines.append(Text.literal("Cannot be unequipped and won't be dropped on death.").styled(_.withColor(0x4b1d8c)))
         lines.append(Text.literal("Use ").append(Text.empty().append(InlinePatternData(sw"aqeqqqwqqqqqaqwqa").asText(withExtra=false)).styled(_.withColor(0x782fe0))).append(" to untie.").styled(_.withColor(0x4b1d8c)))
       case _ =>
+  ItemTooltipCallback.EVENT.register: (stack, ctx, lines) =>
+    val macros = stack.getMacros
+    if macros.nonEmpty then
+      val colorizer: UnaryOperator[Style] = _.withColor(0xf59b14)
+      lines.add(Text.literal("Responds to these patterns:").styled(colorizer))
+      val (namedMacros, unnamedMacros) = macros.partition(_.name.isDefined)
+      extension (m: MacroDefinition) def render = InlinePatternData(m.pattern).asText(true)
+      val unnamedMacroLine = Option.when(unnamedMacros.nonEmpty)((Text.empty /: unnamedMacros.toSeq.sortBy(_.pattern.anglesSignature)) (_ append _.render))
+      lines.addAll:
+        if namedMacros.nonEmpty then
+          def bulletPoint = Text.empty.append(Text.literal("• ").styled(colorizer))
+          namedMacros.toSeq.sortBy(_.name.get) // SAFETY: m.name is guaranteed Some because the left side of macros.partition returns only elements such that m.name.isDefined is true
+            .map: m =>
+              bulletPoint
+                .append(m.render)
+                .append(Text.literal(" (name: ").styled(colorizer))
+                .append(Text.literal(m.name.get)) // SAFETY: unsafe property m.name.get must have been accessed by now due to sortBy call
+                .append(Text.literal(")").styled(colorizer))
+            .:++(unnamedMacroLine.map(bulletPoint.append(_)))
+        else
+          unnamedMacroLine.toSeq
+  try hexcessibleHolder catch case e: LinkageError => summon[Logger].warn("Failed to initialize Hexcessible interop", e)
+
+
+private object hexcessibleHolder:
+  extension (defi: MacroDefinition)
+    def toEntry(itemID: Identifier) =
+      defi.name match
+        case Some(name) =>
+          PatternEntries.Entry(
+            id = s"hexic/equipment_macro/${itemID.getNamespace}/${itemID.getPath}/${defi.pattern.anglesSignature}",
+            rawName = name,
+            checkLock = () => false,
+            dir = defi.pattern.getStartDir,
+            sig = Seq(defi.pattern.getAngles),
+            impls = Seq(),
+            z = 0, // hexic-level variable naming
+          )
+        case None => null
+  registerSmartSig:
+    new SmartSig:
+      override def get(query: String): java.util.List[PatternEntries.Entry] = foldLocalPlayer[Seq[PatternEntries.Entry]](Seq.empty): p =>
+        if isDev then println(s"smartsig received: $query. found macros ${p.getMacros}")
+        for
+          stack -> defi <- p.getMacros.toSeq
+          if p.findMacro(defi.pattern).size == 1
+          id <- Option(Registries.ITEM.getId(stack.getItem))
+          _ <- defi.name
+//          if { if isDev then println(s"- found name: $name"); true }
+//          if Pattern.compile(Pattern.quote(query)).matcher(name).find()
+        yield
+          if isDev then println("- valid match!")
+          defi.toEntry(id)
+      override def get(list: java.util.List[HexAngle]): PatternEntries.Entry = foldLocalPlayer(null): p =>
+        val i = p.findMacro(HexPattern(HexDir.WEST, list)).iterator
+        i.nextOption().fold(null): p =>
+          if i.hasNext then null
+          else
+          Option(Registries.ITEM.getId(p._1.getItem)).fold(null)(p._2.toEntry(_))
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
 
@@ -340,6 +405,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "make_cme" -> "Thoth's Pseudogambit",
           "makeworld" -> "Conjure Demiplane",
           "malloc" -> "Allocator's Purification",
+          "mkmacro" -> "Etch Pattern",
           "modulo" -> "Modulus Distillation II",
           "moveconcept" -> "Transfer Substance",
           "moveentity" -> "Transfer Creature",
@@ -397,6 +463,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         ) do gen.add(s"book.hexic.page.$page", text)
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
         gen.add("hexdoc.hexic.title", "Hexic")
+        gen.add("hexic.mishap.pattern_conflict", "Multiple pieces of equipment responded to %s")
         gen.add("hexic.media.external", "Media")
         gen.add("hexic.media.finite", "%s: %s/%s (%s)")
         gen.add("hexic.media.infinite", "%s: %s")
