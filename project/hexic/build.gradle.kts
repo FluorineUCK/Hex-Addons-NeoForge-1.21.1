@@ -139,6 +139,7 @@ dependencies {
 
     val minecraft_version = "1.20.1"
     implementation(annotationProcessor("io.github.llamalad7:mixinextras-fabric:0.5.0")!!)
+    include(implementation(annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-fabric:0.3.7-beta.2")!!)!!)
     implementation(project(":util", "namedElements"))
     modImplementation("io.github.tropheusj:serialization-hooks:0.4.99999")
     modImplementation("at.petra-k.hexcasting:hexcasting-fabric-$minecraft_version:0.11.3")
@@ -176,6 +177,8 @@ dependencies {
     modRuntimeOnly("com.unascribed:lib39-avant:[2.0.0,3.0.0)!!2.0.27+1.20.1")
     modRuntimeOnly("com.unascribed:lib39-phantom:[2.0.0,3.0.0)!!2.0.27+1.20.1")
     modRuntimeOnly("com.unascribed:lib39-lockpick:[2.0.0,3.0.0)!!2.0.27+1.20.1")
+    modImplementation("maven.modrinth:fractal-lib:1.2.0")
+    include("maven.modrinth:fractal-lib:1.2.0")
     modLocalRuntime("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
     modCompileOnly("maven.modrinth:hexcessible:0.2.0")
     modLocalRuntime("maven.modrinth:hexcessible:0.2.0")
@@ -223,6 +226,7 @@ tasks.processResources {
             depends("mixinextras", "*")
             depends("mm", "^2.3")
             depends("moreiotas", ">=0.1.1")
+            depends("fractal", "^1.2.0")
             depends("hexal", ">=0.3.0")
             depends("hexcellular", "^1.1.0")
             depends("jsonpatcher", "^1.0.0-beta.4+mc.1.20.1")

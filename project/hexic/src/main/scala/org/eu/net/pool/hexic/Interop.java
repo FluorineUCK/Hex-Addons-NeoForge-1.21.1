@@ -45,6 +45,10 @@ public class Interop extends BlockPos {
     public static <T> ArgumentType<RegistryEntry.Reference<T>> reat(CommandRegistryAccess registryAccess, RegistryKey<Registry<T>> registry) {
         return new RegistryEntryArgumentType<>(registryAccess, registry);
     }
+
+    public static void perhapsBreakpoint () {
+        int x = 1;
+    }
     
     public static void callScala(CallbackInfo ci, Consumer<boundary.Label<BoxedUnit>> body) {
         boundary.Label<BoxedUnit> label = new boundary.Label<>();
