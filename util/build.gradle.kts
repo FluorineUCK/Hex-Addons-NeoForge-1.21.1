@@ -37,7 +37,7 @@ dependencies {
 tasks.processResources {
     preprocessor {
         fabricMod("phlib", version as String) {
-            name = "PoolHexLib"
+            name = "PhLib"
             description = "Internal library for my Hex Casting addons."
             license = "LGPL-3.0"
             icon = "phlib.icon.png"
