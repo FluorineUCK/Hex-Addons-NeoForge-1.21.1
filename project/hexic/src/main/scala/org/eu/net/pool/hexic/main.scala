@@ -1263,7 +1263,7 @@ def init(): Unit =
             HexEvalSounds.SPELL,
             for
               (_, stack) <- env.getCaster.equippedMediaweave
-              if isDev && { println(s"ok ${stack} how ya ${stack.getNbt} okie ${Option(stack.getNbt).forall(_.get("lock") == null)}"); true }
+              if !isDev || { println(s"ok ${stack} how ya ${stack.getNbt} okie ${Option(stack.getNbt).forall(_.get("lock") == null)}"); true }
               if Option(stack.getNbt).forall(_.get("lock") == null)
               e <- Seq(
                 consume,
