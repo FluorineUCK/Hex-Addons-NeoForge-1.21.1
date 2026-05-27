@@ -32,7 +32,10 @@ tasks.processResources {
             description = "A Hex Casting addon for manipulating iotas."
             license = "LGPL-3.0"
             icon = "assets/iotaworks/icon.png"
-            knownAuthors.pool()
+
+            author("pool") {
+                put("matrix", "https://matrix.to/#/@poolcritter:pool.net.eu.org")
+            }
 
             depends("phlib", ">=0.1.2")
             depends("hexcasting", ">=0.11.2")

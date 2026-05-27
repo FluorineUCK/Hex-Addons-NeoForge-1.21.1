@@ -61,13 +61,6 @@ class FabricMod(val id: String, val version: String): Consumer<JsonDsl.Object> {
             }
         }
     }
-    val knownAuthors = object {
-        fun pool() {
-            author("pool") {
-                put("matrix", "https://matrix.to/#/@poolcritter:pool.net.eu.org")
-            }
-        }
-    }
     fun contributor(name: String) {
         contributors.put(name)
     }

@@ -215,7 +215,10 @@ tasks.processResources {
             description = "Miscellaneous neat features and QoL patterns for Hex Casting."
             license = "LGPL-3.0"
             icon = "assets/hexic/icon.png"
-            knownAuthors.pool()
+
+            author("pool") {
+                put("matrix", "https://matrix.to/#/@poolcritter:pool.net.eu.org")
+            }
 
             depends("mixinextras", "*")
             depends("mm", "^2.3")
