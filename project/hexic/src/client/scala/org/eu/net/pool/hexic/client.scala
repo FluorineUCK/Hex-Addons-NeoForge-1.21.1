@@ -453,6 +453,10 @@ def datagen(gen: FabricDataGenerator): Unit =
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",
           "dye_offpaw" -> "Apply Pigment",
+          "engine/pos" -> "Gearbox Reflection",
+          "engine/sleep" -> "Engineer's Distraction",
+          "engine/suspend" -> "Engineer's Departure",
+          "engine/terminate" -> "Engineer's Resignation",
           "erase" -> "Erase Block",
           "extract" -> "Excisor's Gambit",
           "findview" -> "Reflection Purification",
@@ -529,6 +533,7 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexic.media.internal", "Trinkets")
         gen.add("hexic.media_bundle.items", "%s/%s")
         gen.add("hexic.spell_memory", "Hex memorized")
+        gen.add("hexic.mishap.notengine", "Expected to be cast from a Casting Engine")
         gen.add("tag.item.hexic.mediaweaves", "Mediaweave")
         gen.add("text.hexic.pigment_holder_item", "an item storing a pigment")
         gen.add("trinkets.slot.chest.hexic_mediaweave", "Mediaweave")

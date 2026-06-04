@@ -45,3 +45,5 @@
 2.1.0 Refinement Distillation now properly drops input iotas on first loop as it should
 2.1.0 translations have been updated [@chuijk]
 2.1.0 wool and carpet edification are now actually somewhat balanced wrt each other
+2.1.0 added some casting-engine-exclusive helper patterns
+2.1.0 added casting engines

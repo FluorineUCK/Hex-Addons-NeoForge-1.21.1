@@ -166,6 +166,7 @@ import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
 
 import scala.util.matching.Regex
 import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
+import at.petrak.hexcasting.api.casting.mishaps.circle.MishapNoSpellCircle
 import at.petrak.hexcasting.client.RegisterClientStuff
 import at.petrak.hexcasting.common.blocks.BlockQuenchedAllay
 import at.petrak.hexcasting.interop.inline.InlinePatternData
@@ -2240,6 +2241,26 @@ object CastingEngine extends BlockWithEntity(AbstractBlock.Settings.copy(Blocks.
   final val π: 3.1415927f = compiletime.constValue
   final val τ: 6.2831855f = compiletime.constValue
   override def getRenderType(state: BlockState): BlockRenderType = BlockRenderType.MODEL
+  trait Access:
+    def pos: BlockPos
+    def world: World
+    def terminate(): Nothing
+    def suspend(img: CastingImage, cont: SpellContinuation): Nothing
+    def sleep(img: CastingImage, cont: SpellContinuation, ticks: Int): Nothing
+  object Access:
+    val scope = Scope:
+      new Access:
+        private def mishap: Nothing =
+          throw new Mishap:
+            val surrogate = MishapNoSpellCircle()
+            export surrogate.{execute, accentColor}
+            override def errorMessage(castingEnvironment: CastingEnvironment, context: Context): Text =
+              Text.translatable("hexic.mishap.notengine")
+        override def pos: BlockPos = mishap
+        override def world: World = mishap
+        override def terminate(): Nothing = mishap
+        override def suspend(img: CastingImage, cont: SpellContinuation): Nothing = mishap
+        override def sleep(img: CastingImage, cont: SpellContinuation, ticks: Int): Nothing = mishap
   private[hexic] sealed trait Entity extends BlockEntity with ADIotaHolder:
     //#region state stuff
     var hexTag: Option[NbtCompound] = None
@@ -2372,9 +2393,29 @@ object CastingEngine extends BlockWithEntity(AbstractBlock.Settings.copy(Blocks.
             sw.getPlayerByUuid(uuid) match
               case sp: ServerPlayerEntity if sp.getPos.squaredDistanceTo(Vec3d.ofCenter(getPos)) < 64 =>
                 val vm : CastingVM = CastingVM(_ඞ.image, PlayerEngineEnv(sp, sp.getMainArm ^ arm))
-                state = _ඞ.continuation.executePreemptive(vm, 100).map(c => (Suspension(vm.getImage() (opsConsumed = 0), c), caster))
+                state = wrapReturn: setState =>
+                  Access.scope.enter(
+                    new Access:
+                      override def pos: BlockPos = getPos
+                      override def world: World = getWorld
+                      override def terminate(): Nothing = setState(None)
+                      override def suspend(img: CastingImage, cont: SpellContinuation): Nothing =
+                        cont match
+                          case _: SpellContinuation.Done => setState(None)
+                          case notDone: SpellContinuation.NotDone => setState(Some(Suspension(img(opsConsumed = 0), notDone), None))
+                      override def sleep(img: CastingImage, cont: SpellContinuation, ticks: Int): Nothing =
+                        if ticks <= 0 then
+                          cont match
+                            case _: SpellContinuation.Done => setState(None)
+                            case notDone: SpellContinuation.NotDone => setState(Some(Suspension(img(opsConsumed = 0), notDone), caster))
+                        else
+                          // this is incredibly hacky
+                          setState(Some(Suspension(img(opsConsumed = 0), SpellContinuation.NotDone(FrameEvaluate(SpellList.LList(0, Seq(PatternIota(w"qqqaw"), DoubleIota(ticks-1), PatternIota(hexXplat.getActionRegistry.get("engine/sleep").prototype))), false), cont)), caster))
+                  ) {
+                    _ඞ.continuation.executePreemptive(vm, 100).map(c => (Suspension(vm.getImage()(opsConsumed = 0), c), caster))
+                  }
                 markDirty()
-                if state.isEmpty then sw.getChunkManager.markForUpdate(getPos)
+                if state.forall(_._2.isEmpty) then sw.getChunkManager.markForUpdate(getPos)
               case _ =>
                 state = Some(_ඞ, None)
                 markDirty()
@@ -2493,7 +2534,22 @@ object CastingEngine extends BlockWithEntity(AbstractBlock.Settings.copy(Blocks.
                   ActionResult.FAIL
     else
       super.onUse(state, world, pos, player, paw, hit)
-
+  def pat(suffix: String) = se"eedadda$suffix"
+  phlib.Patterns.register("engine/pos", pat("wdd")):
+    phlib.Patterns.mkLiteral(if Access.scope.world == summon[CastingEnvironment].getWorld then Vec3Iota(Access.scope.pos.toCenterPos) else NullIota())
+  phlib.Patterns.register("engine/terminate", pat("edaadee")):
+    phlib.Patterns.mkAction: (img, cont) =>
+      Access.scope.terminate()
+  phlib.Patterns.register("engine/suspend", pat("edaqdee")):
+    phlib.Patterns.mkAction: (img, cont) =>
+      Access.scope.suspend(img, cont)
+  phlib.Patterns.register("engine/sleep", pat("wdwaaw")):
+    phlib.Patterns.mkAction: (img, cont) =>
+      img.getStack.toSeq match
+        case Seq() => throw MishapNotEnoughArgs(expected = 1, got = 0)
+        case newStack :+ tickIota =>
+          val ticks = OperatorUtils.getPositiveInt(Seq(tickIota), 0, 1)
+          Access.scope.sleep(img(stack = newStack), cont, ticks)
 object registerHopperEndpoint extends (() => Unit):
   def apply(): Unit =
     HopperEndpointRegistry.INSTANCE.register: (iota: Iota, env: CastingEnvironment, slot: Integer) =>
