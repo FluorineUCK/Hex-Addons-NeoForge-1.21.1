@@ -2,6 +2,7 @@
 package org.eu.net.pool
 package hexic
 
+import at.petrak.hexcasting.api.HexAPI
 import at.petrak.hexcasting.api.addldata.{ADIotaHolder, ADMediaHolder}
 import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, OperatorUtils, ParticleSpray, RenderedSpell, SpellList}
 import at.petrak.hexcasting.api.casting.arithmetic.Arithmetic
@@ -2385,6 +2386,8 @@ object CastingEngine extends BlockWithEntity(AbstractBlock.Settings.copy(Blocks.
       override def extractMediaEnvironment(cost: Media, simulate: Boolean): Media = if player.isCreative then 0 else extractMediaFromInventory(cost, canOvercast, simulate)
       override def printMessage(message: Text): Unit = super[PlayerBasedCastEnv].printMessage(t"${t"[${ItemInlineData(ItemStack(CastingEngine)).asText(false)} ${getPos.getX} ${getPos.getY} ${getPos.getZ}]".styled(_.withColor(0xe0aa2b))} $message")
       override def getMishapEnvironment = DummyMishapEnv()
+      override def isVecInRangeEnvironment(vec: Vec3d): Boolean =
+        super.isVecInRangeEnvironment(vec) || Option(HexAPI.instance.getSentinel(player)).exists(s => s.extendsRange && s.dimension == caster.getWorld.getRegistryKey)
     //endregion
     final def tick() =
       getWorld match
