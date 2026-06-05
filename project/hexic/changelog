@@ -40,6 +40,7 @@
 2.1.0 item/fluid concept displays no longer suck
 2.1.0 mediaweave can now actually be erased, sorry
 2.1.0 mediaweave can now be tied
+2.1.0 mediaweave no longer overrides the player's pigment
 2.1.0 negative item stacks are now disabled by default, they can be reenabled by setting -Dhexic.min_stack_size to your favorite value
 2.1.0 read-only properties can no longer be converted to access iotas
 2.1.0 Refinement Distillation now properly drops input iotas on first loop as it should
