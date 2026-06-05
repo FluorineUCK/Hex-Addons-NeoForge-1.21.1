@@ -24,9 +24,20 @@ plugins {
 
 rootProject.name = "hex-addons"
 
-include("util")
-includeBuild("plugin")
-for (mod in listOf("hexic", "iotaworks")) {
-    include(mod)
-    project(":$mod").projectDir = file("project/$mod")
+fun scanProjects(rootDir: File, prefix: String) {
+    val listFile = rootDir.resolve("project.list");
+    val declLines = if (listFile.exists()) listFile.useLines { it.toList() } else listOf("${rootDir.name}=.")
+    for (line in declLines) {
+        if (line.isBlank()) continue;
+        val (name, path) = line.split("=")
+        if (path == ".") {
+            include(prefix)
+            project(":$prefix").projectDir = rootDir
+        } else {
+            scanProjects(rootDir.resolve(path), if (name.isEmpty()) prefix else if (prefix.isEmpty()) name else "$prefix:$name")
+        }
+    }
 }
+
+includeBuild("plugin")
+scanProjects(rootDir, "")
