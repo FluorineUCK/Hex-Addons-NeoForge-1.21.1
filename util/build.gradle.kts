@@ -37,13 +37,13 @@ dependencies {
 tasks.processResources {
     preprocessor {
         fabricMod("phlib", version as String) {
-            name = "PoolHexLib"
+            name = "PhLib"
             description = "Internal library for my Hex Casting addons."
             license = "LGPL-3.0"
             icon = "phlib.icon.png"
 
             author("pool") {
-                put("discord", "https://discord.com/users/758407438251720795")
+                put("matrix", "https://matrix.to/#/@poolcritter:pool.net.eu.org")
             }
 
             depends("hexcasting", ">=0.11.2")

@@ -162,7 +162,7 @@ extension (p: ServerPlayerEntity)
           override def extractMediaEnvironment(cost: Long, simulate: Boolean): Long =
             if p.isCreative then 0L else extractMediaFromInventory(cost, canOvercast, simulate)
           override def getCastingHand: Hand = castingHand
-          override def getPigment = FrozenPigment(ItemStack(HexItems.DYE_PIGMENTS.get(item.color)), Util.NIL_UUID)
+          override def getPigment: FrozenPigment = hexXplat.getPigment(p)
         val image = CastingImage(ctx :+ StringIota.make(text), 0, Seq(), false, 0, NbtCompound(), null)
         val instrs = hex match
           case list: ListIota => list.getList.asScala.toSeq

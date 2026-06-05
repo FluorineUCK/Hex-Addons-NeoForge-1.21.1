@@ -21,8 +21,8 @@ import net.fabricmc.fabric.api.transfer.v1.transaction.{Transaction, Transaction
 import net.minecraft.block.{AbstractFurnaceBlock, BlockState}
 import net.minecraft.block.entity.AbstractFurnaceBlockEntity
 import net.minecraft.entity.decoration.ItemFrameEntity
-import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.entity.{Entity, ItemEntity}
+import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.fluid.{Fluid, Fluids}
 import net.minecraft.item.{Item, Items}
 import net.minecraft.nbt.{NbtCompound, NbtElement, NbtList, NbtLong}
@@ -35,6 +35,8 @@ import net.minecraft.util.math.{BlockPos, Box}
 import net.minecraft.world.{BlockView, TeleportTarget, World}
 import org.eu.net.pool.phlib.{*, given}
 import org.slf4j.{Logger, LoggerFactory}
+import ram.talia.hexal.api.casting.iota.MoteIota
+import ram.talia.hexal.api.mediafieditems.MediafiedItemManager
 import ram.talia.moreiotas.api.casting.iota.{ItemStackIota, ItemTypeIota}
 
 import java.util.UUID
@@ -298,6 +300,26 @@ def initViews() =
   setConceptScale[FluidVariant](81000)
   setConceptScale[SingletonVariant.media.type](10000)
   setConceptScale[SingletonVariant.heat.type](20)
+  Patterns.register("conceptavailable", sw"wedwqwdewwaqaa"):
+    Patterns.mkConstAction(2):
+      case Seq(BoxedView.Instance(target), VariantIota(typ, _)) =>
+        Using.resource(Transaction.openOuter()):
+          case tx@given Transaction =>
+            val amt = target.tryExtract(typ, Long.MaxValue) / conceptScale(ClassTag(typ.getClass))
+            tx.abort()
+            Seq(DoubleIota(amt))
+      case Seq(_: BoxedView.Instance, perp) => throw MishapInvalidIota(perp, 0, VariantIota.typeName)
+      case Seq(perp, _) => throw MishapInvalidIota(perp, 1, BoxedView.typeName)
+  Patterns.register("conceptremaining", sw"wedwqwdewadedd"):
+    Patterns.mkConstAction(2):
+      case Seq(BoxedView.Instance(target), VariantIota(typ, _)) =>
+        Using.resource(Transaction.openOuter()):
+          case tx@given Transaction =>
+            val amt = target.tryInsert(typ, Long.MaxValue) / conceptScale(ClassTag(typ.getClass))
+            tx.abort()
+            Seq(DoubleIota(amt))
+      case Seq(_: BoxedView.Instance, perp) => throw MishapInvalidIota(perp, 0, VariantIota.typeName)
+      case Seq(perp, _) => throw MishapInvalidIota(perp, 1, BoxedView.typeName)
   Patterns.register("moveconcept", se"wawdwawqdewewedqwawdwaw"):
     Patterns.mkConstAction(4):
       case Seq(isIota[BoxedView.Instance, 3](BoxedView.Instance(from)), isIota[BoxedView.Instance, 2](BoxedView.Instance(into)), typ: VariantIota[?], isIota[DoubleIota, 0](count)) =>
@@ -362,6 +384,12 @@ def initViews() =
               case s: ItemEntity => Seq(if s.getStack.getItem == Items.AIR then NullIota() else VariantIota(ItemVariant.of(s.getStack), RegistryKey.of(VariantIota.key, Identifier("item"))))
               case s: ItemFrameEntity => Seq(if s.getHeldItemStack.getItem == Items.AIR then NullIota() else VariantIota(ItemVariant.of(s.getHeldItemStack), RegistryKey.of(VariantIota.key, Identifier("item"))))
               case _ => dieOfBadType()
+          case m: MoteIota if MediafiedItemManager.contains(m.getItemIndex) =>
+            Seq(
+              if m.getItem == Items.AIR then
+                NullIota()
+              else
+                VariantIota(ItemVariant.of(m.getItem, m.getTag), RegistryKey.of(VariantIota.key, Identifier("item"))))
           case _ => dieOfBadType()
 //noinspection UnstableApiUsage
 case class VariantIota[T: ClassTag](data: TransferVariant[T], key: RegistryKey[VariantIota.Reader]) extends Iota(VariantIota, data):
@@ -376,6 +404,19 @@ case class VariantIota[T: ClassTag](data: TransferVariant[T], key: RegistryKey[V
 object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reader]("transfer_variants"):
   given IotaType[VariantIota[?]] = this
   type Reader = NbtCompound => Option[VariantIota.TaggedVariant]
+  def apply[T: ClassTag](data: TransferVariant[T], id: Identifier): VariantIota[T] = apply(data, RegistryKey.of(key, id))
+  def ofItem(i: ItemVariant): VariantIota[Item] = apply(i, RegistryKey.of(key, Identifier.of("minecraft", "item")))
+  object ofItem:
+    def unapply(v: VariantIota[?]): Option[ItemVariant] =
+      v match
+        case VariantIota(data: ItemVariant, key) if key == Identifier.of("minecraft", "item") => Some(data)
+        case _ => None
+  def ofFluid(i: FluidVariant): VariantIota[Fluid] = apply(i, RegistryKey.of(key, Identifier.of("minecraft", "fluid")))
+  object ofFluid:
+    def unapply(v: VariantIota[?]): Option[FluidVariant] =
+      v match
+        case VariantIota(data: FluidVariant, key) if key == Identifier.of("minecraft", "fluid") => Some(data)
+        case _ => None
   trait TaggedVariant:
     type T: ClassTag
     def variant: TransferVariant[T]
@@ -422,6 +463,11 @@ object VariantIota extends IotaType[VariantIota[?]], Registrar[VariantIota.Reade
       type T = SingletonVariant
       def variant = SingletonVariant.media
       def display: Text = Text.literal("Media").styled(_.withColor(0x74b3f2)))
+  registry("heat") = c =>
+    Some(new TaggedVariant:
+      type T = SingletonVariant
+      def variant = SingletonVariant.heat
+      def display: Text = Text.literal("Heat").styled(_.withColor(0xe08355)))
 
 //noinspection UnstableApiUsage
 class SingletonVariant extends TransferVariant[SingletonVariant]:

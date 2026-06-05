@@ -4,7 +4,7 @@
   "category": "hexcasting:patterns",
   "icon": "minecraft:white_carpet",
   "pages": [
-    "the world under my control nature is mine na$(bold)ture is MI/$NE the world $(underline)the world NO LONGER/$ will $(bold)the OVerworld rule me/$ My $(media)mind is going/$ My $(media)mind/$ is going $(o)THE PAIN OF THOUGHT/$ my mind my $(o)mind/$ my a nine by nine room to myself SOLELY MYE$(bold)LF NO ONE ELSE/$ a $(bold)burst/$ of _media to Shatter the $(media)world/$ nearly $(media)six allays $(bold)sewn/$ into $(underline)the walls/$ for eternity oh how it must hurt $(bold)IT HURTS IT/$ $(k)TORTUES/$",
+    "the world under my control nature is mine na$(bold)ture is MI/$NE the world $(m)the world NO LONGER/$ will $(bold)the OVerworld rule me/$ My $(media)mind is going/$ My $(media)mind/$ is going $(o)THE PAIN OF THOUGHT/$ my mind my $(o)mind/$ my a nine by nine room to myself SOLELY MYE$(bold)LF NO ONE ELSE/$ a $(bold)burst/$ of _media to Shatter the $(media)world/$ nearly $(media)six allays $(bold)sewn/$ into $(m)the walls/$ for eternity oh how it must hurt $(bold)IT HURTS IT/$ $(k)TORTUES/$",
     {
       "type": "hexcasting:pattern",
       "op_id": "hexic:makeworld",
@@ -13,7 +13,7 @@
       "output": "imprint",
       "text": "Creates a fresh cuboid with a 9x9x9 interior, as well as a dimension to hold it in. Costs six quenched allays (720 dust)."
     },
-    "fragments of space the $(media)world/$ falling apart crumpling a $(o)fine powder/$ to the _media tie my plane TIE IT DOWN WELL bindings of $(media)thought/$ to keep it safe safe from others safe from $(media)me/$ only $(bold)a sliver of an allay's mind for the price/$ eternally trapped n$(underline)ot alive not dead mer/$ely floating Form the $(media)allay into bindings f/$rom some point outside must $(underline)hurry/$ now $(o)I feel it slipping away/$ $(bold)the cost of tying it to itself $(o)disasterous/$ the plane slipping away $(media)my/$ mind slipping away",
+    "fragments of space the $(media)world/$ falling apart crumpling a $(o)fine powder/$ to the _media tie my plane TIE IT DOWN WELL bindings of $(media)thought/$ to keep it safe safe from others safe from $(media)me/$ only $(bold)a sliver of an allay's mind for the price/$ eternally trapped n$(m)ot alive not dead mer/$ely floating Form the $(media)allay into bindings f/$rom some point outside must $(m)hurry/$ now $(o)I feel it slipping away/$ $(bold)the cost of tying it to itself $(o)disasterous/$ the plane slipping away $(media)my/$ mind slipping away",
     {
       "type": "hexcasting:pattern",
       "op_id": "hexic:attachworld",

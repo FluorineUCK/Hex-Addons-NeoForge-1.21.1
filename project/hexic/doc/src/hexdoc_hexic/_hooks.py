@@ -17,7 +17,7 @@ LookupPatternPage._check_anchor.__code__ = (lambda self: self).__code__
 class HexicModPlugin(ModPluginWithBook):
     modid = "hexic"
     full_version = FULL_VERSION
-    mod_version = MOD_VERSION
+    mod_version = VERSION
     plugin_version = PY_VERSION
     def resource_dirs(self):
         from ._export import generated

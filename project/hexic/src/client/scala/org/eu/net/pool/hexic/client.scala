@@ -1,10 +1,11 @@
 package org.eu.net.pool
 package hexic
 
-import at.petrak.hexcasting.api.casting.math.{HexDir, HexPattern}
+import at.petrak.hexcasting.api.casting.math.{HexAngle, HexDir, HexPattern}
 import at.petrak.hexcasting.api.item.PigmentItem
 import at.petrak.hexcasting.api.mod.HexTags
 import at.petrak.hexcasting.api.pigment.FrozenPigment
+import at.petrak.hexcasting.common.lib.{HexBlocks, HexItems}
 import at.petrak.hexcasting.interop.inline.InlinePatternData
 import com.google.gson.reflect.TypeToken
 import com.google.gson.{Gson, JsonArray, JsonObject}
@@ -13,16 +14,22 @@ import com.samsthenerd.inline.api.client.InlineClientAPI
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback
 import com.samsthenerd.inline.api.matching.{InlineMatch, InlineMatcher, MatcherInfo, RegexMatcher}
 import dev.emi.trinkets.api.{TrinketComponent, TrinketsApi}
+import dev.tizu.hexcessible.entries.PatternEntries
+import dev.tizu.hexcessible.smartsig.SmartSig
+import dev.tizu.hexcessible.smartsig._hexic_registerSmartSig as registerSmartSig
 import kotlin.jvm.JvmField
+import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.ColorProviderRegistry
 import net.fabricmc.fabric.api.datagen.v1.FabricDataGenerator
-import net.fabricmc.fabric.api.datagen.v1.provider.{FabricLanguageProvider, FabricModelProvider, FabricRecipeProvider, FabricTagProvider}
+import net.fabricmc.fabric.api.datagen.v1.provider.{FabricBlockLootTableProvider, FabricLanguageProvider, FabricModelProvider, FabricRecipeProvider, FabricTagProvider}
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
 import net.minecraft.text.Text
+
 import java.util.function.UnaryOperator
 import net.minecraft.advancement.criterion.InventoryChangedCriterion
+import net.minecraft.block.{Block, ShulkerBoxBlock}
 import net.minecraft.block.entity.{BlockEntity, BlockEntityType}
 import net.minecraft.client.MinecraftClient
 import net.minecraft.client.color.item.ItemColorProvider
@@ -32,6 +39,7 @@ import net.minecraft.client.network.{ClientPlayNetworkHandler, ClientPlayerEntit
 import net.minecraft.client.render.block.entity.{BlockEntityRenderer, BlockEntityRendererFactories}
 import net.minecraft.client.render.model.json
 import net.minecraft.client.render.*
+import net.minecraft.client.render.model.json.ModelTransformationMode
 import net.minecraft.client.texture.Sprite
 import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.data.client.*
@@ -39,13 +47,21 @@ import net.minecraft.data.server.recipe.{RecipeJsonProvider, ShapedRecipeJsonBui
 import net.minecraft.entity.player.PlayerEntity
 import net.minecraft.inventory.Inventory
 import net.minecraft.item.{Item, ItemStack, Items}
+import net.minecraft.loot.entry.{DynamicEntry, ItemEntry}
+import net.minecraft.loot.function.{CopyNameLootFunction, CopyNbtLootFunction, SetContentsLootFunction}
+import net.minecraft.loot.provider.nbt.{ContextLootNbtProvider, LootNbtProvider}
+import net.minecraft.loot.provider.number.ConstantLootNumberProvider
+import net.minecraft.loot.{LootPool, LootTable}
 import net.minecraft.recipe.book.RecipeCategory
+import net.minecraft.registry.tag.BlockTags
 import net.minecraft.registry.{MutableRegistry, Registries, RegistryKeys, RegistryWrapper}
 import net.minecraft.screen.slot.Slot
 import net.minecraft.text.{CharacterVisitor, OrderedText, Style}
 import net.minecraft.util.collection.DefaultedList
 import net.minecraft.util.math.{Direction, MathHelper, Vec3d}
 import net.minecraft.util.{DyeColor, Identifier}
+import org.slf4j.Logger
+import org.joml.{AxisAngle4f, Quaternionf}
 
 import java.io.{InputStreamReader, Reader}
 import java.util.function.Consumer
@@ -57,6 +73,8 @@ import scala.util.boundary
 import scala.util.boundary.Label
 import scala.util.chaining.scalaUtilChainingOps
 import phlib.{*, given}
+
+import java.util.regex.Pattern
 
 given client: MinecraftClient = MinecraftClient.getInstance
 
@@ -99,6 +117,16 @@ def init(): Unit =
             // TODO
             Direction.values.map(_ -> (null, (0f, 0f) -> (1f, 1f)))*
           )
+  )
+  BlockEntityRendererFactories.register(CastingEngine.entityType, ctx => (engine: BlockEntity with CastingEngine.Entity, dt, mats, bufs, light, overlay) =>
+    val (θ, _) = engine.simulatePhysics(dt)
+    try
+      mats.push()
+      mats.translate(0.5, 0.5, 0.5)
+      mats.multiply(Quaternionf(0, MathHelper.sin(θ/2), 0, MathHelper.cos(θ/2)))
+      client.getItemRenderer.renderItem(ItemStack(CastingEngine.delegate), ModelTransformationMode.NONE, light, overlay, mats, bufs, engine.getWorld, 0)
+    finally
+      mats.pop()
   )
   ColorProviderRegistry.ITEM.register((stack, idx) => boundary:
     val nbt = stack.getSubNbt("pigment")
@@ -153,6 +181,65 @@ def init(): Unit =
         lines.append(Text.literal("Cannot be unequipped and won't be dropped on death.").styled(_.withColor(0x4b1d8c)))
         lines.append(Text.literal("Use ").append(Text.empty().append(InlinePatternData(sw"aqeqqqwqqqqqaqwqa").asText(withExtra=false)).styled(_.withColor(0x782fe0))).append(" to untie.").styled(_.withColor(0x4b1d8c)))
       case _ =>
+  ItemTooltipCallback.EVENT.register: (stack, ctx, lines) =>
+    val macros = stack.getMacros
+    if macros.nonEmpty then
+      val colorizer: UnaryOperator[Style] = _.withColor(0xf59b14)
+      lines.add(Text.literal("Responds to these patterns:").styled(colorizer))
+      val (namedMacros, unnamedMacros) = macros.partition(_.name.isDefined)
+      extension (m: MacroDefinition) def render = InlinePatternData(m.pattern).asText(true)
+      val unnamedMacroLine = Option.when(unnamedMacros.nonEmpty)((Text.empty /: unnamedMacros.toSeq.sortBy(_.pattern.anglesSignature)) (_ append _.render))
+      lines.addAll:
+        if namedMacros.nonEmpty then
+          def bulletPoint = Text.empty.append(Text.literal("• ").styled(colorizer))
+          namedMacros.toSeq.sortBy(_.name.get) // SAFETY: m.name is guaranteed Some because the left side of macros.partition returns only elements such that m.name.isDefined is true
+            .map: m =>
+              bulletPoint
+                .append(m.render)
+                .append(Text.literal(" (name: ").styled(colorizer))
+                .append(Text.literal(m.name.get)) // SAFETY: unsafe property m.name.get must have been accessed by now due to sortBy call
+                .append(Text.literal(")").styled(colorizer))
+            .:++(unnamedMacroLine.map(bulletPoint.append(_)))
+        else
+          unnamedMacroLine.toSeq
+  try hexcessibleHolder catch case e: LinkageError => summon[Logger].warn("Failed to initialize Hexcessible interop", e)
+
+
+private object hexcessibleHolder:
+  extension (defi: MacroDefinition)
+    def toEntry(itemID: Identifier) =
+      defi.name match
+        case Some(name) =>
+          PatternEntries.Entry(
+            id = s"hexic/equipment_macro/${itemID.getNamespace}/${itemID.getPath}/${defi.pattern.anglesSignature}",
+            rawName = name,
+            checkLock = () => false,
+            dir = defi.pattern.getStartDir,
+            sig = Seq(defi.pattern.getAngles),
+            impls = Seq(),
+            z = 0, // hexic-level variable naming
+          )
+        case None => null
+  registerSmartSig:
+    new SmartSig:
+      override def get(query: String): java.util.List[PatternEntries.Entry] = foldLocalPlayer[Seq[PatternEntries.Entry]](Seq.empty): p =>
+        if isDev then println(s"smartsig received: $query. found macros ${p.getMacros}")
+        for
+          stack -> defi <- p.getMacros.toSeq
+          if p.findMacro(defi.pattern).size == 1
+          id <- Option(Registries.ITEM.getId(stack.getItem))
+          _ <- defi.name
+//          if { if isDev then println(s"- found name: $name"); true }
+//          if Pattern.compile(Pattern.quote(query)).matcher(name).find()
+        yield
+          if isDev then println("- valid match!")
+          defi.toEntry(id)
+      override def get(list: java.util.List[HexAngle]): PatternEntries.Entry = foldLocalPlayer(null): p =>
+        val i = p.findMacro(HexPattern(HexDir.WEST, list)).iterator
+        i.nextOption().fold(null): p =>
+          if i.hasNext then null
+          else
+          Option(Registries.ITEM.getId(p._1.getItem)).fold(null)(p._2.toEntry(_))
 
 extension (s: DyeColor) def humanName: String = s.getName.split('_').map(_.capitalize).mkString(" ")
 
@@ -258,44 +345,60 @@ def datagen(gen: FabricDataGenerator): Unit =
   val pack = gen.createPack()
   pack.addProvider:
     new FabricModelProvider(_):
+      private def model(parent: String, textures: Map[String, String], incremental: Boolean = false)(elements: ((name: String, from: (Float, Float, Float), to: (Float, Float, Float), config: JsonObject ?=> Unit, faces: Map[Direction, (JsonObject, Label[Unit]) ?=> Unit]) => JsonObject) => Unit) =
+        new JsonObject().tap: j =>
+          if parent != null then j.addProperty("parent", parent)
+          if incremental then j.addProperty("lib39:inherit_elements", true)
+          j.add("textures", new JsonObject().tap(j => textures.foreach(j.addProperty(_: String, _: String))))
+          j.add("elements", new JsonArray().tap: j =>
+            // TODO: we can optimize this later
+            elements: (name, from, to, config, faces) =>
+              new JsonObject().tap: e =>
+                e.addProperty("name", name)
+                e.add("from", JsonArray().tap(_.add(from._1)).tap(_.add(from._2)).tap(_.add(from._3)))
+                e.add("to", JsonArray().tap(_.add(to._1)).tap(_.add(to._2)).tap(_.add(to._3)))
+                e.add("faces", JsonObject().tap: f =>
+                  for (face, action) <- if faces.nonEmpty then faces else Direction.values.toSeq.map { _ -> ((_: JsonObject, _: Label[Unit]) ?=> ()) } do
+                    boundary:
+                      f.add(face.asString, JsonObject().tap:
+                        case j@given JsonObject =>
+                          if face == Direction.WEST && from._1 == 0 then j.addProperty("cullface", "west")
+                          if face == Direction.DOWN && from._2 == 0 then j.addProperty("cullface", "down")
+                          if face == Direction.NORTH && from._3 == 0 then j.addProperty("cullface", "north")
+                          if face == Direction.EAST && to._1 == 16 then j.addProperty("cullface", "east")
+                          if face == Direction.UP && to._2 == 16 then j.addProperty("cullface", "up")
+                          if face == Direction.SOUTH && to._3 == 16 then j.addProperty("cullface", "south")
+                          config(using summon)
+                          action(using summon, summon)
+                      ))
+                j.add(e))
+      extension (j: JsonObject) private def rotated(axis: Direction.Axis, pivot: (Float, Float, Float), angle: Float) =
+        j.add("rotation", JsonObject().tap: j =>
+          j.addProperty("axis", axis.getName)
+          j.add("origin", JsonArray().tap(_.add(pivot._1)).tap(_.add(pivot._2)).tap(_.add(pivot._3)))
+          j.addProperty("angle", angle)
+          j.addProperty("lib39:unlock_angle", true))
       override def generateBlockStateModels(gen: BlockStateModelGenerator): Unit =
         gen.registerSimpleCubeAll(Registries.BLOCK("border"))
         gen.registerSimpleCubeAll(Registries.BLOCK("void_air"))
         gen.registerSimpleState(Registries.BLOCK("chisel_table"))
+        gen.registerSimpleState(CastingEngine)
         gen.modelCollector.accept(ModelIds.getBlockModelId(Registries.BLOCK("chisel_table")), () =>
-          new JsonObject().tap: j =>
-            j.addProperty("parent", "minecraft:block/block")
-            j.add("textures", new JsonObject().tap: j =>
-              j.addProperty("particle", "hexcasting:block/slate")
-            )
-            j.add("elements", new JsonArray().tap: j =>
-              def elem(name: String, from: (Float, Float, Float), to: (Float, Float, Float), config: JsonObject ?=> Unit, faces: (Direction, JsonObject ?=> Label[Unit] ?=> Unit)*) =
-                j.add(new JsonObject().tap: j =>
-                  j.addProperty("name", name)
-                  j.add("from", JsonArray().tap(_.add(from._1)).tap(_.add(from._2)).tap(_.add(from._3)))
-                  j.add("to", JsonArray().tap(_.add(to._1)).tap(_.add(to._2)).tap(_.add(to._3)))
-                  j.add("faces", JsonObject().tap: j =>
-                    for (face, action) <- if faces.nonEmpty then faces else Direction.values.toSeq.map { _ -> {} } do
-                      boundary:
-                        j.add(face.asString, JsonObject().tap:
-                          case given JsonObject =>
-                            val j = summon[JsonObject]
-                            if face == Direction.WEST && from._1 == 0 then j.addProperty("cullface", "west")
-                            if face == Direction.DOWN && from._2 == 0 then j.addProperty("cullface", "down")
-                            if face == Direction.NORTH && from._3 == 0 then j.addProperty("cullface", "north")
-                            if face == Direction.EAST && to._1 == 16 then j.addProperty("cullface", "east")
-                            if face == Direction.UP && to._2 == 16 then j.addProperty("cullface", "up")
-                            if face == Direction.SOUTH && to._3 == 16 then j.addProperty("cullface", "south")
-                            config; action
-                        )
-                  )
-                )
-              // TODO: we can optimize this later
-              elem("small_leg", (0, 0, 0), (4, 8, 4), j ?=> j.addProperty("texture", "#particle"))
-              elem("big_leg", (12, 0, 12), (16, 8, 16), j ?=> j.addProperty("texture", "#particle"))
-              elem("surface", (0, 8, 0), (16, 12, 16), j ?=> j.addProperty("texture", "#particle"))
-            )
-        )
+          model("minecraft:block/block", Map("particle" -> "hexcasting:block/slate")): elem =>
+            elem("small_leg", (0, 0, 0), (4, 8, 4), j ?=> j.addProperty("texture", "#particle"), Map())
+            elem("big_leg", (12, 0, 12), (16, 8, 16), j ?=> j.addProperty("texture", "#particle"), Map())
+            elem("surface", (0, 8, 0), (16, 12, 16), j ?=> j.addProperty("texture", "#particle"), Map()))
+        gen.modelCollector.accept(ModelIds.getBlockModelId(CastingEngine), () =>
+          model("minecraft:block/block", Map(
+            "particle" -> "hexcasting:block/slate",
+            "side" -> "hexic:block/engine.side",
+            "top" -> "hexic:block/engine.top",
+          )): elem =>
+            elem("majority", (0, 0, 0), (16, 10, 16), { summon[JsonObject].addProperty("texture", "#side") }, Map(
+              Direction.UP -> { summon[JsonObject].addProperty("texture", "#top"); println("MMRRRAOW") },
+              Direction.DOWN -> { summon[JsonObject].addProperty("texture", "#particle") },
+              Direction.NORTH -> {}, Direction.EAST -> {}, Direction.SOUTH -> {}, Direction.WEST -> {},
+            )))
       override def generateItemModels(gen: ItemModelGenerator): Unit =
         for (_, item) <- Mediaweave.colors do gen.register(item, Models.GENERATED)
         for (_, item) <- stringworms do gen.register(item, Models.GENERATED)
@@ -316,6 +419,24 @@ def datagen(gen: FabricDataGenerator): Unit =
               j.addProperty(s"layer$i", s"hexic:item/stringworm_tinted_$i")
           )
         )
+        gen.writer.accept(ModelIds.getItemModelId(CastingEngine.item), () => model(ModelIds.getBlockModelId(CastingEngine).toString, Map(
+          "copper" -> "minecraft:block/copper_block",
+        ), incremental=true): elem =>
+          elem("axis", (7, 10, 7), (9, 11, 9), { summon[JsonObject].addProperty("texture", "#copper") }, Map())
+            .getAsJsonObject("faces").remove("down")
+          for angle <- 0 to 120 by 60 do
+            elem(s"cross_$angle", (2, 11, 6.5f), (14, 14-angle/7000f, 9.5f), { summon[JsonObject].addProperty("texture", "#copper") }, Map())
+              .rotated(Direction.Axis.Y, (8, 12, 8), angle)
+        )
+        gen.writer.accept(ModelIds.getItemModelId(CastingEngine.delegate), () => model(null, Map(
+          "copper" -> "minecraft:block/copper_block",
+        )): elem =>
+          elem("axis", (6, 10, 6), (10, 14.5f, 10), { summon[JsonObject].addProperty("texture", "#copper") }, Map())
+            .getAsJsonObject("faces").remove("down")
+          for angle <- 0 to 120 by 60 do
+            elem(s"cross_$angle", (2, 11, 6.5f), (14, 14-angle/70000f, 9.5f), { summon[JsonObject].addProperty("texture", "#copper") }, Map())
+              .rotated(Direction.Axis.Y, (8, 12, 8), angle)
+        )
         gen.register(Registries.ITEM("chisel"), Models.GENERATED)
         gen.register(wizard, Models.GENERATED)
   pack.addProvider:
@@ -325,10 +446,17 @@ def datagen(gen: FabricDataGenerator): Unit =
           "attachworld" -> "Bind Demiplane",
           "blind" -> "Hidden Sun's Nadir",
           "collar" -> "Tie Mediaweave",
+          "conceptavailable" -> "Debit Purification",
+          "conceptremaining" -> "Credit Purification",
+          "connect" -> "Moses's Gambit",
           "decollar" -> "Untie Mediaweave",
           "deleteworld" -> "Shatter Demiplane",
           "drop" -> "Rejection Distillation",
           "dye_offpaw" -> "Apply Pigment",
+          "engine/pos" -> "Gearbox Reflection",
+          "engine/sleep" -> "Engineer's Distraction",
+          "engine/suspend" -> "Engineer's Departure",
+          "engine/terminate" -> "Engineer's Resignation",
           "erase" -> "Erase Block",
           "extract" -> "Excisor's Gambit",
           "findview" -> "Reflection Purification",
@@ -339,6 +467,7 @@ def datagen(gen: FabricDataGenerator): Unit =
           "make_cme" -> "Thoth's Pseudogambit",
           "makeworld" -> "Conjure Demiplane",
           "malloc" -> "Allocator's Purification",
+          "mkmacro" -> "Etch Pattern",
           "modulo" -> "Modulus Distillation II",
           "moveconcept" -> "Transfer Substance",
           "moveentity" -> "Transfer Creature",
@@ -382,6 +511,7 @@ def datagen(gen: FabricDataGenerator): Unit =
             case 12 => s"Large ${item.color.humanName} Casting Pouch"
             case s => throw IllegalStateException(s"Unhandled bundle size $s"))
         gen.add(wizard, "Wizard")
+        gen.add(CastingEngine, "Casting Engine")
         val hexLang = Seq("hexcasting", "oneironaut").flatMap(mod => Gson().fromJson(InputStreamReader(getClass.getResourceAsStream(s"/assets/$mod/lang/en_us.json")), new TypeToken[java.util.Map[String, String]]() {}).asScala).toMap
         Registries.ITEM.forEach:
           case p: PigmentItem => gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
@@ -396,12 +526,14 @@ def datagen(gen: FabricDataGenerator): Unit =
         ) do gen.add(s"book.hexic.page.$page", text)
         gen.add("hexdoc.hexic.description", "Miscellaneous neat features and QoL patterns for Hex Casting")
         gen.add("hexdoc.hexic.title", "Hexic")
+        gen.add("hexic.mishap.pattern_conflict", "Multiple pieces of equipment responded to %s")
         gen.add("hexic.media.external", "Media")
         gen.add("hexic.media.finite", "%s: %s/%s (%s)")
         gen.add("hexic.media.infinite", "%s: %s")
         gen.add("hexic.media.internal", "Trinkets")
         gen.add("hexic.media_bundle.items", "%s/%s")
         gen.add("hexic.spell_memory", "Hex memorized")
+        gen.add("hexic.mishap.notengine", "Expected to be cast from a Casting Engine")
         gen.add("tag.item.hexic.mediaweaves", "Mediaweave")
         gen.add("text.hexic.pigment_holder_item", "an item storing a pigment")
         gen.add("trinkets.slot.chest.hexic_mediaweave", "Mediaweave")
@@ -430,11 +562,38 @@ def datagen(gen: FabricDataGenerator): Unit =
             .input('a', Items.AMETHYST_SHARD)
             .criterion("recipe", InventoryChangedCriterion.Conditions.items(Mediaweave.colors(color)))
             .offerTo(consumer, Registries.ITEM.getId(item))
+        ShapedRecipeJsonBuilder(RecipeCategory.TOOLS, CastingEngine, 1)
+          .pattern(" c ")
+          .pattern("eae")
+          .pattern("sss")
+          .input('c', Items.COPPER_INGOT)
+          .input('a', HexItems.QUENCHED_SHARD)
+          .input('s', HexBlocks.SLATE_BLOCK)
+          .input('e', HexBlocks.EDIFIED_SLAB)
+          .criterion("get_allay", InventoryChangedCriterion.Conditions.items(HexItems.QUENCHED_SHARD))
+          //.criterion("get_slate", InventoryChangedCriterion.Conditions.items(HexItems.SLATE))
+          //.criterion("enlighten", HexAdvancements.ENLIGHTEN)
+          .offerTo(consumer, Registries.ITEM.getId(CastingEngine.item))
   pack.addProvider:
-    new FabricTagProvider[Item](_, RegistryKeys.ITEM, _):
+    new FabricBlockLootTableProvider(_):
+      override def generate(): Unit =
+        addDrop(CastingEngine,
+          LootTable.builder pool
+          this.addSurvivesExplosionCondition(
+            CastingEngine.item,
+            LootPool.builder rolls ConstantLootNumberProvider.create(1.0F) `with`
+            ItemEntry.builder(CastingEngine.item)
+            ((CopyNbtLootFunction.builder(ContextLootNbtProvider.BLOCK_ENTITY.asInstanceOf[LootNbtProvider]) /: Seq("hex", "image", "frames")) ((p, s) => p.withOperation(source = s, target = s"BlockEntityTag.$s")))
+          ))
+  pack.addProvider:
+    new FabricTagProvider.ItemTagProvider(_, _):
       override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
         getOrCreateTagBuilder(Mediaweave.tag).add(Mediaweave.colors.values.toSeq*)
         getOrCreateTagBuilder(HexTags.Items.STAVES).add(Pen.instances.values.toSeq*)
+  pack.addProvider:
+    new FabricTagProvider.BlockTagProvider(_, _):
+      override def configure(lookup: RegistryWrapper.WrapperLookup): Unit =
+        getOrCreateTagBuilder(BlockTags.PICKAXE_MINEABLE).add(CastingEngine)
 
 object inventory_??? extends Inventory:
   override def size(): Int = ???

@@ -34,7 +34,7 @@ tasks.processResources {
             icon = "hexxytounge.icon.png"
 
             author("pool") {
-                put("discord", "https://discord.com/users/758407438251720795")
+                put("matrix", "https://matrix.to/#/@poolcritter:pool.net.eu.org")
             }
 
             depends("phlib", "0.1.1")

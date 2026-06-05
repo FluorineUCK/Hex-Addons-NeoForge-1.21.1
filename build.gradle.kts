@@ -53,11 +53,8 @@ allprojects {
 
 val release: Boolean = !System.getenv("release").isNullOrEmpty()
 allprojects {
-    val p by lazy {
-        val p = P(project)
-        ext["p"] = p
-        p
-    }
+    val p = P(project)
+    ext["p"] = p
     val modid: String by project.properties
     ext["release"] = release
     val isProject = project.projectDir.path.contains("/project/") || project == project(":util")
@@ -88,6 +85,11 @@ allprojects {
         plugins.withId("fabric-loom") {
             extensions.getByType<LoomGradleExtensionAPI>().apply {
                 splitEnvironmentSourceSets()
+
+                runs.configureEach {
+                    isIdeConfigGenerated = true
+                }
+
                 runs["client"].programArgs += listOf(
                     "--username",
                     "Player",
@@ -132,18 +134,22 @@ allprojects {
                 val langRoot = destinationDir.resolve("assets/$modid/lang")
 
                 doLast {
+                    println("rewriting book references in $bookRoot…")
                     bookRoot.list()?.forEach { lang ->
                         val langFile = langRoot.resolve("$lang.json")
+                        println("• considering $lang ($langFile)")
                         if (langFile.exists()) {
                             val entries = JsonSlurper().parseText(langFile.readText()) as MutableMap<String, String>
                             var n = 0
-                            for (bookFile in bookRoot.resolve(lang).walkTopDown()) {
+                            for (bookFile in bookRoot.resolve("$lang/entries").walkTopDown()) {
                                 if (bookFile.isFile) {
+                                    println("  • reading entry at $bookFile")
                                     val json = JsonSlurper().parseText(bookFile.readText())
                                     if (json !is Map<*, *>) continue
                                     json as MutableMap<Any, Any>
                                     val name = json["name"]
                                     if (name is String) {
+                                        println("    • name: $name")
                                         entries["text.$modid.book.${n}"] = name
                                         json["name"] = "text.$modid.book.${n}"
                                         n++
@@ -154,6 +160,7 @@ allprojects {
                                     for (i in pages.indices) {
                                         val page = pages[i]
                                         if (page is String) {
+                                            println("    • pages.$i: ${page.take(80)}")
                                             entries["text.$modid.book.${n}"] = page
                                             pages[i] = "text.$modid.book.${n}"
                                             n++
@@ -162,6 +169,7 @@ allprojects {
                                             for (key in listOf("text", "title", "header")) {
                                                 val text = page[key]
                                                 if (text != null && text is String) {
+                                                    println("    • pages.$i.$key: ${text.take(80)}")
                                                     entries["text.$modid.book.${n}"] = text
                                                     page[key] = "text.$modid.book.${n}"
                                                     n++

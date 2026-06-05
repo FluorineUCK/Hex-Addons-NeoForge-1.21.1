@@ -4,8 +4,8 @@ default_lang = "en_us"
 default_branch = "main"
 
 resource_dirs = [
-    "resources",
     "../build2001/resources/main",
+    "resources",
     { modid="hexcasting" },
     { modid="minecraft" },
     { modid="hexdoc" },
@@ -24,7 +24,12 @@ path = "../build/datagen/patterns.csv"
 regex = "{^_pattern_regex}"
 
 [textures]
-missing = ["hexic:preferred_mediaweave", "minecraft:chest", "hexic:chisel"]
+missing = [
+    "hexic:chisel",
+    "hexic:engine/gear_delegate",
+    "hexic:preferred_mediaweave",
+    "minecraft:chest",
+]
 
 [template]
 icon = "../src/main/resources/assets/hexic/icon.png"
@@ -32,15 +37,21 @@ include = ["hexic", "hexcasting", "hexdoc"]
 
 [template.args]
 mod_name = "Hexic"
-author = "PoolloverNathan"
+author = "pool"
 show_landing_text = false
 
 [[template.args.navbar.center]]
-text = "Download"
+text = "Modrinth"
 href = "https://modrinth.com/mod/hexic"
 [[template.args.navbar.center]]
-text = "Source"
-href = "https://codeberg.org/poollovernathan/hexic"
+text = "Codeberg"
+href = "https://pool.net.eu.org/git/hex-addons"
+[[template.args.navbar.center]]
+text = "Radicle"
+href = "https://radicle.network/nodes/seed.lama2923.dev/rad:zChmxddnxPemALy4RuZ7zQgzDxYv"
+[[template.args.navbar.center]]
+text = "Tangled"
+href = "https://tangled.sh/pool.net.eu.org/hex-addons"
 
 [textures.override]
 "hexic:preferred_mediaweave" = { texture = "hexic:textures/item/magenta_mediaweave.png" }

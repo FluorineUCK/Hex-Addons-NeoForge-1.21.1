@@ -1,13 +1,6 @@
 import de.undercouch.gradle.tasks.download.Download
-import groovy.json.JsonSlurper
 import org.eu.net.pool.mc_plugin.Environment
-import org.gradle.api.publish.maven.internal.publication.MavenPomInternal
 import org.gradle.kotlin.dsl.support.uppercaseFirstChar
-import kotlin.io.path.exists
-import kotlin.io.path.readText
-import groovy.json.JsonOutput
-import `java.nio`.file.Files;
-import kotlin.io.path.deleteIfExists
 import util.P
 
 plugins {
@@ -182,7 +175,9 @@ dependencies {
     modRuntimeOnly("com.unascribed:lib39-core:[2.0.0,)!!2.0.27+1.20.1")
     modRuntimeOnly("com.unascribed:lib39-avant:[2.0.0,3.0.0)!!2.0.27+1.20.1")
     modRuntimeOnly("com.unascribed:lib39-phantom:[2.0.0,3.0.0)!!2.0.27+1.20.1")
+    modRuntimeOnly("com.unascribed:lib39-lockpick:[2.0.0,3.0.0)!!2.0.27+1.20.1")
     modLocalRuntime("gay.object.hexdebug:hexdebug-fabric:0.5.0+1.20.1-SNAPSHOT")
+    modCompileOnly("maven.modrinth:hexcessible:0.2.0")
     modLocalRuntime("maven.modrinth:hexcessible:0.2.0")
     modLocalRuntime("maven.modrinth:complex-hex:0.1.3-beta")
 }
@@ -221,8 +216,8 @@ tasks.processResources {
             license = "LGPL-3.0"
             icon = "assets/hexic/icon.png"
 
-            author("PoolloverNathan") {
-                put("discord", "https://discord.com/users/402104961812660226")
+            author("pool") {
+                put("matrix", "https://matrix.to/#/@poolcritter:pool.net.eu.org")
             }
 
             depends("mixinextras", "*")
@@ -233,7 +228,7 @@ tasks.processResources {
             depends("jsonpatcher", "^1.0.0-beta.4+mc.1.20.1")
             depends("hexpose", ">=1.0.0 <3.0.0")
             depends("trinkets", "^3.7.2")
-            depends("phlib", ">=0.1.2 <0.2.0")
+            depends("phlib", ">=0.1.3 <0.2.0")
             conflicts("valkyrienskies", "*") // need to figure out how to create dimensions without causing a crash
             breaks("java", ">=26")
 
@@ -347,7 +342,8 @@ allprojects {
     }
 
     tasks.withType<ScalaCompile>().configureEach {
-        scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-Ydebug-cyclic", "-experimental", "-feature", "-Ycc-debug"))
+        scalaCompileOptions.additionalParameters.addAll(listOf("-explain-cyclic", "-experimental", "-Xprint:all"))
+        scalaCompileOptions.forkOptions.memoryMaximumSize = "4G"
     }
 }
 
@@ -385,8 +381,8 @@ tasks.named("clean") {
 
 open class Hexdoc: Exec() {
     init {
-        environment["GITHUB_PAGES_URL"] = "https://hexic.pool.net.eu.org/"
-        environment["GITHUB_REPOSITORY"] = "https://codeberg.org/poollovernathan/hexic"
+        environment["GITHUB_PAGES_URL"] = "https://files.pool.net.eu.org/docs/hexic/"
+        environment["GITHUB_REPOSITORY"] = "https://tangled.org/pool.net.eu.org/hex-addons"
         environment["DEBUG_GITHUBUSERCONTENT"] = P.contentRoot
         environment["GITHUB_SHA"] = (project.ext["p"] as P).commit_id
     }
@@ -399,17 +395,6 @@ open class Hexdoc: Exec() {
 
     @Internal
     var docsPrefix = project.file(".")
-}
-
-tasks.register<GradleBuild>("processWithDatagen") {
-    dependsOn("runDatagen")
-    tasks = listOf("processResources")
-}
-
-tasks.named("runDatagen") {
-    doLast {
-
-    }
 }
 
 val Hexdoc.docsRoot get() = file("$docsPrefix/v/${if (release) "$version/$py_version" else "latest/${p.change_id}"}")
@@ -430,9 +415,18 @@ fun Hexdoc.processOutput() {
 fun includeContent(text: String) = 
     text.replace(Regex("$contentRoot/*([\\w/.-]+?\\.png)")) {
         val path = it.groups[1]!!.value.replace(contentRoot, "").trimStart('/')
-        val b64 = `java.util`.Base64.getEncoder().encodeToString(file(path).readBytes())
-        println("\t$it\t$path")
-        "data:image/png;base64,$b64"
+        val rootPath = rootProject.file(path)
+        val os = `java.io`.ByteArrayOutputStream()
+        rootPath.inputStream().use { file ->
+            exec {
+                commandLine("magick", "convert", "-", "webp:-")
+                standardInput = file
+                standardOutput = os
+            }
+        }
+        val b64 = `java.util`.Base64.getEncoder().encodeToString(os.toByteArray())
+        println("\t$it\t$path\t")
+        "data:image/webp;base64,$b64"
     }
 
 val syncPip by tasks.register<Exec>("syncPip") {
@@ -444,15 +438,40 @@ val syncPip by tasks.register<Exec>("syncPip") {
     commandLine("env", "pip", "install", "-e", ".")
 }
 val hexdoc by tasks.register<Hexdoc>("hexdoc") {
-    dependsOn(syncPip, "processWithDatagen")
+    dependsOn(syncPip, tasks.processResources)
     docsPrefix = file("_site/src/docs")
     cleanPrefix()
     hexdocArgs = listOf("build", "--branch", p.change_id)
     if (release) hexdocArgs += "--release"
     processOutput()
 }
+val isHexdocMounted get() = file("/proc/mounts").useLines { it.any { val a = it.split(' '); a.size > 1 && file(a[1]).canonicalFile == file("_site/dst/docs").canonicalFile } }
+val mountHexdoc by tasks.register<Exec>("mountHexdoc") {
+    onlyIf { !isHexdocMounted }
+    val username = providers.gradleProperty("copypartyUsername")
+    val password = providers.gradleProperty("copypartyPassword")
+    doFirst {
+        file("_site/dst/docs").mkdirs()
+        commandLine(
+            "rclone", "mount",
+            ":webdav:/docs/${project.name}",
+            file("_site/dst/docs").absolutePath,
+            "--webdav-url", "https://files.pool.net.eu.org",
+            "--webdav-user", username.get(),
+            "--webdav-pass", password.get(),
+            "--webdav-vendor", "owncloud",
+            "--daemon",
+            "--vfs-cache-mode", "writes",
+            "--dir-cache-time", "5s",
+        )
+    }
+}
+val unmountHexdoc by tasks.register<Exec>("unmountHexdoc") {
+    onlyIf { isHexdocMounted }
+    commandLine("fusermount", "-u", file("_site/dst/docs").absolutePath)
+}
 val mergeHexdoc by tasks.register<Hexdoc>("mergeHexdoc") {
-    dependsOn(hexdoc)
+    dependsOn(hexdoc, mountHexdoc)
     docsPrefix = file("_site/dst/docs")
     hexdocArgs = listOf("merge")
     if (release) hexdocArgs += "--release"
@@ -478,7 +497,7 @@ val processWheel by tasks.register<Zip>("processWheel") {
     eachFile {
         if (!name.endsWith(".png")) {
             filter(::includeContent)
-            filter { it.replace(contentRoot, "https://codeberg.org/PoolloverNathan/hexic/raw/commit/${p.commit_id}") }
+            filter { it.replace(contentRoot, "https://codeberg.org/poolcritter/hex-addons/raw/commit/${p.commit_id}") }
         }
     }
     destinationDirectory = mergeHexdoc.docsRoot
@@ -499,7 +518,7 @@ tasks.withType<Jar> {
 tasks.register("docs") {
     dependsOn(mergeHexdoc, processWheel)
     doLast {
-        println("https://hexic.pool.net.eu.org/${mergeHexdoc.docsRoot.relativeTo(mergeHexdoc.docsPrefix)}/en_us")
+        println("https://files.pool.net.eu.org/docs/hexic/${mergeHexdoc.docsRoot.relativeTo(mergeHexdoc.docsPrefix)}/en_us")
     }
 }
 

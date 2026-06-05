@@ -1,6 +1,12 @@
 package org.eu.net.pool
 package phlib
 
+
+import at.petrak.hexcasting.api.casting.eval.ResolvedPatternType
+import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
+import at.petrak.hexcasting.api.casting.mishaps.{MishapInternalException, MishapStackSize}
+import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
+import kotlin.jvm.internal.DefaultConstructorMarker
 import at.petrak.hexcasting.api.casting.ActionRegistryEntry
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction}
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
@@ -22,7 +28,7 @@ import net.minecraft.nbt.*
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.server.network.ServerPlayerEntity
 import net.minecraft.server.world.ServerWorld
-import net.minecraft.util.Hand
+import net.minecraft.util.{Arm, Hand}
 import net.minecraft.util.dynamic.Codecs
 
 import scala.annotation.tailrec
@@ -224,6 +230,97 @@ implicit class IterOnceExt[T](i: IterableOnceOps[T, ?, ?]):
             boundary.break(Some(x))
           else
             Some(x)
+
+extension (arm: Arm)
+  def ^(hand: Hand): Arm = arm ^ (hand == Hand.MAIN_HAND)
+  def ^(invert: Boolean): Arm = if invert then arm.getOpposite else arm
+  def ^(OtherArm: Arm): Hand = arm match
+    case OtherArm => Hand.MAIN_HAND
+    case _ => Hand.OFF_HAND
+extension (hand: Hand)
+  def ^(arm: Arm): Arm = arm ^ hand
+  def ^(invert: Boolean): Hand =
+    if invert then
+      hand match
+        case Hand.MAIN_HAND => Hand.OFF_HAND
+        case Hand.OFF_HAND => Hand.MAIN_HAND
+    else hand
+
+extension (t: Throwable) def toMishap =
+  t match
+    case m: Mishap => m
+    case e: Exception => MishapInternalException(e)
+    case _ => MishapInternalException(RuntimeException(t))
+
+extension [T] (x: => T) def trying: Try[T] = Try(x)
+
+given castingImageUpdate: AnyRef with
+  extension (img: CastingImage)
+    def apply(stack: Seq[Iota] = img.getStack.toSeq,
+              parenCount: Int = img.getParenCount,
+              parenthesized: Seq[ParenthesizedIota] = img.getParenthesized.toSeq,
+              escapeNext: Boolean = img.getEscapeNext,
+              opsConsumed: Long = img.getOpsConsumed,
+              userData: NbtCompound = img.getUserData) =
+      CastingImage(stack = stack,
+                   parenCount = parenCount,
+                   parenthesized = parenthesized,
+                   escapeNext = escapeNext,
+                   opsConsumed = opsConsumed,
+                   userData = userData,
+                   null : DefaultConstructorMarker)
+given castResultUpdate: AnyRef with
+  extension (r: CastResult)
+    def apply(cast: Iota = r.getCast,
+              continuation: SpellContinuation = r.getContinuation,
+              newData: Option[CastingImage] = Option(r.getNewData),
+              sideEffects: Seq[OperatorSideEffect] = r.getSideEffects.toSeq,
+              resolutionType: ResolvedPatternType = r.getResolutionType,
+              sound: EvalSound = r.getSound) =
+      CastResult(cast = cast,
+                 continuation = continuation,
+                 newData = newData.orNull,
+                 sideEffects = sideEffects,
+                 resolutionType = resolutionType,
+                 sound = sound)
+
+extension (continuation: SpellContinuation.NotDone)
+  @tailrec
+  def executePreemptive(vm: CastingVM /* do not do the bad thing */ , ttl: Int): Option[SpellContinuation.NotDone] =
+    // spin the vm around a bit
+    val result =
+      val maybeResult = continuation.getFrame.evaluate(continuation.getNext, vm.getEnv.getWorld, vm)
+      // check for stack-overflow
+      if maybeResult.getNewData != null && IotaType.isTooLargeToSerialize(maybeResult.getNewData.getStack) then
+        // blindly doing what hexmod does
+        maybeResult(newData = None,
+                    sideEffects = Seq(OperatorSideEffect.DoMishap(MishapStackSize(), Mishap.Context(null, null))),
+                    resolutionType = ResolvedPatternType.ERRORED,
+                    sound = HexEvalSounds.MISHAP)
+      else
+        maybeResult
+    // update the vm with the new image immediately (if we have one)
+    if result.getNewData != null then vm.setImage(result.getNewData)
+    // notify anyone interested
+    vm.getEnv.postExecution(result)
+    // execute each side effect (ignoring errors)
+    result.getSideEffects.foreach(_.performEffect(vm).trying)
+    // finally, decide our fate
+    result.getContinuation match
+      // we're only interested in continuing execution if we have more to execute and nothing bad happened
+      case newContinuation: SpellContinuation.NotDone if result.getResolutionType.getSuccess =>
+        if vm.getImage.getOpsConsumed < ttl then
+          // we still have time left, go for another round
+          newContinuation.executePreemptive(vm, ttl)
+        else
+          // stick the hex in the pear wiggler, we'll return next tick
+          Some(newContinuation)
+      case _ => None
+extension (continuation: SpellContinuation)
+  def executePreemptive(vm: CastingVM /* do not do the bad thing */ , ttl: Int): Option[SpellContinuation.NotDone] =
+    continuation match
+      case done: SpellContinuation.Done => None
+      case notDone: SpellContinuation.NotDone => notDone.executePreemptive(vm, ttl)
 
 extension (ctx: StringContext) def ifModLoaded(`then`: => Unit, `else`: => Unit = {}): Unit =
   if isDev || fabric.isModLoaded(ctx.parts(0)) then
