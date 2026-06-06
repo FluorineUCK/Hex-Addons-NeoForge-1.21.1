@@ -120,12 +120,7 @@ object InventoryView extends Registrar[InventoryView.Type[?]]("inventory"):
   yield view
   private given typeOfSum: InventoryView.Type[OfSum]:
     override def deserialize(data: NbtCompound)(using ServerWorld): Option[OfSum] =
-      Some(OfSum((for
-        n <- 0 until data.getInt("n")
-        key = "_" + Integer.toString(n + 10, 36)
-        c = data.getCompound(key)
-        view <- InventoryView.deserialize(c)
-      yield view)*))
+      Some(OfSum((for case c: NbtCompound <- data.getList("c", NbtElement.COMPOUND_TYPE).toSeq; o <- InventoryView.deserialize(c) yield o)*))
   private given typeOfEntity: InventoryView.Type[OfEntity]:
     override def deserialize(data: NbtCompound)(using world: ServerWorld): Option[OfEntity] =
       given MinecraftServer = world.getServer
