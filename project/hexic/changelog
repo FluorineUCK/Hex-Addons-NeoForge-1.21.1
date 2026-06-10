@@ -8,10 +8,15 @@
 1.4.7-pre.2 make greatspells actually greatspells
 1.4.7-pre.2 meow
 1.4.7-pre.2 remove internal error with out-of-bounds excisor's gambit
-2.0.0 add casting pouch sealing
+2.0.0 !mediaweave now uses trinket slots
+2.0.0 !only one mediaweave can be equipped at a time
+2.0.0 !remove suffering
+2.0.0 !removed NBT iotas
+2.0.0 !removed tripwires
 2.0.0 add Cessation and Resumption
-2.0.0 add docs for plane-related patterns
 2.0.0 add Hidden Sun's Nadir (blindness)
+2.0.0 add casting pouch sealing
+2.0.0 add docs for plane-related patterns
 2.0.0 add view iotas (experimental!)
 2.0.0 fix getting kicked if mediaweave sends an overly long message
 2.0.0 load config from config/*.properties instead of config/jvm.properties
@@ -19,22 +24,20 @@
 2.0.0 made demiplanes remember where they were entered from
 2.0.0 made stringworms obtainable
 2.0.0 mediaweave now applies to all chat messages
-2.0.0 !mediaweave now uses trinket slots
 2.0.0 murmur and reveal now use separate components
-2.0.0 !only one mediaweave can be equipped at a time
-2.0.0 removed map iotas → moved to phlib with identical behavior
-2.0.0 !removed NBT iotas
-2.0.0 removed patchwork iotas → moved to iotaworks with identical behavior
-2.0.0 !removed tripwires
 2.0.0 remove snow pattern & fix lithium incompatibility
-2.0.0 !remove suffering
+2.0.0 removed map iotas → moved to phlib with identical behavior
+2.0.0 removed patchwork iotas → moved to iotaworks with identical behavior
 2.0.0 rename media bundles to casting pouches
 2.0.0 sent Stickia to the milk dimension
 2.0.0 textures now use JPEG XL
+2.1.0 Refinement Distillation now properly drops input iotas on first loop as it should
 2.1.0 added -Dhexic.max_stack_size to cap itemstack size at deserialization-time (default: max integer)
-2.1.0 added equipment macros
 2.1.0 added Moses's Gambit (delimited list separation)
+2.1.0 added casting engines
+2.1.0 added equipment macros
 2.1.0 added patterns to get the storage and remaining capacity of views (with respect to some concept)
+2.1.0 added some casting-engine-exclusive helper patterns
 2.1.0 demiplane spells' docs have been changed again
 2.1.0 dual's reflection only considers players in ambit
 2.1.0 entity views actually have a use now
@@ -47,8 +50,5 @@
 2.1.0 mediaweave no longer overrides the player's pigment
 2.1.0 negative item stacks are now disabled by default, they can be reenabled by setting -Dhexic.min_stack_size to your favorite value
 2.1.0 read-only properties can no longer be converted to access iotas
-2.1.0 Refinement Distillation now properly drops input iotas on first loop as it should
 2.1.0 translations have been updated [@chuijk]
 2.1.0 wool and carpet edification are now actually somewhat balanced wrt each other
-2.1.0 added some casting-engine-exclusive helper patterns
-2.1.0 added casting engines
