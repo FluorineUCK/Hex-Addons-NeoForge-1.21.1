@@ -1,4 +1,5 @@
 plugins {
+    id("fabric-loom")
     id("scala")
     kotlin("jvm") version "2.2.0"
     id("maven-publish")
