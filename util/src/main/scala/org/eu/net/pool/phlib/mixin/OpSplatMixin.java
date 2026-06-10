@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 // 2026-03-20 01:29 pool: this is *very* out-of-scope for phlib
-//                        but what are you, a fed?
 @Mixin(OpSplat.class)
 public class OpSplatMixin {
     @WrapOperation(at = @At(value = "INVOKE", target = "Lat/petrak/hexcasting/api/casting/OperatorUtils;getList(Ljava/util/List;II)Lat/petrak/hexcasting/api/casting/SpellList;"), method = "execute")
