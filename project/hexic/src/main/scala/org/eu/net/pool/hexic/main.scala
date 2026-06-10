@@ -974,6 +974,7 @@ object ItemGroups:
     .build()
   val utils = ItemSubGroup.Builder(root, "utils", Text.translatable("itemGroup.hexic.sub.utils"))
     .entries: (ctx, entries) =>
+      entries.add(CastingEngine)
       for c <- DyeColor.values do entries.add(Mediaweave.colors(c))
       for c <- DyeColor.values do entries.add(MediaBundle(c, 6))
       for c <- DyeColor.values do entries.add(MediaBundle(c, 12))
