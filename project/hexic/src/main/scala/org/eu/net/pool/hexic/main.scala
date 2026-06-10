@@ -115,7 +115,7 @@ import scala.math.Ordered.orderingToOrdered
 import scala.util.CommandLineParser.FromString
 import scala.util.boundary.Label
 import at.petrak.hexcasting.api.casting.eval.vm.ContinuationFrame.Type
-import at.petrak.hexcasting.api.item.{IotaHolderItem, MediaHolderItem}
+import at.petrak.hexcasting.api.item.{IotaHolderItem, MediaHolderItem, PigmentItem}
 import at.petrak.hexcasting.api.misc.MediaConstants
 import at.petrak.hexcasting.common.casting.actions.eval.OpEval
 import at.petrak.hexcasting.common.items.magic.{ItemMediaHolder, ItemPackagedHex}
@@ -171,6 +171,7 @@ import at.petrak.hexcasting.api.casting.mishaps.circle.MishapNoSpellCircle
 import at.petrak.hexcasting.client.RegisterClientStuff
 import at.petrak.hexcasting.common.blocks.BlockQuenchedAllay
 import at.petrak.hexcasting.interop.inline.InlinePatternData
+import de.dafuqs.fractal.api.ItemSubGroup
 import dev.emi.trinkets.api
 import dev.emi.trinkets.api.{Trinket, TrinketComponent, TrinketEnums, TrinketsApi}
 import net.beholderface.oneironaut.casting.iotatypes.DimIota
@@ -939,6 +940,7 @@ class Event[T, R](default: T => R) extends (T => R):
     current = fn.applyOrElse(_, old)
 
 val useItemEvent = Event[(Item, ItemUsageContext, ItemUsageContext => ActionResult), ActionResult](p => p._3(p._2))
+private[hexic] var clientPlayerGetter = () => (None: Option[PlayerEntity])
 
 trait HasCodec:
   def getCodec: Codec[? <: this.type]
@@ -949,18 +951,50 @@ class DeferMut[T](initial: => T):
   def apply() = value()
   def update(x: => T): Unit = value = () => x
 
-lazy val itemGroup = FabricItemGroup.builder()
-  .icon(() => new ItemStack(stringworms("media")))
-  .displayName(Text.translatable("itemGroup.hexic.group"))
-  .entries: (ctx, entries) =>
-    for c <- DyeColor.values do
-      entries.add(Mediaweave.colors(c))
-      entries.add(MediaBundle(c, 6))
-      // entries.add(MediaBundle(c, 12))
-      entries.add(Pen.instances(c))
-    for f <- Stringworm.flavors do
-      entries.add(stringworms(f))
-  .build()
+object ItemGroups:
+  val root = FabricItemGroup.builder()
+    .icon(() => new ItemStack(stringworms("media")))
+    .displayName(Text.translatable("itemGroup.hexic.group"))
+    .noRenderedName()
+    .entries: (ctx, entries) =>
+      // these shouldn't be actually visible in-game
+      entries.add(wizard)
+      for c <- DyeColor.values do entries.add(Mediaweave.colors(c))
+      for c <- DyeColor.values do entries.add(MediaBundle(c, 6))
+      for c <- DyeColor.values do entries.add(MediaBundle(c, 12))
+      for c <- DyeColor.values do entries.add(Pen.instances(c))
+      for f <- Stringworm.flavors do entries.add(stringworms(f))
+      for player <- clientPlayerGetter(); uuid = player.getUuid; case p: PigmentItem <- Registries.ITEM do
+        val stack = ItemStack(dyedStringworm)
+        val pigment = FrozenPigment(ItemStack(p), uuid)
+        stack.getOrCreateNbt().put("pigment", pigment.serializeToNBT)
+        entries.add(stack)
+      entries.add(Registries.ITEM.get("chisel"))
+      entries.add(Registries.ITEM.get("chisel_table"))
+    .build()
+  val utils = ItemSubGroup.Builder(root, "utils", Text.translatable("itemGroup.hexic.sub.utils"))
+    .entries: (ctx, entries) =>
+      for c <- DyeColor.values do entries.add(Mediaweave.colors(c))
+      for c <- DyeColor.values do entries.add(MediaBundle(c, 6))
+      for c <- DyeColor.values do entries.add(MediaBundle(c, 12))
+    .build()
+  val cosmetic = ItemSubGroup.Builder(root, "cosmetic", Text.translatable("itemGroup.hexic.sub.cosmetic"))
+    .entries: (ctx, entries) =>
+      for c <- DyeColor.values do entries.add(Mediaweave.colors(c))
+      for f <- Stringworm.flavors do entries.add(stringworms(f))
+      for player <- clientPlayerGetter(); uuid = player.getUuid; case p: PigmentItem <- Registries.ITEM do
+        val stack = ItemStack(dyedStringworm)
+        val pigment = FrozenPigment(ItemStack(p), uuid)
+        stack.getOrCreateNbt().put("pigment", pigment.serializeToNBT)
+        entries.add(stack)
+    .build()
+  val wip = Option.when(isDev):
+    ItemSubGroup.Builder(root, "wip", Text.translatable("itemGroup.hexic.sub.wip"))
+      .entries: (ctx, entries) =>
+        entries.add(Registries.ITEM.get("chisel"))
+        entries.add(Registries.ITEM.get("chisel_table"))
+        for c <- DyeColor.values do entries.add(Pen.instances(c))
+      .build()
 
 val goodModulo = ne"daawdda"
 val getEntity: PartialFunction[Iota, Entity] = { case e: EntityIota => e.getEntity }
@@ -1141,7 +1175,7 @@ def init(): Unit =
           case _ => ActionResult.PASS
     Registries.BLOCK("chisel_table") = table
     Registries.ITEM("chisel_table") = BlockItem(table, Item.Settings())
-  Registries.ITEM_GROUP("group") = itemGroup
+  Registries.ITEM_GROUP("group") = ItemGroups.root
   //Registries.ITEM("echo") = EchoItem
   initChat()
   initMacros()

@@ -223,6 +223,8 @@ allprojects {
             "com.github.LlamaLad7",
             "com.github.Virtuoel",
             "com.github.mattidragon")
+        exactRepo("https://maven.bawnorton.com/releases",
+            "com.github.bawnorton.mixinsquared")
         exactRepo("https://maven.blamejared.com/",
             "at.petra-k",
             "com.samsthenerd.inline",

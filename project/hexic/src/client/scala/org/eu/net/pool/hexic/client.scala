@@ -95,6 +95,7 @@ object ClientHooks:
       else false
 
 def init(): Unit =
+  clientPlayerGetter = () => Option(client.player)
   BlockEntityRendererFactories.register(
     Registries.BLOCK_ENTITY_TYPE("chisel_table").asInstanceOf[BlockEntityType[? <: BlockEntity { val bits: BitSet }]],
     ctx => (tbl: BlockEntity { val bits: BitSet }, dt, mats, bufs, light, overlay) =>
@@ -497,6 +498,12 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add("hexcasting.mishap.bad_item.hexic:erase", "a casting item or iota holder")
         gen.add("hexic.bad_metatable", "Expected a map in the §a%s§r property but got %s")
         gen.add("itemGroup.hexic.group", "Hexic")
+        gen.add("itemGroup.hexic.sub.utils", "Utility")
+        gen.add("itemGroup.hexic.sub.cosmetic", "Cosmetic")
+        gen.add("itemGroup.hexic.sub.wip", "WIP")
+        gen.add("itemGroup.hexic.sub.utils.tab", "Hexic Utilities")
+        gen.add("itemGroup.hexic.sub.cosmetic.tab", "Hexic Cosmetics")
+        gen.add("itemGroup.hexic.sub.wip.tab", "Hexic WIP Items")
         gen.add("text.hexic.or_map", "%s or map")
 
         for (color, item) <- Mediaweave.colors do
@@ -513,9 +520,8 @@ def datagen(gen: FabricDataGenerator): Unit =
         gen.add(wizard, "Wizard")
         gen.add(CastingEngine, "Casting Engine")
         val hexLang = Seq("hexcasting", "oneironaut").flatMap(mod => Gson().fromJson(InputStreamReader(getClass.getResourceAsStream(s"/assets/$mod/lang/en_us.json")), new TypeToken[java.util.Map[String, String]]() {}).asScala).toMap
-        Registries.ITEM.forEach:
-          case p: PigmentItem => gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
-          case e => println(e)
+        for case p: PigmentItem <- Registries.ITEM do
+          gen.add("item.hexic.stringworm." + p.getTranslationKey, "Shimmering " + hexLang(p.getTranslationKey).replace("Pigment", "Stringworm"))
         for page -> text <- Vector(
           "dye_offpaw" -> "Imbues the item held in my offhand (e.g. a $(l:items/hexcasting)$(item)casting item/$) with the given pigment.",
           "erase" -> "Erases the _Hex or iota contained within a dropped item or block. Costs one dust per item.",
