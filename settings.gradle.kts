@@ -26,7 +26,7 @@ rootProject.name = "hex-addons"
 
 include("util")
 includeBuild("plugin")
-for (mod in listOf("hexic", "iotaworks", "hexxytounge")) {
+for (mod in listOf("hexic", "iotaworks")) {
     include(mod)
     project(":$mod").projectDir = file("project/$mod")
 }
