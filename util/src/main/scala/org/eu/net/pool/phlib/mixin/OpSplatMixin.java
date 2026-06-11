@@ -19,12 +19,7 @@ public class OpSplatMixin {
     @WrapOperation(at = @At(value = "INVOKE", target = "Lat/petrak/hexcasting/api/casting/OperatorUtils;getList(Ljava/util/List;II)Lat/petrak/hexcasting/api/casting/SpellList;"), method = "execute")
     SpellList redirectList(List<? extends Iota> stack, int it, int x, Operation<SpellList> original) {
         if (stack.get(it) instanceof MapIota map) {
-            final var retList = new ArrayList(map.size() * 2);
-            for (var pair: map.asJavaMap().entrySet()) {
-                retList.add(pair.getKey());
-                retList.add(pair.getValue());
-            }
-            return new ListIota(retList).getList();
+            return new ListIota(map.toList()).getList();
         } else {
             return original.call(stack, it, x);
         }
