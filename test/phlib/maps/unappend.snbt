@@ -1,0 +1,10 @@
+[
+  {vm: staff},
+  {push: { entries: [{k: 1, v: 11}, {k: 2, v: 12}, {k: 3, v: 13}] } },
+  {cast: {action: 'hexcasting:unappend'}}, {check: 13}, {check: 3},
+  {cast: {action: 'hexcasting:unappend'}}, {check: 12}, {check: 2},
+  {cast: {action: 'hexcasting:unappend'}}, {check: 11}, {check: 1},
+  {cast: {action: 'hexcasting:duplicate'}},
+  {cast: {action: 'hexcasting:unappend'}}, {check: {'hexcasting:type':'hexcasting:null','hexcasting:data':{}}}, {check: {'hexcasting:type':'hexcasting:null','hexcasting:data':{}}},
+  {check: {entries: []}}, {check: {entries: []}}
+]

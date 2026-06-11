@@ -1,0 +1,11 @@
+[
+  {vm: staff},
+  {push: {entries: [{k: 1, v: 11},
+                    {k: 2, v: 12},
+                    {k: 3, v: 13}] } },
+  {push: {entries: [{k: 1, v: 11},
+                    {k: 2, v: 12},
+                    {k: 3, v: 13}] } },
+  {cast: {action: 'hexcasting:less_eq'}},
+  {check: {'hexcasting:type': 'hexcasting:boolean', 'hexcasting:data': 1b}}
+]

@@ -1,0 +1,16 @@
+[
+  {vm: staff},
+  {push: {
+    'hexcasting:type': 'hexic:map',
+    'hexcasting:data': [{k: {'hexcasting:type': 'hexcasting:double',
+                             'hexcasting:data': 1.0d},
+                         v: {'hexcasting:type': 'hexcasting:double',
+                             'hexcasting:data': 11.0d}},
+                        {k: {'hexcasting:type': 'hexcasting:double',
+                             'hexcasting:data': 2.0d},
+                         v: {'hexcasting:type': 'hexcasting:double',
+                             'hexcasting:data': 12.0d}}]
+  }},
+  {check: {entries: [{k: 1, v: 11},
+                     {k: 2, v: 12}] }}
+]
