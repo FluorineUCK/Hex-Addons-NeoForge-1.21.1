@@ -9,6 +9,7 @@ import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import kotlin.jvm.internal.DefaultConstructorMarker
 import at.petrak.hexcasting.api.casting.ActionRegistryEntry
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction}
+import at.petrak.hexcasting.api.casting.eval.env.StaffCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
 import at.petrak.hexcasting.api.casting.eval.vm.{CastingImage, CastingVM, SpellContinuation}
 import at.petrak.hexcasting.api.casting.eval.{CastResult, CastingEnvironment, CastingEnvironmentComponent, OperationResult}
@@ -19,6 +20,8 @@ import at.petrak.hexcasting.api.utils.HexUtils
 import at.petrak.hexcasting.common.lib.HexRegistries
 import at.petrak.hexcasting.fabric.cc.HexCardinalComponents
 import com.google.gson.JsonElement
+import com.mojang.brigadier.StringReader
+import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.builder.{LiteralArgumentBuilder, RequiredArgumentBuilder}
 import com.mojang.serialization.{Codec, DynamicOps, JsonOps}
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
@@ -31,11 +34,15 @@ import net.minecraft.server.world.ServerWorld
 import net.minecraft.util.{Arm, Hand}
 import net.minecraft.util.dynamic.Codecs
 
+import java.io.{File, PrintWriter}
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path, Paths}
 import scala.annotation.tailrec
+import scala.collection.immutable.ListMap
 import scala.collection.{IterableOnceOps, IterableOps}
 import scala.math.Ordered.orderingToOrdered
 import scala.reflect.ClassTag
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success, Try, Using}
 export scala.collection.convert.ImplicitConversions.*
 export scala.util.chaining._
 import at.petrak.hexcasting.xplat.IXplatAbstractions
@@ -390,6 +397,173 @@ def init() =
           ).build()
       ).build()
     )
+    if isDev || java.lang.Boolean.getBoolean("phlib.test.enable") then
+      d.getRoot.addChild:
+        LiteralArgumentBuilder.literal[ServerCommandSource]("testHexes")
+        .`then`:
+          RequiredArgumentBuilder.argument[ServerCommandSource, String]("dir", StringArgumentType.greedyString)
+          .`executes`: ctx =>
+            val path = ctx.getArgument[String]("dir", classOf[String])
+            val file = Paths.get(path)
+            val log = Paths.get("logs", "phlib-tests.log")
+            Files.deleteIfExists(log)
+            Using.resource(Files.newBufferedWriter(log, StandardCharsets.UTF_8)): log =>
+              def say(msg: String) = log.write(s"$msg\n")
+              say("===== PHLIB /testHexes REPORT =====")
+              say("vim: foldmethod=marker")
+              def walk(d: Path, lvl: Int): (Int, Int) =
+                val (ok, total) = Using.resource(Files.list(d))(_.toList).toSeq.map(run(_, lvl+1)).unzip
+                // keep a running tally of success and total
+                (ok.sum, total.sum)
+              def run(f: Path, lvl: Int): (Int, Int) =
+                if Files.isDirectory(f) then
+                  say(s"{{{$lvl ${f.toFile.getName}")
+                  walk(f, lvl)
+                else if f.toFile.getName.endsWith(".snbt") then
+                  say(s"{{{$lvl ${f.toFile.getName}")
+                  case class State(vm: Option[CastingVM] = None)
+                  case class Scope(breakTags: Map[String, boundary.Label[?]] = Map.empty)
+                  val content = StringNbtReader(StringReader(Files.readString(f, StandardCharsets.UTF_8))).parseElement()
+                  def execute(element: NbtElement, scope: Scope, state: State): (State, Seq[String]) =
+                    def reenter(element: NbtElement, path: String, newScope: Scope = scope, newState: State = state) =
+                      val (newerState, results) = execute(element, newScope, newState)
+                      // prefix the path to the returned errors
+                      (newerState, results.map(s => s"$path/$s"))
+                    def getIota(e: NbtElement): Either[Seq[String], Iota] = e match
+                      case n: AbstractNbtNumber => Right(DoubleIota(n.doubleValue))
+                      case l: NbtList =>
+                        val (errors, iotas) = l.zipWithIndex.partitionMap(p => getIota(p._1).left.map(s => s"${p._2}/$s"))
+                        if errors.nonEmpty then Left(errors.toSeq) else Right(ListIota(iotas))
+                      case c: NbtCompound =>
+                        if c.contains("hexcasting:type") then
+                          IotaType.deserialize(c, ctx.getSource.getWorld) match
+                            case null => Left(Seq("deserialization failed"))
+                            case iota => Right(iota)
+                        else if c.contains("sig") then
+                          Right(PatternIota(HexPattern.fromAnglesUnchecked(c.getString("sig"), if c.contains("dir") then HexDir.valueOf(c.getString("dir")) else HexDir.values()(0))))
+                        else if c.contains("action") then
+                          Identifier.tryParse(c.getString("action")) match
+                            case null => Left(Seq("action/invalid identifier"))
+                            case id => hexXplat.getActionRegistry.get(id) match
+                              case null => Left(Seq("action/not found"))
+                              case entry => Right(PatternIota(entry.prototype))
+                        else if c.contains("entries") then
+                          c.get("entries") match
+                            case l: NbtList =>
+                              ((Right(ListMap.empty[Iota, Iota]): Either[Seq[String], Map[Iota, Iota]]) /: l.zipWithIndex): (map, p) =>
+                                p._1 match
+                                  case c: NbtCompound =>
+                                    val k = c.get("k") match
+                                      case null => Left("k/missing, required")
+                                      case i => getIota(i).left.map(s => s"${p._2}/k/$s")
+                                    val v = c.get("v") match
+                                      case null => Left("v/missing, required")
+                                      case i => getIota(i).left.map(s => s"${p._2}/v/$s")
+                                    (k, v) match
+                                      case (Right(k), Right(v)) => map.map(_ + (k -> v))
+                                      case (k, v) => Left(map.left.getOrElse(Seq.empty) ++ k.left.toOption ++ v.left.toOption)
+                                  case _ => Left(map.left.getOrElse(Seq.empty) :+ s"entries/${p._2}/not a compound")
+                              .map(MapIota.fromMap(_)(using ctx.getSource.getWorld))
+                            case _ => Left(Seq("entries/invalid type"))
+                        else if c.contains("value") then getIota(c.get("value")).left.map(_.map(s => s"value/$s"))
+                        else
+                          Left(Seq("no recognized iota format"))
+                    element match
+                      case c: NbtCompound =>
+                        if c.contains("if") then
+                          val (newState, errors) = execute(c.get("if"), scope, state)
+                          if errors.isEmpty then
+                            if c.contains("then") then
+                              reenter(c.get("then"), "then", newState = newState)
+                            else
+                              (newState, Seq.empty)
+                          else
+                            if c.contains("else") then
+                              reenter(c.get("else"), "else", newState = newState)
+                            else
+                              (newState, Seq.empty)
+                        else if c.contains("throw") then
+                          (state, Seq(c.getString("throw")))
+                        else if c.contains("vm") then
+                          c.getString("vm") match
+                            case "discard" => state.vm.fold(state, Seq("vm/no CastingVM available"))(vm => (state.copy(vm = None), Seq.empty))
+                            case "staff" => state.vm.fold(state.copy(vm = Some(CastingVM(CastingImage(), StaffCastEnv(ctx.getSource.getPlayer, if c.contains("alt") then Hand.OFF_HAND else Hand.MAIN_HAND)))), Seq.empty)(vm => (state, Seq("vm/not overwriting existing CastingVM")))
+                            case "copy" => state.vm.fold(state, Seq("vm/no CastingVM available"))(vm => (state.copy(vm = Some(CastingVM(vm.getImage, vm.getEnv))), Seq.empty))
+                            case s => (state, Seq(s"vm/bad action $s"))
+                        else if c.contains("push") then
+                          getIota(c.get("push")) match
+                            case Left(err) => (state, err.map(s => s"push/$s"))
+                            case Right(iota) => state.vm.fold(state, Seq("push/no CastingVM available"))(vm => { vm.setImage(vm.getImage.withStack(_ :+ iota)); (state, Seq.empty) })
+                        else if c.contains("cast") then
+                          getIota(c.get("cast")) match
+                            case Left(err) => (state, err.map(s => s"cast/$s"))
+                            case Right(iota) => state.vm.fold(state, Seq("cast/no CastingVM available")): vm =>
+                              val result = vm.queueExecuteAndWrapIota(iota, ctx.getSource.getWorld)
+                              if !result.getResolutionType.getSuccess then
+                                (state, Seq("cast/mishap occurred, see chat for details"))
+                              else
+                                (state, Seq())
+                        else if c.contains("check") then
+                          getIota(c.get("check")) match
+                            case Left(err) => (state, err.map(s => s"check/$s"))
+                            case Right(iota) => state.vm.fold(state, Seq("check/no CastingVM available")): vm =>
+                              val img = vm.getImage
+                              img.getStack.toSeq match
+                                case init :+ last =>
+                                  vm.setImage(img(stack = init))
+                                  if if c.contains("structural") then IotaType.serialize(iota) == IotaType.serialize(last) else Iota.tolerates(iota, last) then
+                                    (state, Seq.empty)
+                                  else
+                                    (state, Seq(s"check/invalid iota: ${IotaType.serialize(last)}"))
+                                case Seq() =>
+                                  (state, Seq(s"check/empty stack"))
+                        else if c.contains("pop") then
+                          c.get("pop") match
+                            case n: AbstractNbtNumber => state.vm.fold(state, Seq("pop/no CastingVM available")): vm =>
+                              vm.setImage(vm.getImage.withStack(if n.intValue <= 0 then _.takeRight(-n.intValue) else _.dropRight(n.intValue)))
+                              // if you want an error, use checkStack
+                              (state, Seq.empty)
+                            case _ => (state, Seq("pop/expected number"))
+                        else if c.contains("checkStack") then
+                          c.get("checkStack") match
+                            case n: AbstractNbtNumber => state.vm.fold(state, Seq("checkStack/no CastingVM available")): vm =>
+                              if vm.getImage.getStack.size == n.intValue then
+                                (state, Seq.empty)
+                              else
+                                (state, Seq(s"checkStack/stack size mismatch: found ${vm.getImage.getStack.size} elements"))
+                            case _ => (state, Seq("checkStack/expected number"))
+                        else
+                          (state, Seq("no recognized action"))
+                      case s: NbtList =>
+                        ((state, Seq.empty[String]) /: s.zipWithIndex): (r, p) =>
+                          val t = reenter(p._1, p._2.toString, newState = r._1)
+                          (t._1, r._2 ++ t._2)
+                  val isFailingTest = f.toFile.getName.endsWith(".fail.snbt")
+                  execute(content, Scope(), State())._2.trying match
+                    case Success(errors) =>
+                      if errors.nonEmpty then
+                        if !isFailingTest then say("=== FAILED ===")
+                        errors.foreach(say)
+                      else if isFailingTest then
+                        say("=== FAILED ===\nthis test was expected to fail, but no errors occurred")
+                      if errors.nonEmpty != isFailingTest then
+                        (0, 1)
+                      else
+                        (1, 1)
+                    case Failure(exception) =>
+                      say("=== FAILED ===\nthrew the following exception:")
+                      val p = PrintWriter(log)
+                      exception.printStackTrace(p)
+                      p.flush()
+                      // never suppress panics
+                      (0, 1)
+                else
+                  // silently skip non-.snbt files
+                  (0, 0)
+              val (ok, total) = walk(file, 0)
+              ctx.getSource.sendMessage(t"$ok/$total tests passed")
+              ok
+        .build()
 
 object Events:
   def partialEvent[T, R]: Event[PartialFunction[T, R]] = EventFactory.createArrayBacked(classOf, PartialFunction.empty, ary => (PartialFunction.empty /: ary) (_ orElse _))

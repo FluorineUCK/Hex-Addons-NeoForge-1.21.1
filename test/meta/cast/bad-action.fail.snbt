@@ -1,0 +1,4 @@
+[
+  { vm: staff },
+  { cast: { action: 'ea_nasir:low_quality_copper' } }
+]

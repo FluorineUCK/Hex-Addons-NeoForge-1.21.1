@@ -1,0 +1,22 @@
+[
+  { vm: staff },
+  { push: 10 },
+  { push: 11 },
+  { push: 12 },
+  { push: 13 },
+  { push: 14 },
+  { push: 15 },
+  { push: 16 },
+  { push: 17 },
+  { checkStack: 8 },
+  { check: 17 },
+  { checkStack: 7 },
+  { pop: 1 },
+  { checkStack: 6 },
+  { pop: -4 },
+  { checkStack: 4 },
+  { check: 15 },
+  { checkStack: 3 },
+  { pop: 2 },
+  { check: 12 }
+]
