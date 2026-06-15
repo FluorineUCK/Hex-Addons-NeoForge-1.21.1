@@ -1,0 +1,10 @@
+[
+  {vm: staff},
+  {push: {action: 'hexcasting:get_caster'}},
+  {push: 42},
+  {cast: {action: 'iotaworks:set_subscript'}},
+  {cast: {action: 'hexcasting:write/local'}},
+  {cast: {action: 'hexcasting:read/local'}},
+  {cast: {action: 'iotaworks:get_subscript'}},
+  {check: 42}
+]
