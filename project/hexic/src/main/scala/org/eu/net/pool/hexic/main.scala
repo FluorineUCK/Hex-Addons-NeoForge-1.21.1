@@ -47,7 +47,6 @@ import miyucomics.hexical.features.hopper.targets.SidedInventoryEndpoint
 import miyucomics.hexical.features.hopper.{HopperDestination, HopperEndpoint, HopperEndpointRegistry, HopperEndpointResolver, HopperSource}
 import miyucomics.hexical.features.pigments.{PigmentIota, PigmentIotaKt}
 import net.fabricmc.fabric.api.`object`.builder.v1.block.FabricBlockSettings
-import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings
 import net.fabricmc.fabric.api.transfer.v1.fluid.{FluidConstants, FluidVariant}
 import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant
@@ -1367,96 +1366,75 @@ def init(): Unit =
           override val getName: Text = Text.translatable("hexcasting.special.hexic:tuple.n", toRoman(size))
       case _ => null
   ): SpecialHandler.Factory[? <: SpecialHandler]
-  CommandRegistrationCallback.EVENT.register: (d, r, e) =>
-    def planeAction(name: String)(body: MinecraftServer ?=> UUID => Int): Unit =
-      d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource](name).pipe: c =>
-        c.requires(_.hasPermissionLevel(2))
-        c.argument("id", UuidArgumentType.uuid()): c =>
-          c.executes: (ctx: CommandContext[ServerCommandSource]) =>
-            given MinecraftServer = ctx.getSource.getServer
-            body(UuidArgumentType.getUuid(ctx, "id"))
-        c.build()
-      )
-    planeAction("pin_plane"): id =>
-      summon[MinecraftServer].savedPlanes += id
-      1
-    planeAction("un_plane"): id =>
-      summon[MinecraftServer].savedPlanes -= id
-      1
-    planeAction("touch_plane"): id =>
-      planes(id)
-      1
-    planeAction("unmap_plane"): id =>
-      planeCache.remove(id) match
-        case Some(h) =>
-          h.unload()
-          1
-        case None => throw CommandException(Text.literal("Plane not mapped"))
-    planeAction("delete_plane"): id =>
-      planeCache.remove(id) match
-        case Some(h) =>
-          h.delete()
-          1
-        case None => throw CommandException(Text.literal("Plane not mapped"))
-    d.getRoot.addChild(LiteralArgumentBuilder.literal[ServerCommandSource]("property").pipe: c =>
+  def planeAction(name: String)(body: MinecraftServer ?=> UUID => Int): Unit =
+    Commands.server.literal(name): c =>
       c.requires(_.hasPermissionLevel(2))
-      c.`then`(LiteralArgumentBuilder.literal("get")
-        .`then`(RequiredArgumentBuilder.argument("property", StringArgumentType.string())
-          .executes((c: CommandContext[ServerCommandSource]) =>
-            val prop = StringArgumentType.getString(c, "property")
-            System.getProperty(prop) match
-              case null => throw CommandException(t"Property ${prop} is not set")
-              case s =>
-                c.getSource.sendFeedback(() => t"Property ${prop} is set to ${s}", false)
-                1
-          )
-          .build())
-        .build()
-      )
-      c.`then`(LiteralArgumentBuilder.literal("set")
-        .`then`(RequiredArgumentBuilder.argument("property", StringArgumentType.string())
-          .`then`(RequiredArgumentBuilder.argument("value", StringArgumentType.string())
-            .executes((c: CommandContext[ServerCommandSource]) =>
-              val prop = StringArgumentType.getString(c, "property")
-              val value = StringArgumentType.getString(c, "value")
-              System.setProperty(prop, value)
-              c.getSource.sendFeedback(() => t"Changed the value of property ${prop}", true)
+      c.argument("id", UuidArgumentType.uuid()): (uuid, c) =>
+        c.executes: src =>
+          given MinecraftServer = src.getServer
+          body(uuid)
+  planeAction("pin_plane"): id =>
+    summon[MinecraftServer].savedPlanes += id
+    1
+  planeAction("un_plane"): id =>
+    summon[MinecraftServer].savedPlanes -= id
+    1
+  planeAction("touch_plane"): id =>
+    planes(id)
+    1
+  planeAction("unmap_plane"): id =>
+    planeCache.remove(id) match
+      case Some(h) =>
+        h.unload()
+        1
+      case None => throw CommandException(Text.literal("Plane not mapped"))
+  planeAction("delete_plane"): id =>
+    planeCache.remove(id) match
+      case Some(h) =>
+        h.delete()
+        1
+      case None => throw CommandException(Text.literal("Plane not mapped"))
+  Commands.server.literal("property"): c =>
+    c.requires(_.hasPermissionLevel(2))
+    c.literal("get"): c =>
+      c.argument("property", StringArgumentType.string()): (prop, c) =>
+        c.executes: src =>
+          System.getProperty(prop) match
+            case null => throw CommandException(t"Property $prop is not set")
+            case s =>
+              src.sendFeedback(() => t"Property $prop is set to $s", false)
               1
-            )
-            .build())
-          .build())
-        .build()
-      )
-      c.`then`(LiteralArgumentBuilder.literal("remove")
-        .`then`(RequiredArgumentBuilder.argument("property", StringArgumentType.string())
-          .build())
-        .build()
-      )
-      c.`then`(LiteralArgumentBuilder.literal[ServerCommandSource]("reload")
-        .executes(c =>
-          val out = Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8)
-          try
-            System.getProperties.load(out)
-          catch
-            case _: FileNotFoundException => throw CommandException("Properties file does not exist")
-          finally
-            out.close()
-          c.getSource.sendFeedback(() => "Reloaded properties from file", true)
-          1
-        ).build()
-      )
-      c.`then`(LiteralArgumentBuilder.literal[ServerCommandSource]("flush")
-        .executes(c =>
-          val out = Files.newBufferedWriter(Path.of("config/jvm.properties"), Charsets.UTF_8)
-          try
-            System.getProperties.store(out, null)
-          finally
-            out.close()
-          c.getSource.sendFeedback(() => "Saved properties to file", true)
-          1
-        ).build()
-      )
-      c.build())
+    c.literal("set"): c =>
+      c.argument("property", StringArgumentType.string()): (prop, c) =>
+        c.argument("value", StringArgumentType.string()): (value, c) =>
+          c.executes: src =>
+            System.setProperty(prop, value)
+            src.sendFeedback(() => t"Changed the value of property $prop", true)
+            1
+    c.literal("remove"): c =>
+      c.argument("property", StringArgumentType.string()): (property, c) =>
+        // nothing?
+        ()
+    c.literal("reload"): c =>
+      c.executes: src =>
+        val out = Files.newBufferedReader(Path.of("config/jvm.properties"), Charsets.UTF_8)
+        try
+          System.getProperties.load(out)
+        catch
+          case _: FileNotFoundException => throw CommandException("Properties file does not exist")
+        finally
+          out.close()
+        src.sendFeedback(() => "Reloaded properties from file", true)
+        1
+    c.literal("flush"): c =>
+      c.executes: src =>
+        val out = Files.newBufferedWriter(Path.of("config/jvm.properties"), Charsets.UTF_8)
+        try
+          System.getProperties.store(out, null)
+        finally
+          out.close()
+        src.sendFeedback(() => "Saved properties to file", true)
+        1
   Registries.BLOCK("void_air") = Interop.VOID_AIR
   given (env: CastingEnvironment) => MinecraftServer = env.getWorld.getServer
   ServerLifecycleEvents.SERVER_STARTED.register: server =>

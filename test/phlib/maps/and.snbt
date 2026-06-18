@@ -1,0 +1,17 @@
+[
+  { vm: staff },
+  { push: { entries: [{k: 1, v: 11},
+                      {k: 2, v: 12},
+                      {k: 3, v: 13},
+                      {k: 4, v: 14},
+                      {k: 5, v: 15}] } },
+  { push: { entries: [{k: 7, v: 27},
+                      {k: 6, v: 26},
+                      {k: 5, v: 25},
+                      {k: 4, v: 24},
+                      {k: 3, v: 23}] } },
+  { cast: { action: 'hexcasting:and' } },
+  { check: { entries: [{k: 3, v: 23},
+                       {k: 4, v: 24},
+                       {k: 5, v: 25}] }, structural: true }
+]

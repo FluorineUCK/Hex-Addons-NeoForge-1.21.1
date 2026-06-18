@@ -7,6 +7,7 @@
 0.1.3 added arm and hand utils
 0.1.3 added casting image and cast result updaters
 0.1.3 added preempting continuation chaser
+0.1.3 added tools for command stuff
 0.1.3 fixed Flock's Disintegration iterating maps incorrectly
 0.1.3 make map xor actually work
 0.1.3 uncons or unappend on empty maps no longer throw an internal exception

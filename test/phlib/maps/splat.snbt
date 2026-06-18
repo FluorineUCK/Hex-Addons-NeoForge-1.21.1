@@ -1,0 +1,12 @@
+[
+  { vm: staff },
+  { push: { entries: [{k: 1, v: 0}, {k: 52, v: 3}, {k: 2, v: 7}, {k:8, v: -2}] } },
+  { cast: { action: 'hexcasting:splat' } },
+  { checkStack: 8 },
+  { push: 8 },
+  { cast: { action: 'hexcasting:last_n_list' } },
+  { check: [1,  0,
+            52, 3,
+            2,  7,
+            8,  -2] }
+]

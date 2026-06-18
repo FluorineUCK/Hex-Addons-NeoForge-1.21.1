@@ -1,0 +1,6 @@
+[
+  { vm: staff },
+  { push: { entries: [] } },
+  { cast: { action: 'hexcasting:splat' } },
+  { checkStack: 0 }
+]
