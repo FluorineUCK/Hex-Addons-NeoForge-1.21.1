@@ -7,7 +7,7 @@ import at.petrak.hexcasting.api.casting.eval.vm.CastingImage.ParenthesizedIota
 import at.petrak.hexcasting.api.casting.mishaps.{MishapInternalException, MishapStackSize}
 import at.petrak.hexcasting.common.lib.hex.HexEvalSounds
 import kotlin.jvm.internal.DefaultConstructorMarker
-import at.petrak.hexcasting.api.casting.ActionRegistryEntry
+import at.petrak.hexcasting.api.casting.{ActionRegistryEntry, RenderedSpell}
 import at.petrak.hexcasting.api.casting.castables.{Action, ConstMediaAction, OperationAction}
 import at.petrak.hexcasting.api.casting.eval.env.StaffCastEnv
 import at.petrak.hexcasting.api.casting.eval.sideeffects.{EvalSound, OperatorSideEffect}
@@ -87,6 +87,10 @@ extension [T: DynamicOps as t] (x: T) def convertDynamic[R: DynamicOps as r]: R 
 
 given (vm: CastingVM) => CastingEnvironment = vm.getEnv
 given envGetWorld: (env: CastingEnvironment) => ServerWorld = env.getWorld
+
+trait FinalizedSpell:
+  this: RenderedSpell =>
+  def postCast(env: CastingEnvironment): Unit
 
 given Conversion[String, MutableText] = Text.literal
 
@@ -310,8 +314,7 @@ extension (continuation: SpellContinuation.NotDone)
     if result.getNewData != null then vm.setImage(result.getNewData)
     // notify anyone interested
     vm.getEnv.postExecution(result)
-    // execute each side effect (ignoring errors)
-    result.getSideEffects.foreach(_.performEffect(vm).trying)
+    vm.performSideEffects(result.getSideEffects)
     // finally, decide our fate
     result.getContinuation match
       // we're only interested in continuing execution if we have more to execute and nothing bad happened

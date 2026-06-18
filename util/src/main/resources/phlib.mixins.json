@@ -6,6 +6,7 @@
   "mixins": [
     "ActuallySimpleRegistryMixin",
     "AllocationTrackerMixin",
+    "CastingVMMixin",
     "OpSplatMixin",
     "PatternIotaMixin",
     "SimpleRegistryMixin"
