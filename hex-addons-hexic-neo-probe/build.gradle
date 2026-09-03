@@ -1,0 +1,230 @@
+plugins {
+    id "architectury-plugin" version "3.4.164"
+    id "dev.architectury.loom" version "1.9-SNAPSHOT"
+    id "scala"
+    id "maven-publish"
+}
+
+
+def findWorkspacePath = { List relativeCandidates ->
+    def cursor = projectDir
+    while (cursor != null) {
+        for (relative in relativeCandidates) {
+            def candidate = new File(cursor, relative.toString())
+            if (candidate.exists()) {
+                return candidate
+            }
+        }
+        cursor = cursor.parentFile
+    }
+    return null
+}
+def localMavenRepo = findWorkspacePath(['.maven-repo']) ?: new File(projectDir.parentFile, '.maven-repo')
+def localGradleHome = gradle.gradleUserHomeDir
+def yahaDir = findWorkspacePath(['01-yaha-source/yaha', 'yaha']) ?: new File(projectDir.parentFile, 'yaha')
+def workspaceFile = { List relativeCandidates -> findWorkspacePath(relativeCandidates) ?: new File(projectDir.parentFile, relativeCandidates[0].toString()) }
+def localGradleCacheFile = { String relativePath -> new File(localGradleHome, relativePath) }
+def yahaLib = { String fileName -> new File(new File(yahaDir, 'libs'), fileName) }
+def enableClientWorldProbe = providers.gradleProperty("hexicClientWorldProbe").present
+def clientWorldProbeName = providers.gradleProperty("hexicClientWorldName").getOrElse("HexicProbePre39Exact")
+def enableServiceLoaderClassTrace = providers.gradleProperty("hexicServiceLoaderClassTrace").present
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+architectury {
+    minecraft = project.minecraft_version
+    platformSetupLoomIde()
+    neoForge {
+        platformPackage = "neoforge"
+    }
+}
+
+loom {
+    silentMojangMappingsLicense()
+    mods {
+        main {
+            sourceSet sourceSets.main
+        }
+    }
+    runs {
+        client {
+            client()
+            name "Hexic pre39 validation client"
+            runDir "run-client"
+            vmArg "-Dhexic.probe.validateClientHooks=true"
+            vmArg "-Dhexguide.probe.validateClient=true"
+            if (enableServiceLoaderClassTrace) {
+                vmArg "-Xlog:class+load=debug,class+loader+constraints=debug:file=service-loader-classload.log:time,tid,level,tags"
+            }
+            if (enableClientWorldProbe) {
+                vmArg "-Dhexic.probe.validateClientWorld=true"
+                vmArg "-Dhexguide.probe.validate=true"
+                programArgs(["--quickPlaySingleplayer", clientWorldProbeName])
+            } else {
+                vmArg "-Dhexic.probe.exitAfterClientStartup=true"
+            }
+        }
+        server {
+            server()
+            name "Hexic pre39 validation server"
+            runDir "run"
+            vmArg "-Dhexic.probe.validateRegistries=true"
+            vmArg "-Dhexguide.probe.validate=true"
+        }
+    }
+}
+
+repositories {
+    maven { url localMavenRepo }
+    maven { url "../.maven-repo" }
+    mavenCentral()
+    maven { url "https://maven.architectury.dev/" }
+    maven { url "https://maven.fabricmc.net/" }
+    maven { url "https://maven.neoforged.net/releases/" }
+    maven { url "https://maven.blamejared.com/" }
+    maven { url "https://maven.shedaniel.me/" }
+    maven { url "https://maven.terraformersmc.com/" }
+    maven {
+        name = "Kotlin for Forge"
+        url = "https://thedarkcolour.github.io/KotlinForForge/"
+    }
+}
+
+configurations {
+    maybeCreate("neoForge")
+}
+
+sourceSets {
+    main {
+        scala {
+            srcDirs = ["src/main/scala", "src/main/java"]
+        }
+        java.srcDirs = []
+        resources.srcDirs = ["src/main/resources"]
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+
+    neoForge "net.neoforged:neoforge:${project.neo_forge_version}"
+    compileOnly "net.neoforged:neoforge:${project.neo_forge_version}"
+    compileOnly files(localGradleCacheFile("caches/modules-2/files-2.1/net.neoforged.fancymodloader/loader/4.0.35/8aefd870e0dd65c88dce9ac92f763aed918bf97d/loader-4.0.35.jar"))
+    compileOnly files(localGradleCacheFile("caches/modules-2/files-2.1/net.neoforged/mergetool/2.0.3/1275202cbbb248f49345cf6787ce299afd9a02fb/mergetool-2.0.3-api.jar"))
+    compileOnly files(localGradleCacheFile("caches/modules-2/files-2.1/net.fabricmc/sponge-mixin/0.15.2+mixin.0.8.7/2af2f021d8e02a0220dc27a7a72b4666d66d44ca/sponge-mixin-0.15.2+mixin.0.8.7.jar"))
+    compileOnly files(localGradleCacheFile("caches/modules-2/files-2.1/net.neoforged/bus/8.0.5/5b2d33285ab5d1554e9798ad98c40d6ea3868bd5/bus-8.0.5.jar"))
+    modApi "dev.architectury:architectury-neoforge:${project.architectury_version}"
+
+    implementation "org.scala-lang:scala3-library_3:3.7.1"
+    implementation "org.scala-lang:scala-library:2.13.15"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.2.21"
+    runtimeOnly(include("org.eu.net.pool:scala-runtime-merged:${project.scala_runtime_merged_version}"))
+
+    implementation files(workspaceFile(["hex-addons-phlib-neo-probe/build/libs/phlib-0.1.3-neoforge-probe.jar", "02-tangled-source/hex-addons-phlib-neo-probe/build/libs/phlib-0.1.3-neoforge-probe.jar"]))
+    runtimeOnly files(workspaceFile(["hex-addons-phlib-neo-probe/build/libs/phlib-0.1.3-neoforge-probe.jar", "02-tangled-source/hex-addons-phlib-neo-probe/build/libs/phlib-0.1.3-neoforge-probe.jar"]))
+    implementation files("../hex-addons-iotaworks-neo-probe/build/libs/iotaworks-0.1.4-neoforge-probe.jar")
+    runtimeOnly files("../hex-addons-iotaworks-neo-probe/build/libs/iotaworks-0.1.4-neoforge-probe.jar")
+    implementation files(workspaceFile(["18-hexcellular-neoforge-port/build/libs/hexcellular-1.1.1+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["18-hexcellular-neoforge-port/build/libs/hexcellular-1.1.1+1.21.1-neoforge-pre39.jar"]))
+    compileOnly files(workspaceFile(["19-moreiotas-neoforge-port/build/libs/moreiotas-0.1.1+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["19-moreiotas-neoforge-port/build/libs/moreiotas-0.1.1+1.21.1-neoforge-pre39.jar"]))
+    compileOnly files(workspaceFile(["11-hexal-neoforge-port/build/libs/hexal-0.3.1+1.21.1-neoforge.jar"]))
+    runtimeOnly files(workspaceFile(["11-hexal-neoforge-port/build/libs/hexal-0.3.1+1.21.1-neoforge.jar"]))
+    runtimeOnly files(workspaceFile(["11-hexal-neoforge-port/libs/geckolib-neoforge-1.21.1-4.9.2.jar"]))
+    compileOnly files(workspaceFile(["16-oneironaut-neoforge-port/build/libs/oneironaut-neoforge-0.5.0+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["16-oneironaut-neoforge-port/build/libs/oneironaut-neoforge-0.5.0+1.21.1-neoforge-pre39.jar"]))
+    compileOnly files(workspaceFile(["08-hexcessible-neoforge-port/build/libs/hexcessible-0.3.2-devel.jar"]))
+    runtimeOnly files(workspaceFile(["08-hexcessible-neoforge-port/build/libs/hexcessible-0.3.2-devel.jar"]))
+    compileOnly files(workspaceFile(["15a-hexpose-neoforge-port/build/libs/hexpose-neoforge-1.0.0+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["15a-hexpose-neoforge-port/build/libs/hexpose-neoforge-1.0.0+1.21.1-neoforge-pre39.jar"]))
+    compileOnly files(workspaceFile(["15-hexical-neoforge-port/build/libs/hexical-neoforge-2.0.0+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["15-hexical-neoforge-port/build/libs/hexical-neoforge-2.0.0+1.21.1-neoforge-pre39.jar"]))
+
+    // Full pre39 integration validation closure. These are runtime-only dev
+    // inputs and are not nested into Hexic's production JAR.
+    runtimeOnly files(workspaceFile(["01-yaha-source/yaha/build/libs/yaha-0.4.0.jar"]))
+    def hexxyToungeRuntime = workspaceFile(["03-radicle-source/hex-addons-hexxytounge-neo-probe/build/libs/hexxytounge-0.1.0-neoforge-probe.jar"])
+    if (hexxyToungeRuntime.exists()) {
+        runtimeOnly files(hexxyToungeRuntime)
+    } else {
+        logger.lifecycle("HexxyTounge runtime is not built yet; omitting it from this bootstrap build")
+    }
+    runtimeOnly files(workspaceFile(["06-hexdebug-neoforge-port/Forge/build/libs/hexdebug-neoforge-0.8.1+1.21.1-SNAPSHOT.jar"]))
+    runtimeOnly files(workspaceFile(["07-hextweaks-neoforge-port/forge/build/libs/hextweaks-5.3.3.jar"]))
+    runtimeOnly files(workspaceFile(["09-hexresearch-neoforge-port/forge/build/libs/hexresearch-neoforge-1.21.1-1.0.2-indev.jar"]))
+    runtimeOnly files(workspaceFile(["13-hexoverpowered-neoforge-port/neoforge/build/libs/HexOverpowered-neoforge-1.21.1-0.11.7-pre26.jar"]))
+    runtimeOnly files(workspaceFile(["17-hexkinetics-neoforge-port/build/libs/hexkinetics-neoforge-0.7.3+1.21.1-neoforge-pre39.jar"]))
+    // HexGuide and the post-matrix ports remain flat runtime dependencies and
+    // are never nested into Hexic's production JAR.
+    runtimeOnly files(workspaceFile(["20-hexguide-neoforge-port/build/libs/hexguide-neoforge-0.0.2+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["21-hexcassettes-neoforge-port/build/libs/hexcassettes-1.0.0+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["22-mediaworks-neoforge-port/build/libs/mediaworks-neoforge-1.0.8+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["23-hexxysable-neoforge-port/build/libs/hexxysable-neoforge-2.0.2+1.21.1-neoforge-pre39.jar"]))
+    runtimeOnly files(workspaceFile(["23-hexxysable-neoforge-port/libs/sable-neoforge-1.21.1-2.0.3.jar"]))
+    runtimeOnly files(workspaceFile(["23-hexxysable-neoforge-port/libs/sable-companion-common-1.21.1-1.6.0.jar"]))
+    // Dev-runtime dependency of Hexical; the production pack already carries
+    // this exact 2.0.4 artifact.
+    runtimeOnly files("libs/player-animation-lib-forge-2.0.4+1.21.1.jar")
+
+    compileOnly files("libs/curios-neoforge-${project.curios_version}.jar")
+    runtimeOnly files("libs/curios-neoforge-${project.curios_version}.jar")
+
+    compileOnly files(yahaLib("hexcasting-neoforge-${project.minecraft_version}-${project.hexcasting_version}.jar"))
+    runtimeOnly files(yahaLib("hexcasting-neoforge-${project.minecraft_version}-${project.hexcasting_version}.jar"))
+    runtimeOnly files(yahaLib("paucal-${project.paucal_version}+${project.minecraft_version}-neoforge.jar"))
+    runtimeOnly files(yahaLib("caelus-neoforge-${project.caelus_version}.jar"))
+    compileOnly files(yahaLib("inline-${project.minecraft_version}-${project.inline_version}-neoforge-devruntime.jar"))
+    runtimeOnly files(yahaLib("inline-${project.minecraft_version}-${project.inline_version}-neoforge-devruntime.jar"))
+    runtimeOnly "me.shedaniel.cloth:cloth-config-neoforge:${project.cloth_config_version}"
+    compileOnly files(yahaLib("serialization-hooks-${project.serialization_hooks_version}.jar"))
+
+    runtimeOnly "thedarkcolour:kotlinforforge-neoforge:${project.forge_kotlin_version}"
+    compileOnly files(workspaceFile(["11-hexal-neoforge-port/libs/Patchouli-${project.patchouli_version}.jar"]))
+    runtimeOnly files(workspaceFile(["11-hexal-neoforge-port/libs/Patchouli-${project.patchouli_version}.jar"]))
+    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:${project.mixinextras_version}"))
+    runtimeOnly "io.github.llamalad7:mixinextras-neoforge:${project.mixinextras_version}"
+
+    compileOnly "net.bytebuddy:byte-buddy:1.17.7"
+    compileOnly "net.bytebuddy:byte-buddy-agent:1.17.7"
+    compileOnly "org.ow2.asm:asm:9.7.1"
+    compileOnly "org.ow2.asm:asm-tree:9.7.1"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("META-INF/neoforge.mods.toml") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 21
+}
+
+tasks.withType(ScalaCompile).configureEach {
+    scalaCompileOptions.additionalParameters.addAll(["-experimental", "-encoding", "UTF-8"])
+    scalaCompileOptions.forkOptions.memoryMaximumSize = "4G"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+tasks.named("sourcesJar", Jar) {
+    // Source reference jars are not runtime mod jars; keep loader and mixin metadata out
+    // so NeoForge will not treat *-sources.jar as a broken mod candidate in modpacks.
+    exclude "META-INF/neoforge.mods.toml"
+    exclude "META-INF/mods.toml"
+    exclude "fabric.mod.json"
+    exclude "*.mixins.json"
+    exclude "**/*.mixins.json"
+    exclude "*.mixin.json"
+    exclude "**/*.mixin.json"
+}

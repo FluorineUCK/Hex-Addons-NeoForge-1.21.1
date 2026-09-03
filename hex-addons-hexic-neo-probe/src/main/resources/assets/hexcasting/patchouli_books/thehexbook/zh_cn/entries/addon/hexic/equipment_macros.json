@@ -1,0 +1,16 @@
+{
+  "name": "图案蚀刻",
+  "category": "hexcasting:patterns",
+  "icon": "minecraft:brush",
+  "pages": [
+    "我发现了一种便利的方法，可以把$(hex)咒术/$蚀刻到穿戴的装备上，从而轻松与他人分享（当然，它仍不如真正的施法物品易用）。只要带有这种“装备宏”的物品位于手中、护甲栏或饰品栏，我施法时就能调用其中的宏。",
+    {
+      "type": "hexcasting:pattern",
+      "anchor": "hexic:mkmacro",
+      "op_id": "hexic:mkmacro",
+      "input": "pattern, str?, entity, iota",
+      "output": "",
+      "text": "以可选名称将宏蚀刻进所给物品实体；若栈顶参数为 Null，则移除对应宏。新增宏消耗 5 个紫水晶粉，替换或移除宏不消耗媒质。"
+    }
+  ]
+}

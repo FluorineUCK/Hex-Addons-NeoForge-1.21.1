@@ -1,0 +1,20 @@
+# Resource-location textures consumed by NeoForge's OBJ loader
+newmtl slate
+Ka 0 0 0
+Kd 1 1 1
+map_Kd hexcasting:block/slate
+
+newmtl engine_side
+Ka 0 0 0
+Kd 1 1 1
+map_Kd hexic:block/engine.side
+
+newmtl engine_top
+Ka 0 0 0
+Kd 1 1 1
+map_Kd hexic:block/engine.top
+
+newmtl copper
+Ka 0 0 0
+Kd 1 1 1
+map_Kd minecraft:block/copper_block

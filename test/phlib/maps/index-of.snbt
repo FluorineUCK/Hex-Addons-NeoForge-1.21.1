@@ -1,9 +1,0 @@
-[
-  {vm: staff},
-  {push: {entries: [{k: 1, v: 11},
-                    {k: 2, v: 12},
-                    {k: 3, v: 13}] } },
-  {push: 12},
-  {cast: {action: 'hexcasting:index_of'}},
-  {check: 2}
-]

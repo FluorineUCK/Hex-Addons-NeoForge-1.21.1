@@ -1,0 +1,9 @@
+{
+  "order": 120,
+  "size": 1,
+  "icon": "hexic:gui/mediaweave",
+  "drop_rule": "DEFAULT",
+  "validators": [
+    "curios:tag"
+  ]
+}

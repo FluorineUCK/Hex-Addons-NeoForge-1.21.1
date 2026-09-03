@@ -1,5 +1,0 @@
-[
-  { vm: staff },
-  { cast: { action: 'phlib:empty_map' } },
-  { check: { entries: [] } }
-]

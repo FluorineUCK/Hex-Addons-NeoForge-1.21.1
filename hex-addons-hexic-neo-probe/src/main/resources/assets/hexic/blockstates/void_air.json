@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "hexic:block/void_air"
+    }
+  }
+}

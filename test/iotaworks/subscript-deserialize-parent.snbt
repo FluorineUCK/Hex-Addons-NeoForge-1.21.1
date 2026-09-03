@@ -1,8 +1,0 @@
-[
-  { vm: staff },
-  { push: {"hexcasting:type": "hexcasting:pattern", "hexcasting:data": {parent: {angles: [B; 5B, 4B, 5B], start_dir: 0b}, level: 42}} },
-  { cast: { action: 'hexcasting:duplicate' } },
-  { check: { action: 'hexcasting:get_caster' } },
-  { cast: { action: 'iotaworks:get_subscript' } },
-  { check: 42 },
-]

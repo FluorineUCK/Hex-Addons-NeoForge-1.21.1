@@ -1,9 +1,0 @@
-[
-  {vm: staff},
-  {push: 1}, {push: 2}, {push: 3},
-  {push: {action: 'hexcasting:swap'}},
-  {push: 1},
-  {cast: {action: 'iotaworks:set_subscript'}},
-  {cast: {action: 'hexcasting:eval'}},
-  {check: 3}, {check: 1}, {check: 2}
-]

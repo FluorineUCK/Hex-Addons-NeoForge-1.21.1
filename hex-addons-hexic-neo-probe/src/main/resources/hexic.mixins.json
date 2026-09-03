@@ -1,0 +1,39 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.eu.net.pool.hexic.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "AbstractFurnaceBlockEntityAccess",
+    "ActionRegistryEntryMixin",
+    "CatAccess",
+    "CastingEnvironmentMixin",
+    "CastingVMMixin",
+    "DimIotaMixin",
+    "EntityMixin",
+    "ItemStackMixin",
+    "ItemStackStreamCodecMixin",
+    "ItemStackAccess",
+    "LimbAnimatorAccess",
+    "LivingEntityMixin",
+    "MinecraftServerRuntimeWorldAccess",
+    "OpDimTeleportMixin",
+    "OpDimTeleportSpellAccess",
+    "OpDimTeleportSpellMixin",
+    "OpEdifySaplingMixin",
+    "OpEdifySaplingMixin$SpellMixin",
+    "OpObservePropertyMixin",
+    "OpSetPropertyMixin",
+    "OpTickMixin",
+    "OpTickMixin$SpellMixin",
+    "ResolvedPatternTypeMixin",
+    "ServerboundChatPacketMixin",
+    "StaffCastEnvMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

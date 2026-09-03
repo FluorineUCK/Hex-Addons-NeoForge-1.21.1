@@ -1,0 +1,32 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_the_recipe": {
+      "conditions": {
+        "recipe": "hexic:small_magenta_bundle"
+      },
+      "trigger": "minecraft:recipe_unlocked"
+    },
+    "recipe": {
+      "conditions": {
+        "items": [
+          {
+            "items": "hexic:magenta_mediaweave"
+          }
+        ]
+      },
+      "trigger": "minecraft:inventory_changed"
+    }
+  },
+  "requirements": [
+    [
+      "recipe",
+      "has_the_recipe"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "hexic:small_magenta_bundle"
+    ]
+  }
+}

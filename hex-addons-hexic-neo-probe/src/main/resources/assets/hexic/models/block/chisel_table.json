@@ -1,0 +1,117 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "hexcasting:block/slate"
+  },
+  "elements": [
+    {
+      "name": "small_leg",
+      "from": [
+        0,
+        0,
+        0
+      ],
+      "to": [
+        4,
+        8,
+        4
+      ],
+      "faces": {
+        "down": {
+          "texture": "#particle",
+          "cullface": "down"
+        },
+        "up": {
+          "texture": "#particle"
+        },
+        "north": {
+          "texture": "#particle",
+          "cullface": "north"
+        },
+        "south": {
+          "texture": "#particle"
+        },
+        "west": {
+          "texture": "#particle",
+          "cullface": "west"
+        },
+        "east": {
+          "texture": "#particle"
+        }
+      }
+    },
+    {
+      "name": "big_leg",
+      "from": [
+        12,
+        0,
+        12
+      ],
+      "to": [
+        16,
+        8,
+        16
+      ],
+      "faces": {
+        "down": {
+          "texture": "#particle",
+          "cullface": "down"
+        },
+        "up": {
+          "texture": "#particle"
+        },
+        "north": {
+          "texture": "#particle"
+        },
+        "south": {
+          "texture": "#particle",
+          "cullface": "south"
+        },
+        "west": {
+          "texture": "#particle"
+        },
+        "east": {
+          "texture": "#particle",
+          "cullface": "east"
+        }
+      }
+    },
+    {
+      "name": "surface",
+      "from": [
+        0,
+        8,
+        0
+      ],
+      "to": [
+        16,
+        12,
+        16
+      ],
+      "faces": {
+        "down": {
+          "texture": "#particle"
+        },
+        "up": {
+          "texture": "#particle"
+        },
+        "north": {
+          "texture": "#particle",
+          "cullface": "north"
+        },
+        "south": {
+          "texture": "#particle",
+          "cullface": "south"
+        },
+        "west": {
+          "texture": "#particle",
+          "cullface": "west"
+        },
+        "east": {
+          "texture": "#particle",
+          "cullface": "east"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "type": "hexic:cell",
+  "generator": {
+    "type": "flat",
+    "settings": {
+      "biome": "minecraft:the_void",
+      "layers": []
+    }
+  }
+}

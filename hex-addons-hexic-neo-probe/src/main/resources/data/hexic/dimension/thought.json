@@ -1,0 +1,10 @@
+{
+  "type": "hexic:thought",
+  "generator": {
+    "type": "flat",
+    "settings": {
+      "biome": "minecraft:the_void",
+      "layers": []
+    }
+  }
+}

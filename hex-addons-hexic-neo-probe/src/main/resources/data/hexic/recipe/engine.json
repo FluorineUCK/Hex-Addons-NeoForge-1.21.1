@@ -1,0 +1,28 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "a": {
+      "item": "hexcasting:quenched_allay_shard"
+    },
+    "c": {
+      "item": "minecraft:copper_ingot"
+    },
+    "e": {
+      "item": "hexcasting:edified_slab"
+    },
+    "s": {
+      "item": "hexcasting:slate_block"
+    }
+  },
+  "pattern": [
+    " c ",
+    "eae",
+    "sss"
+  ],
+  "result": {
+    "count": 1,
+    "id": "hexic:engine"
+  },
+  "show_notification": true
+}

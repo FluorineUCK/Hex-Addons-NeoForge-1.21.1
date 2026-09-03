@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "org.eu.net.pool.phlib.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ActuallySimpleRegistryMixin",
+    "AllocationTrackerMixin",
+    "CastingVMMixin",
+    "OpSplatMixin",
+    "PatternIotaMixin",
+    "SimpleRegistryMixin"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "hexic:block/chisel_table"
+    }
+  }
+}

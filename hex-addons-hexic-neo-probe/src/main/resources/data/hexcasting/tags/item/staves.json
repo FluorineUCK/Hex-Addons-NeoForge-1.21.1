@@ -1,0 +1,21 @@
+{
+  "replace": false,
+  "values": [
+    "hexic:pen/white",
+    "hexic:pen/orange",
+    "hexic:pen/magenta",
+    "hexic:pen/light_blue",
+    "hexic:pen/yellow",
+    "hexic:pen/lime",
+    "hexic:pen/pink",
+    "hexic:pen/gray",
+    "hexic:pen/light_gray",
+    "hexic:pen/cyan",
+    "hexic:pen/purple",
+    "hexic:pen/blue",
+    "hexic:pen/brown",
+    "hexic:pen/green",
+    "hexic:pen/red",
+    "hexic:pen/black"
+  ]
+}

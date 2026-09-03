@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "group": "hexic:media_pouch",
+  "key": {
+    "a": {
+      "item": "minecraft:amethyst_shard"
+    },
+    "s": {
+      "item": "minecraft:string"
+    },
+    "w": {
+      "item": "hexic:orange_mediaweave"
+    }
+  },
+  "pattern": [
+    " s ",
+    "waw",
+    " w "
+  ],
+  "result": {
+    "count": 1,
+    "id": "hexic:small_orange_bundle"
+  },
+  "show_notification": true
+}

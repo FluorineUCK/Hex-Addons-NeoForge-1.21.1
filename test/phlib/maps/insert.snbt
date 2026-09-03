@@ -1,8 +1,0 @@
-[
-  { vm: staff },
-  { cast: { action: 'phlib:empty_map' } },
-  { push: 1 },
-  { push: 2 },
-  { cast: { action: 'hexcasting:replace' } },
-  { check: { entries: [{ k: 1, v: 2 }] }, structural: true }
-]

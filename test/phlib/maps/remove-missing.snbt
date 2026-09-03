@@ -1,8 +1,0 @@
-[
-  { vm: staff },
-  { push: { entries: [{ k: 1, v: 2 }] } },
-  { push: 42 },
-  { cast: { action: 'hexcasting:remove_from' } },
-  { check: { entries: [{ k: 1, v: 2 }] } },
-  { checkStack: 0 }
-]

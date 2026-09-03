@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "group": "hexic:pen",
+  "key": {
+    "a": {
+      "item": "minecraft:amethyst_shard"
+    },
+    "i": {
+      "item": "minecraft:gold_nugget"
+    },
+    "w": {
+      "item": "hexic:blue_mediaweave"
+    }
+  },
+  "pattern": [
+    "w",
+    "a",
+    "i"
+  ],
+  "result": {
+    "count": 1,
+    "id": "hexic:pen/blue"
+  },
+  "show_notification": true
+}
