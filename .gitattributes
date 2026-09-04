@@ -1,0 +1,4 @@
+
+
+# Preserve original upstream documentation bytes.
+/upstream-docs/** -text
